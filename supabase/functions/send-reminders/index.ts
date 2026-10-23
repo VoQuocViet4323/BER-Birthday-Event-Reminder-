@@ -54,12 +54,12 @@ Deno.serve(async (req) => {
         email_enabled,
         default_remind_days,
         remind_time,
-        extra_emails,
         leap_day_rule,
         profiles (
           id,
           display_name,
-          timezone
+          timezone,
+          email
         )
       `)
       .eq("email_enabled", true);
@@ -94,12 +94,21 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Lấy email chính từ auth.users
-      const { data: authUserData } = await supabase.auth.admin.getUserById(setting.user_id);
-      const primaryEmail = authUserData?.user?.email;
-      if (!primaryEmail) continue;
+      // Lấy email chính từ profiles trước, fallback sang auth.users
+      let primaryEmail = profile?.email;
+      if (!primaryEmail || primaryEmail.endsWith("@ber-app.com")) {
+        const { data: authUserData } = await supabase.auth.admin.getUserById(setting.user_id);
+        if (authUserData?.user?.email && !authUserData.user.email.endsWith("@ber-app.com")) {
+          primaryEmail = authUserData.user.email;
+        }
+      }
 
-      const recipientEmails = [primaryEmail, ...(setting.extra_emails || [])].filter(Boolean);
+      const rawRecipients = [primaryEmail].filter(Boolean);
+      // Loại bỏ các email tạm thời nội bộ (@ber-app.com, @ber.local)
+      const recipientEmails = rawRecipients.filter(
+        (em) => !em.endsWith("@ber-app.com") && !em.endsWith("@ber.local")
+      );
+      if (recipientEmails.length === 0) continue;
 
       // 2. Lấy tất cả sự kiện đang hoạt động của user này
       const { data: events, error: eventsError } = await supabase

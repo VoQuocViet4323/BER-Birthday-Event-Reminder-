@@ -18,6 +18,8 @@ export interface Database {
           onboarded: boolean;
           role?: "user" | "admin";
           username?: string | null;
+          email?: string | null;
+          provider?: string | null;
           created_at: string;
         };
         Insert: {
@@ -28,6 +30,8 @@ export interface Database {
           onboarded?: boolean;
           role?: "user" | "admin";
           username?: string | null;
+          email?: string | null;
+          provider?: string | null;
           created_at?: string;
         };
         Update: {
@@ -38,6 +42,8 @@ export interface Database {
           onboarded?: boolean;
           role?: "user" | "admin";
           username?: string | null;
+          email?: string | null;
+          provider?: string | null;
           created_at?: string;
         };
       };

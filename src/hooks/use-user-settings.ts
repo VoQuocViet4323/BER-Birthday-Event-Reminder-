@@ -68,7 +68,11 @@ export function useUserSettings() {
           ]);
 
           if (profileRes.data) {
-            const currentProfile = profileRes.data as Profile;
+            const currentProfile = {
+              ...profileRes.data,
+              email: profileRes.data.email || session.user.email || null,
+              provider: session.user.app_metadata?.provider || (session.user.app_metadata?.providers?.[0] ?? "email"),
+            } as Profile;
             const currentSettings = (settingsRes.data || {
               ...initialMockSettings,
               user_id: session.user.id,
@@ -97,6 +101,8 @@ export function useUserSettings() {
             timezone: "Asia/Ho_Chi_Minh",
             onboarded: true,
             role: (session.user.user_metadata?.role as any) || "user",
+            email: session.user.email || null,
+            provider: session.user.app_metadata?.provider || (session.user.app_metadata?.providers?.[0] ?? "email"),
             created_at: new Date().toISOString(),
           };
 

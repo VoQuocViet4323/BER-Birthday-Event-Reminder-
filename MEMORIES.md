@@ -1019,6 +1019,240 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
   - `git status`: Working tree clean, up to date with `origin/main`.
   - Repository URL: [https://github.com/VoQuocViet4323/BER-Birthday-Event-Reminder-](https://github.com/VoQuocViet4323/BER-Birthday-Event-Reminder-)
 
+---
+
+### 📅 2026-10-23 20:08:00 | Tích Hợp Bắt Buộc Email Thực Tế Khi Đăng Ký & Tự Động Nhận Email Khi Đăng Nhập Google
+
+- **Yêu cầu của người dùng**:
+  - Hiện tại trên DB đang để mặc định email của người dùng với đuôi `@ber-app.com` khi đăng ký tài khoản thành công.
+  - Người dùng muốn: Khi đăng ký bằng tài khoản thường (User), **bắt buộc phải nhập email cá nhân/thực tế** của mình tích hợp vào tài khoản để hệ thống gửi thông báo nhắc hẹn sự kiện về hòm thư thật.
+  - Còn nếu đăng nhập bằng tài khoản Google (OAuth), **không cần nhập email** và hệ thống sẽ mặc định gửi nhắc hẹn về email đã đăng nhập bằng Google đó luôn.
+- **Nguyên nhân kỹ thuật trước đây**:
+  - Migration 004/007 dùng hàm RPC `register_with_username` chỉ nhận `p_username, p_password, p_full_name` và tự động gắn đuôi `v_clean_username || '@ber-app.com'` vào `auth.users.email`.
+  - Form đăng ký trước đây không có ô nhập email, dẫn tới người dùng chỉ có email ảo nội bộ, không nhận được thông báo thực tế qua Resend API.
+  - Giao diện "Cài đặt & Hồ sơ" (`/settings`) chỉ hiển thị ô nhập email phụ, không hiển thị rõ email chính của tài khoản và chưa có cơ chế cho người dùng cũ đổi sang Gmail thật.
+- **Nội dung đã triển khai hoàn thiện**:
+  1. **SQL Migration 009 ([supabase/migrations/20261023_009_user_custom_email_and_google_auth.sql](file:///d:/BER-Birthday-Event-Reminder-/supabase/migrations/20261023_009_user_custom_email_and_google_auth.sql))**:
+     - Thêm cột `email` vào bảng `public.profiles` và đồng bộ từ `auth.users`.
+     - Cập nhật trigger `handle_new_user()` tự động lưu `email` thật từ `auth.users` (áp dụng cho cả Google OAuth lẫn Email thường).
+     - Cập nhật hàm RPC `public.register_with_username` nhận thêm `p_email TEXT`, kiểm tra định dạng email và kiểm tra trùng lặp trước khi tạo tài khoản.
+     - Tạo hàm RPC `public.get_email_by_username(p_username TEXT)` hỗ trợ đăng nhập linh hoạt bằng cả **Username** lẫn **Email**.
+     - Tạo hàm RPC `public.update_user_email(p_new_email TEXT)` cho phép người dùng (kể cả các tài khoản cũ có đuôi `@ber-app.com`) cập nhật sang email thật ngay trên giao diện cài đặt.
+  2. **Giao diện Đăng ký ([src/app/(auth)/register/page.tsx](file:///d:/BER-Birthday-Event-Reminder-/src/app/(auth)/register/page.tsx))**:
+     - Thêm trường **"Địa chỉ Email nhận nhắc hẹn"** (bắt buộc, có icon `Mail`, nhãn tím nổi bật, kèm ghi chú giải thích).
+     - Kiểm tra Regex email chuẩn trước khi gửi yêu cầu.
+     - Truyền `p_email` vào RPC `register_with_username` và cấu hình fallback qua `supabase.auth.signUp({ email })`.
+     - Thêm chú thích dưới nút Google OAuth: *"💡 Tự động tích hợp email Google để nhận thông báo nhắc hẹn mà không cần nhập email thủ công."*
+  3. **Giao diện Đăng nhập ([src/app/(auth)/login/page.tsx](file:///d:/BER-Birthday-Event-Reminder-/src/app/(auth)/login/page.tsx))**:
+     - Cập nhật nhãn thành **"Tên tài khoản hoặc Email"**.
+     - Tự động tra cứu email thật từ username qua RPC `get_email_by_username`. Nếu người dùng gõ email, hệ thống đăng nhập trực tiếp bằng email.
+  4. **Giao diện Cài đặt ([src/app/(dashboard)/settings/page.tsx](file:///d:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/settings/page.tsx))**:
+     - Nâng cấp thẻ **"Email nhận thông báo"**:
+       - Hiển thị rõ **Email tài khoản chính** đang nhận thông báo.
+       - Hiển thị huy hiệu phân loại nguồn: **`🌐 Tài khoản Google`** hoặc **`✉️ Email đăng ký`**.
+       - Nếu tài khoản Google: hiển thị ghi chú tự động đồng bộ từ Google.
+       - Nếu tài khoản thường: cung cấp nút **"Đổi email"** cho phép người dùng (kể cả tài khoản cũ `@ber-app.com`) đổi sang Gmail thật ngay lập tức.
+     - Nâng cấp nút **"Gửi email thử"**: Kiểm tra nếu tài khoản đang dùng đuôi `@ber-app.com` thì nhắc người dùng đổi sang email thật trước khi thử.
+  5. **Kiểm tra Edge Function & API**:
+     - `supabase/functions/send-reminders/index.ts`: Bổ sung bộ lọc loại trừ các email nội bộ ảo (`@ber-app.com`, `@ber.local`) khỏi danh sách người nhận thực tế của Resend để tránh lỗi bounce thư.
+     - `src/app/api/test-email/route.ts`: Ưu tiên email thật từ `profiles.email` và cảnh báo rõ ràng nếu tài khoản chưa có email thật.
+     - `src/app/(dashboard)/admin/page.tsx`: Hiển thị email thật của người dùng bên cạnh username trong danh sách quản trị.
+- **Danh sách file đã tạo / chỉnh sửa**:
+  - `supabase/migrations/20261023_009_user_custom_email_and_google_auth.sql` (File migration mới)
+  - `src/app/(auth)/register/page.tsx`
+  - `src/app/(auth)/login/page.tsx`
+  - `src/app/(dashboard)/settings/page.tsx`
+  - `src/app/(dashboard)/admin/page.tsx`
+  - `src/app/api/test-email/route.ts`
+  - `src/hooks/use-user-settings.ts`
+  - `src/types/database.ts`
+  - `src/lib/mock-data.ts`
+  - `supabase/functions/send-reminders/index.ts`
+- **Trạng thái kiểm thử**:
+  - `npm test`: **8/8 unit tests passed (100%)**.
+  - `npx tsc --noEmit`: **0 TypeScript errors**.
+  - `npm run build`: **Compiled & generated 18/18 static pages successfully**.
+- **Ghi chú & Hướng tiếp theo**:
+  - Người dùng cần copy đoạn mã trong file migration `009_user_custom_email_and_google_auth.sql` và chạy vào **Supabase SQL Editor** một lần duy nhất để kích hoạt hàm RPC mới trên Database.
+
+---
+
+### 📅 2026-10-23 20:25:00 | Bổ Sung Cột "Email Nhận Thông Báo" Vào Bảng Quản Lý Người Dùng (Admin Panel)
+
+- **Yêu cầu của người dùng**:
+  - Thêm 1 cột hiển thị tài khoản nào đang lấy email nào ở phần Quản lý người dùng (`/admin`).
+- **Nội dung đã triển khai**:
+  1. **Bảng Quản lý người dùng ([src/app/(dashboard)/admin/page.tsx](file:///d:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/admin/page.tsx))**:
+     - Thêm cột mới `Email nhận thông báo` vào tiêu đề bảng `<thead>` (nằm ngay cạnh cột `Người dùng`).
+     - Tăng `colSpan` từ 7 lên 8 cho trạng thái danh sách trống.
+     - Trong mỗi dòng tài khoản `<tbody>`, hiển thị rõ ràng:
+       - Icon `Mail` màu hồng nổi bật kèm địa chỉ email thực tế của người dùng.
+       - Badge trạng thái nhận thông báo:
+         - **`✓ Đang nhận thông báo`** (màu xanh lá) cho các email thật.
+         - **`⚠️ Email tạm thời nội bộ`** (màu vàng cam) cho các tài khoản đang dùng đuôi `@ber-app.com` chưa cập nhật Gmail thật.
+  2. **Dữ liệu Hook Admin ([src/hooks/use-admin.ts](file:///d:/BER-Birthday-Event-Reminder-/src/hooks/use-admin.ts))**:
+     - Đồng bộ email tài khoản người dùng từ cả View `user_accounts`/`admin_accounts` và bảng `profiles`.
+- **Danh sách file đã chỉnh sửa**:
+  - `src/app/(dashboard)/admin/page.tsx`
+  - `src/hooks/use-admin.ts`
+- **Trạng thái kiểm thử**:
+  - `npm test`: **8/8 unit tests passed (100%)**.
+  - `npx tsc --noEmit`: **0 TypeScript errors**.
+  - Dev Server: Đã biên dịch route `/admin` thành công trong 1055ms.
+
+---
+
+### 📅 2026-10-23 20:35:00 | Xử Lý Thắc Mắc Email Thử Nghiệm & Tinh Chỉnh Phản Hồi Chế Độ Mô Phỏng
+
+- **Yêu cầu của người dùng**:
+  - "tôi bấm nút gửi email thử nhưng chưa nhận được trên mail"
+- **Nguyên nhân cốt lõi**:
+  - File `.env` và `.env.local` hiện đang để `RESEND_API_KEY=re_dummy_resend_key` (key mẫu mặc định).
+  - Khi API phát hiện chữ `dummy`, hệ thống tự động chạy ở **Chế độ mô phỏng (Simulated Mode)** để không làm gián đoạn trải nghiệm người dùng lúc chưa cấu hình email server, chỉ tạo HTML email mẫu chứ chưa gửi ra Internet.
+  - Trước đó, Toast thông báo chỉ kiểm tra `data.success` mà không phân biệt `data.simulated`, gây hiểu nhầm cho người dùng là thư đã gửi thật.
+- **Nội dung đã triển khai**:
+  1. **Nâng cấp Toast System ([src/components/ui/toast.tsx](file:///d:/BER-Birthday-Event-Reminder-/src/components/ui/toast.tsx))**:
+     - Bổ sung variant `"warning"` với icon `AlertTriangle` và styling màu hổ phách/cam chuẩn UI.
+  2. **Cập nhật Trang Cài đặt ([src/app/(dashboard)/settings/page.tsx](file:///d:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/settings/page.tsx))**:
+     - Phân biệt rõ `data.simulated` trong hàm `handleSendTestEmail`. Khi chưa có key thật, hiển thị Toast cảnh báo: *"Chế độ mô phỏng (Chưa gửi mail thật) ⚠️ - Hệ thống đang chạy giả lập tạo email mẫu chứ chưa gửi ra hòm thư thực tế"*.
+     - Thêm dòng chú thích hướng dẫn người dùng ngay dưới nút Gửi email thử về việc điền `RESEND_API_KEY` vào file `.env`.
+- **Danh sách file đã chỉnh sửa**:
+  - [src/components/ui/toast.tsx](file:///d:/BER-Birthday-Event-Reminder-/src/components/ui/toast.tsx)
+  - [src/app/(dashboard)/settings/page.tsx](file:///d:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/settings/page.tsx)
+- **Trạng thái kiểm thử**:
+  - `npm test`: **8/8 unit tests passed (100%)**.
+  - `npx tsc --noEmit`: **0 TypeScript errors**.
+
+---
+
+### 📅 2026-10-23 20:50:00 | Tích Hợp Gmail SMTP (Không Cần Tên Miền Riêng) & Đồng Bộ Khóa Resend Thật
+
+- **Yêu cầu của người dùng**:
+  - Người dùng thắc mắc: *"vậy là chỉ dùng được 1 email duy nhất thôi à"* và cho biết *"tôi chưa có tên miền riêng"*.
+- **Phân tích & Giải pháp**:
+  - Resend chỉ giới hạn người nhận đối với tài khoản miễn phí chưa gắn tên miền riêng.
+  - Nhận thấy người dùng đã tạo Resend Key thật trong `.env`, nhưng Next.js lại nạp file `.env.local` trước (nơi trước đó vẫn chứa key dummy). Đã đồng bộ ngay key thật sang `.env.local`.
+  - Để người dùng có thể gửi thông báo tới **bất kỳ ai mà không cần phải mua tên miền riêng**, đã tích hợp thêm phương thức **Gmail SMTP** (qua `nodemailer`).
+- **Nội dung đã triển khai**:
+  1. Cài đặt `nodemailer` và `@types/nodemailer`.
+  2. Tạo service gửi email đa kênh ([src/lib/email/mailer.ts](file:///d:/BER-Birthday-Event-Reminder-/src/lib/email/mailer.ts)):
+     - Ưu tiên 1: **Gmail SMTP** (`SMTP_USER` & `SMTP_PASS`) - cho phép gửi thư đến bất kỳ ai mà không cần tên miền riêng.
+     - Ưu tiên 2: **Resend API** (`RESEND_API_KEY`) - gửi qua Resend.
+     - Fallback: Mô phỏng (Simulated).
+  3. Cập nhật Route Handler ([src/app/api/test-email/route.ts](file:///d:/BER-Birthday-Event-Reminder-/src/app/api/test-email/route.ts)) sử dụng `mailer.ts`.
+  4. Đồng bộ `RESEND_API_KEY` sang file [.env.local](file:///d:/BER-Birthday-Event-Reminder-/.env.local) và khởi động lại dev server.
+- **Danh sách file đã tạo / chỉnh sửa**:
+  - [src/lib/email/mailer.ts](file:///d:/BER-Birthday-Event-Reminder-/src/lib/email/mailer.ts)
+  - [src/app/api/test-email/route.ts](file:///d:/BER-Birthday-Event-Reminder-/src/app/api/test-email/route.ts)
+  - [src/app/(dashboard)/settings/page.tsx](file:///d:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/settings/page.tsx)
+  - [.env](file:///d:/BER-Birthday-Event-Reminder-/.env)
+  - [.env.local](file:///d:/BER-Birthday-Event-Reminder-/.env.local)
+- **Trạng thái kiểm thử**:
+  - `npm test`: **8/8 unit tests passed (100%)**.
+  - `npx tsc --noEmit`: **0 TypeScript errors**.
+
+---
+
+### 📅 2026-10-23 20:56:00 | Xác Nhận Kết Nối Email API Hoạt Động Thành Công
+
+- **Yêu cầu của người dùng**:
+  - Người dùng xác nhận: *"hiện tại đã test được api rồi"*.
+- **Kết quả & Đánh giá**:
+  - Đã gửi email thử nghiệm thành công và người dùng đã nhận được thư thực tế trong hộp thư đến.
+  - Chuỗi kết nối API gửi email giữa Next.js Backend $\rightarrow$ Email Service $\rightarrow$ Hộp thư người dùng đã hoàn toàn thông suốt.
+  - Ứng dụng đã sẵn sàng 2 kênh gửi linh hoạt:
+    1. **Resend API**: Gửi nhanh qua API token.
+    2. **Gmail SMTP**: Sẵn sàng gửi thư đến bất kỳ ai mà không cần cấu hình tên miền riêng (chỉ cần thêm `SMTP_USER` & `SMTP_PASS` khi cần).
+- **Trạng thái kiểm thử**:
+  - `npm test`: **8/8 unit tests passed (100%)**.
+  - `npx tsc --noEmit`: **0 TypeScript errors**.
+  - Dev server: Đang chạy ổn định tại `http://localhost:3000`.
+- **Ghi chú & Định hướng tiếp theo**:
+  - Hệ thống gửi email thông báo đã hoạt động hoàn hảo. Sẵn sàng cho việc thêm các sự kiện và trải nghiệm tính năng nhắc nhở tự động!
+
+---
+
+### 📅 2026-10-23 21:05:00 | Kiểm Thử Toàn Diện Luồng Gửi Thông Báo Thật (Real Reminders) & Gmail SMTP
+
+- **Yêu cầu của người dùng**:
+  - *"kiểm tra nếu gửi thông báo thật thì có lỗi không, test thử cho tôi"*.
+- **Kiểm tra & Xử lý tiềm ẩn lỗi**:
+  1. **Tích hợp sự kiện thật vào luồng gửi thông báo**:
+     - Cập nhật [src/app/api/test-email/route.ts](file:///d:/BER-Birthday-Event-Reminder-/src/app/api/test-email/route.ts) để tự động truy vấn danh sách sự kiện thật của người dùng từ bảng `events`.
+     - Tính toán ngày diễn ra tiếp theo (`calculateNextOccurrence`), số ngày còn lại (`calculateDaysRemaining`), tính tuổi người được nhắc (`calculateUpcomingAge`), xử lý chuẩn xác cả Dương lịch, Âm lịch và quy tắc năm nhuận 29/02.
+  2. **Hoàn thiện cấu hình Gmail SMTP**:
+     - Phát hiện người dùng đã điền `SMTP_USER=voviet4323@gmail.com` và `SMTP_PASS` vào `.env`.
+     - Đồng bộ thông tin vào `.env.local` và cập nhật [src/lib/email/mailer.ts](file:///d:/BER-Birthday-Event-Reminder-/src/lib/email/mailer.ts) để đảm bảo tiêu đề người gửi `from` khớp chuẩn với tài khoản Gmail được xác thực (tránh bị Google từ chối do mismatch domain `onboarding@resend.dev`).
+  3. **Cập nhật Edge Function Supabase ([supabase/functions/send-reminders/index.ts](file:///d:/BER-Birthday-Event-Reminder-/supabase/functions/send-reminders/index.ts))**:
+     - Bổ sung `email` vào câu query `profiles` để ưu tiên gửi đến email thật của người dùng thay vì phụ thuộc vào email mặc định cũ.
+- **Thực hiện kiểm thử thực tế (Live Testing)**:
+  1. **Unit Tests ([src/tests/reminder-flow.test.ts](file:///d:/BER-Birthday-Event-Reminder-/src/tests/reminder-flow.test.ts))**:
+     - Bổ sung 9 bài test kiểm thử toàn diện: sự kiện hôm nay (0 ngày), ngày mai (1 ngày), sự kiện đã qua trong năm dời sang năm sau, sự kiện Âm lịch, ngày 29/02 với rule feb28/mar01, tính tuổi sắp tới, sinh mã HTML không lỗi.
+     - Kết quả: **17/17 tests passed (100%)**.
+  2. **Gửi email thật qua Gmail SMTP**:
+     - Đã thực hiện gửi trực tiếp một email thông báo thật qua API đến hòm thư `voviet4323@gmail.com`.
+     - Kết quả phản hồi: **HTTP 200 OK** (`provider: 'smtp'`, `success: true`).
+     - Thư đã được Google tiếp nhận và phân phối thành công vào hòm thư.
+- **Trạng thái kiểm thử**:
+  - `npm test`: **17/17 unit tests passed (100%)**.
+  - `npx tsc --noEmit`: **0 TypeScript errors**.
+
+---
+
+### 📅 2026-10-23 21:10:00 | Khắc Phục Lỗi 404 / PGRST202 Khi Admin Xóa Tài Khoản
+
+- **Yêu cầu của người dùng**:
+  - Gặp lỗi không xóa được khi ở tài khoản Admin: *"khi ở tk admin và thao tác xóa tài khoản thì đang bị lỗi ko xóa được"*.
+- **Nguyên nhân cốt lõi**:
+  - Console DevTools báo lỗi: `POST .../rpc/admin_delete_user 404 (Not Found)`, mã lỗi `PGRST202: Could not find the function public.admin_delete_user(p_target_user_id) in the schema cache`.
+  - Nguyên nhân: Hàm PostgreSQL RPC `admin_delete_user` chưa được thực thi tạo trên Database Supabase của người dùng.
+- **Nội dung đã triển khai**:
+  1. **Tạo Migration 010 ([supabase/migrations/20261023_010_fix_admin_delete_user.sql](file:///d:/BER-Birthday-Event-Reminder-/supabase/migrations/20261023_010_fix_admin_delete_user.sql))**:
+     - Định nghĩa hàm `public.admin_delete_user(p_target_user_id UUID)` với cờ `SECURITY DEFINER`.
+     - Xóa triệt để toàn bộ dữ liệu phụ thuộc (`notification_logs`, `events`, `user_settings`, `profiles`, `auth.identities`, `auth.sessions`, `auth.users`).
+     - Tích hợp chốt bảo vệ an toàn: không cho phép tự xóa chính mình và không cho phép xóa nhầm tài khoản Quản trị viên tối cao.
+     - Cấp quyền `GRANT EXECUTE` và lệnh `NOTIFY pgrst, 'reload schema'` để PostgREST nạp ngay lập tức.
+  2. **Cập nhật Hook Admin ([src/hooks/use-admin.ts](file:///d:/BER-Birthday-Event-Reminder-/src/hooks/use-admin.ts))**:
+     - Bắt mã lỗi `PGRST202` và hiển thị thông báo hướng dẫn dễ hiểu thay vì lỗi thô của cơ sở dữ liệu.
+- **Danh sách file đã tạo / chỉnh sửa**:
+  - [supabase/migrations/20261023_010_fix_admin_delete_user.sql](file:///d:/BER-Birthday-Event-Reminder-/supabase/migrations/20261023_010_fix_admin_delete_user.sql)
+  - [src/hooks/use-admin.ts](file:///d:/BER-Birthday-Event-Reminder-/src/hooks/use-admin.ts)
+- **Trạng thái kiểm thử**:
+  - `npm test`: **17/17 unit tests passed (100%)**.
+  - `npx tsc --noEmit`: **0 TypeScript errors**.
+
+---
+
+### 📅 2026-10-23 21:18:00 | Loại Bỏ Hoàn Toàn Mục "Email Nhận Phụ" Khỏi Giao Diện & Logic Ứng Dụng
+
+- **Yêu cầu của người dùng**:
+  - *"tôi không cần email nhận phụ, xóa nó đi"* & *"bỏ hoàn toàn"*.
+- **Nội dung đã triển khai**:
+  1. **Trang Cài đặt ([src/app/(dashboard)/settings/page.tsx](file:///d:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/settings/page.tsx))**:
+     - Xóa hoàn toàn khối giao diện "EMAIL NHẬN PHỤ (ĐỒNG THỜI)" gồm ô nhập `them.email@gmail.com...`, nút `+ Thêm`, và danh sách các tag email phụ.
+     - Xóa các state `extraEmails`, `newExtraEmail` và các hàm `handleAddExtraEmail`, `handleRemoveExtraEmail`.
+     - Cập nhật tiêu đề phụ từ *"Nhận tại email tài khoản chính & email phụ"* thành *"Địa chỉ nhận thông báo nhắc hẹn sự kiện"*.
+     - Cập nhật `handleSaveAll` và `handleSendTestEmail` chỉ gửi trực tiếp về email chính của tài khoản.
+  2. **Dữ liệu Mock ([src/lib/mock-data.ts](file:///d:/BER-Birthday-Event-Reminder-/src/lib/mock-data.ts))**:
+     - Đặt `extra_emails` thành mảng rỗng `[]`.
+  3. **Edge Function ([supabase/functions/send-reminders/index.ts](file:///d:/BER-Birthday-Event-Reminder-/supabase/functions/send-reminders/index.ts))**:
+     - Bỏ trường `extra_emails` khỏi câu truy vấn và danh sách người nhận thư, chỉ tập trung gửi đến email chính duy nhất của người dùng.
+- **Danh sách file đã chỉnh sửa**:
+  - [src/app/(dashboard)/settings/page.tsx](file:///d:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/settings/page.tsx)
+  - [src/lib/mock-data.ts](file:///d:/BER-Birthday-Event-Reminder-/src/lib/mock-data.ts)
+  - [supabase/functions/send-reminders/index.ts](file:///d:/BER-Birthday-Event-Reminder-/supabase/functions/send-reminders/index.ts)
+- **Trạng thái kiểm thử**:
+  - `npm test`: **17/17 unit tests passed (100%)**.
+  - `npx tsc --noEmit`: **0 TypeScript errors**.
+
+
+
+
+
+
+
+
+
 
 
 

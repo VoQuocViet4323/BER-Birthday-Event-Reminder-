@@ -68,14 +68,46 @@ export default function LoginPage() {
 
     setIsLoading(true);
 
-    // Phân giải tên tài khoản thành email nội bộ để xác thực qua Supabase Auth
+    const isConfigured =
+      process.env.NEXT_PUBLIC_SUPABASE_URL &&
+      !process.env.NEXT_PUBLIC_SUPABASE_URL.includes("dummy-project");
+
+    if (!isConfigured) {
+      setIsLoading(false);
+      toast({
+        title: "Cần khởi động lại máy chủ (Dev Server)",
+        description:
+          "Next.js cần được khởi động lại (Ctrl+C rồi chạy lại npm run dev) để nhận cấu hình Supabase từ file .env / .env.local.",
+        variant: "error",
+      });
+      return;
+    }
+
+    // Phân giải tên tài khoản thành email để xác thực qua Supabase Auth
     let resolvedEmail = "";
     const isSpecialAdmin = cleanUsername === "admin";
 
     if (cleanUsername.includes("@")) {
       resolvedEmail = cleanUsername;
+    } else if (isSpecialAdmin) {
+      resolvedEmail = "admin@ber-app.com";
     } else {
-      resolvedEmail = `${cleanUsername}@ber-app.com`;
+      // 1. Thử tra cứu email thật liên kết với username qua RPC get_email_by_username
+      try {
+        const { data: rpcEmail } = await (supabase as any).rpc("get_email_by_username", {
+          p_username: cleanUsername,
+        });
+        if (rpcEmail) {
+          resolvedEmail = rpcEmail;
+        }
+      } catch (err) {
+        console.warn("RPC get_email_by_username chưa kích hoạt:", err);
+      }
+
+      // 2. Nếu chưa tìm thấy, fallback với đuôi @ber-app.com mặc định cũ
+      if (!resolvedEmail) {
+        resolvedEmail = `${cleanUsername}@ber-app.com`;
+      }
     }
 
     let { data, error } = await supabase.auth.signInWithPassword({
@@ -83,8 +115,8 @@ export default function LoginPage() {
       password,
     });
 
-    // Nếu không tìm thấy, thử fallback với đuôi @ber.local
-    if (error && !cleanUsername.includes("@")) {
+    // Nếu không tìm thấy và là username, thử fallback tiếp với đuôi @ber.local
+    if (error && !cleanUsername.includes("@") && !isSpecialAdmin) {
       const fallbackRes = await supabase.auth.signInWithPassword({
         email: `${cleanUsername}@ber.local`,
         password,
@@ -98,14 +130,20 @@ export default function LoginPage() {
 
     if (error) {
       setIsLoading(false);
+      const errLower = error.message.toLowerCase();
+      let errorDesc = error.message;
+
+      if (error.message === "Invalid login credentials") {
+        errorDesc = "Tài khoản hoặc mật khẩu không chính xác. Vui lòng thử lại.";
+      } else if (errLower.includes("email not confirmed")) {
+        errorDesc = "Tài khoản chưa được kích hoạt.";
+      } else if (errLower.includes("failed to fetch") || errLower.includes("network")) {
+        errorDesc = "Không thể kết nối đến máy chủ Supabase. Vui lòng kiểm tra lại URL Supabase trong .env hoặc kết nối mạng.";
+      }
+
       toast({
         title: "Đăng nhập không thành công",
-        description:
-          error.message === "Invalid login credentials"
-            ? "Tài khoản hoặc mật khẩu không chính xác. Vui lòng thử lại."
-            : error.message.toLowerCase().includes("email not confirmed")
-            ? "Tài khoản chưa được kích hoạt."
-            : error.message,
+        description: errorDesc,
         variant: "error",
       });
       return;
@@ -243,11 +281,11 @@ export default function LoginPage() {
               <div className="w-full border-t border-border" />
             </div>
             <span className="relative px-3 bg-card text-[11px] font-semibold text-muted-foreground uppercase">
-              Hoặc với tên tài khoản
+              Hoặc với tên tài khoản / email
             </span>
           </div>
 
-          {/* Form Đăng nhập bằng Tên tài khoản */}
+          {/* Form Đăng nhập bằng Tên tài khoản hoặc Email */}
           <form onSubmit={handleLogin} autoComplete="off" className="space-y-4">
             {/* Decoy hidden inputs ngăn chặn Chrome tự động inject thông tin cũ */}
             <input type="text" name="fakeusernameremembered" style={{ display: "none" }} tabIndex={-1} aria-hidden="true" autoComplete="off" />
@@ -255,7 +293,7 @@ export default function LoginPage() {
 
             <div>
               <label className="block text-xs font-bold text-muted-foreground uppercase mb-1">
-                Tên tài khoản (Username)
+                Tên tài khoản hoặc Email
               </label>
               <div className="relative">
                 <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-purple-500" />
@@ -268,7 +306,7 @@ export default function LoginPage() {
                   autoCorrect="off"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Ví dụ: nguyenvana, viet4323..."
+                  placeholder="admin, tên tài khoản hoặc email..."
                   className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-secondary/50 border border-border text-sm focus:ring-2 focus:ring-primary font-medium text-foreground placeholder:text-muted-foreground/60"
                 />
               </div>

@@ -7,6 +7,8 @@ export const initialMockProfile: Profile = {
   timezone: "Asia/Ho_Chi_Minh",
   onboarded: true,
   role: "user",
+  email: "quocviet@gmail.com",
+  provider: "email",
   created_at: new Date().toISOString(),
 };
 
@@ -17,6 +19,8 @@ export const adminMockProfile: Profile = {
   timezone: "Asia/Ho_Chi_Minh",
   onboarded: true,
   role: "admin",
+  email: "admin@ber-app.com",
+  provider: "email",
   created_at: new Date().toISOString(),
 };
 
@@ -25,7 +29,7 @@ export const initialMockSettings: UserSettings = {
   email_enabled: true,
   default_remind_days: [7, 3, 1, 0],
   remind_time: "08:00",
-  extra_emails: ["phu.viet@example.com"],
+  extra_emails: [],
   email_template: null,
   leap_day_rule: "feb28",
   theme: "system",

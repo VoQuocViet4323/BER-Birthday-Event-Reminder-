@@ -152,7 +152,7 @@ export function useAdmin() {
           profilesRes.data.forEach((p: any) => {
             const existing = userMap.get(p.id);
             const username = p.username || existing?.username || "";
-            const email = existing?.email || (username ? `${username}@ber-app.com` : "");
+            const email = p.email || existing?.email || (username ? `${username}@ber-app.com` : "");
             userMap.set(p.id, {
               ...existing,
               ...p,
@@ -345,7 +345,14 @@ export function useAdmin() {
         const { data, error } = await (supabase as any).rpc("admin_delete_user", {
           p_target_user_id: userId,
         });
-        if (error) throw error;
+        if (error) {
+          if (error.code === "PGRST202" || error.message?.includes("admin_delete_user")) {
+            throw new Error(
+              "Hàm 'admin_delete_user' chưa được tạo trên Supabase. Vui lòng mở Supabase Dashboard > SQL Editor và chạy đoạn mã migration 010_fix_admin_delete_user.sql một lần duy nhất để kích hoạt!"
+            );
+          }
+          throw error;
+        }
         if (data && data.success === false) {
           throw new Error(data.message || "Không thể xóa người dùng");
         }

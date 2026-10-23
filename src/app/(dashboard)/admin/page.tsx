@@ -620,6 +620,7 @@ export default function AdminPage() {
                 <thead className="bg-muted/50 border-b border-border/70 text-muted-foreground font-bold uppercase tracking-wider">
                   <tr>
                     <th className="py-3.5 px-4">Người dùng</th>
+                    <th className="py-3.5 px-4">Email nhận thông báo</th>
                     <th className="py-3.5 px-4">Vai trò</th>
                     <th className="py-3.5 px-4 text-center">Trạng thái</th>
                     <th className="py-3.5 px-4 text-center">Sự kiện trên DB</th>
@@ -631,7 +632,7 @@ export default function AdminPage() {
                 <tbody className="divide-y divide-border/60 font-medium">
                   {filteredUsers.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-12 text-center text-muted-foreground">
+                      <td colSpan={8} className="py-12 text-center text-muted-foreground">
                         <div className="flex flex-col items-center justify-center gap-3">
                           <p className="text-sm font-medium">
                             {userSearch
@@ -684,10 +685,29 @@ export default function AdminPage() {
                                     </span>
                                   )}
                                 </div>
-                                <p className="text-[10px] text-muted-foreground truncate max-w-[200px]">
-                                  {u.username ? `@${u.username}` : u.id}
+                                <p className="text-[10px] text-muted-foreground truncate max-w-[160px]">
+                                  {u.username ? `@${u.username}` : u.id.slice(0, 8)}
                                 </p>
                               </div>
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center gap-1.5 font-bold text-foreground">
+                                <Mail className="w-3.5 h-3.5 text-pink-400 shrink-0" />
+                                <span className="truncate max-w-[220px]" title={u.email || "Chưa có email"}>
+                                  {u.email || "Chưa có email"}
+                                </span>
+                              </div>
+                              {u.email?.includes("@ber-app.com") ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] text-amber-500/90 font-medium">
+                                  ⚠️ Email tạm thời nội bộ
+                                </span>
+                              ) : u.email ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-medium">
+                                  ✓ Đang nhận thông báo
+                                </span>
+                              ) : null}
                             </div>
                           </td>
                           <td className="py-3.5 px-4">

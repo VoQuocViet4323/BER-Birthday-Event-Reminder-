@@ -2,14 +2,14 @@
 
 import React, { createContext, useContext, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle2, AlertCircle, X, RotateCcw } from "lucide-react";
+import { CheckCircle2, AlertCircle, AlertTriangle, X, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface ToastMessage {
   id: string;
   title: string;
   description?: string;
-  variant?: "default" | "success" | "error";
+  variant?: "default" | "success" | "error" | "warning";
   action?: {
     label: string;
     onClick: () => void;
@@ -63,6 +63,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                 "pointer-events-auto flex items-center justify-between gap-3 w-full max-w-sm p-4 rounded-2xl shadow-xl border backdrop-blur-md transition-all",
                 t.variant === "error"
                   ? "bg-rose-50/95 dark:bg-rose-950/90 border-rose-200 dark:border-rose-800 text-rose-900 dark:text-rose-100"
+                  : t.variant === "warning"
+                  ? "bg-amber-50/95 dark:bg-amber-950/90 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-100"
                   : t.variant === "success"
                   ? "bg-emerald-50/95 dark:bg-emerald-950/90 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-100"
                   : "bg-white/95 dark:bg-slate-900/90 border-slate-200/80 dark:border-slate-800 text-slate-800 dark:text-slate-100"
@@ -71,6 +73,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               <div className="flex items-start gap-3 flex-1 min-w-0">
                 {t.variant === "error" ? (
                   <AlertCircle className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
+                ) : t.variant === "warning" ? (
+                  <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
                 ) : t.variant === "success" ? (
                   <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
                 ) : (

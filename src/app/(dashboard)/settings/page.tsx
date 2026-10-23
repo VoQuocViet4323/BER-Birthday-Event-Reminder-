@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useUserSettings } from "@/hooks/use-user-settings";
 import { useToast } from "@/components/ui/toast";
 import { createClient } from "@/lib/supabase/client";
@@ -17,11 +18,15 @@ import {
   Check,
   AlertTriangle,
   Sparkles,
+  CheckCircle2,
+  Globe,
+  Edit2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 
 export default function SettingsPage() {
+  const queryClient = useQueryClient();
   const { settings, profile, updateSettings, isUpdating } = useUserSettings();
   const { toast } = useToast();
   const supabase = createClient();
@@ -34,8 +39,11 @@ export default function SettingsPage() {
   const [remindTime, setRemindTime] = useState(settings?.remind_time || "08:00");
   const [timezone, setTimezone] = useState(profile?.timezone || "Asia/Ho_Chi_Minh");
   const [leapDayRule, setLeapDayRule] = useState<"feb28" | "mar01">(settings?.leap_day_rule || "feb28");
-  const [extraEmails, setExtraEmails] = useState<string[]>(settings?.extra_emails || []);
-  const [newExtraEmail, setNewExtraEmail] = useState("");
+
+  // Primary email editing states
+  const [isEditingPrimaryEmail, setIsEditingPrimaryEmail] = useState(false);
+  const [newPrimaryEmail, setNewPrimaryEmail] = useState(profile?.email || "");
+  const [isUpdatingPrimaryEmail, setIsUpdatingPrimaryEmail] = useState(false);
 
   // Đồng bộ form khi profile hoặc settings nạp xong từ máy chủ
   useEffect(() => {
@@ -50,7 +58,6 @@ export default function SettingsPage() {
       setRemindDays(settings.default_remind_days || [7, 3, 1, 0]);
       setRemindTime(settings.remind_time || "08:00");
       setLeapDayRule(settings.leap_day_rule || "feb28");
-      setExtraEmails(settings.extra_emails || []);
     }
   }, [profile, settings]);
 
@@ -152,16 +159,76 @@ export default function SettingsPage() {
     }
   };
 
-  const handleAddExtraEmail = () => {
-    const email = newExtraEmail.trim();
-    if (email && email.includes("@") && !extraEmails.includes(email)) {
-      setExtraEmails([...extraEmails, email]);
-      setNewExtraEmail("");
+  // Cập nhật địa chỉ email nhận thông báo chính của tài khoản
+  const handleUpdatePrimaryEmail = async () => {
+    const clean = newPrimaryEmail.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!clean || !emailRegex.test(clean)) {
+      toast({
+        title: "Email không hợp lệ",
+        description: "Vui lòng nhập đúng định dạng email (ví dụ: vidu@gmail.com).",
+        variant: "error",
+      });
+      return;
     }
-  };
 
-  const handleRemoveExtraEmail = (email: string) => {
-    setExtraEmails(extraEmails.filter((e) => e !== email));
+    setIsUpdatingPrimaryEmail(true);
+    try {
+      // 1. Thử gọi RPC update_user_email cập nhật trực tiếp trên DB
+      const { data, error } = await (supabase as any).rpc("update_user_email", {
+        p_new_email: clean,
+      });
+
+      if (!error && data?.success) {
+        toast({
+          title: "Cập nhật email thành công! 🎉",
+          description: `Email nhận thông báo đã được đổi thành: ${clean}`,
+          variant: "success",
+        });
+        setIsEditingPrimaryEmail(false);
+        queryClient.invalidateQueries({ queryKey: ["user-settings-and-profile"] });
+        setIsUpdatingPrimaryEmail(false);
+        return;
+      }
+
+      // 2. Fallback qua Supabase Auth updateUser
+      const { error: authErr } = await supabase.auth.updateUser({ email: clean });
+      if (authErr) {
+        toast({
+          title: "Không thể đổi email",
+          description: authErr.message || "Vui lòng thử lại sau.",
+          variant: "error",
+        });
+        setIsUpdatingPrimaryEmail(false);
+        return;
+      }
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session?.user) {
+        await (supabase as any)
+          .from("profiles")
+          .update({ email: clean })
+          .eq("id", session.user.id);
+      }
+
+      toast({
+        title: "Đã cập nhật email chính",
+        description: `Email nhận thông báo mới: ${clean}`,
+        variant: "success",
+      });
+      setIsEditingPrimaryEmail(false);
+      queryClient.invalidateQueries({ queryKey: ["user-settings-and-profile"] });
+    } catch (err: any) {
+      toast({
+        title: "Lỗi cập nhật",
+        description: err?.message || "Đã xảy ra lỗi khi cập nhật email.",
+        variant: "error",
+      });
+    } finally {
+      setIsUpdatingPrimaryEmail(false);
+    }
   };
 
   const handleSaveAll = async () => {
@@ -172,30 +239,51 @@ export default function SettingsPage() {
       remind_time: remindTime,
       timezone: timezone,
       leap_day_rule: leapDayRule,
-      extra_emails: extraEmails,
     });
   };
 
   const handleSendTestEmail = async () => {
+    const activeEmail = profile?.email;
+    if (!activeEmail || activeEmail.includes("@ber-app.com")) {
+      toast({
+        title: "Chưa cấu hình Email nhận thực tế",
+        description: "Tài khoản của bạn chưa có email thực tế (đang dùng đuôi tạm thời @ber-app.com). Hãy bấm 'Đổi email' ở mục Email tài khoản chính để cập nhật Gmail của bạn trước khi thử!",
+        variant: "error",
+        duration: 7000,
+      });
+      return;
+    }
+
     setIsTestingEmail(true);
     try {
       const res = await fetch("/api/test-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: extraEmails[0] }),
+        body: JSON.stringify({ email: activeEmail }),
       });
       const data = await res.json();
       if (data.success) {
-        toast({
-          title: "Đã kích hoạt gửi thử nghiệm!",
-          description: data.message,
-          variant: "success",
-        });
+        if (data.simulated) {
+          toast({
+            title: "Chế độ mô phỏng (Chưa gửi mail thật) ⚠️",
+            description: "Chưa cấu hình thông tin gửi thư (Gmail SMTP hoặc Resend) trong file .env. Hãy cấu hình SMTP_USER và SMTP_PASS để gửi thật!",
+            variant: "warning",
+            duration: 8000,
+          });
+        } else {
+          toast({
+            title: "Đã gửi email thử nghiệm! 🚀",
+            description: data.message || `Đã gửi email thử nghiệm đến ${activeEmail}. Hãy kiểm tra hộp thư đến (hoặc hòm Spam/Thư rác)!`,
+            variant: "success",
+            duration: 6000,
+          });
+        }
       } else {
         toast({
           title: "Không thể gửi email thử",
           description: data.error,
           variant: "error",
+          duration: 7000,
         });
       }
     } catch {
@@ -340,7 +428,7 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* 2. Email phụ & Thử nghiệm */}
+        {/* 2. Email nhận thông báo & Thử nghiệm */}
         <div className="bg-card/70 backdrop-blur-xl rounded-3xl border border-border/70 p-6 sm:p-7 shadow-xs hover:border-border transition-all space-y-6">
           <div className="flex items-center gap-3.5">
             <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-pink-500/15 via-pink-500/10 to-transparent border border-pink-500/20 text-pink-400 flex items-center justify-center shadow-xs">
@@ -348,81 +436,125 @@ export default function SettingsPage() {
             </div>
             <div>
               <h3 className="font-bold text-sm text-foreground">Email nhận thông báo</h3>
-              <p className="text-xs text-muted-foreground">Nhận tại email tài khoản & email phụ</p>
+              <p className="text-xs text-muted-foreground">Địa chỉ nhận thông báo nhắc hẹn sự kiện</p>
             </div>
           </div>
 
-          {/* Thêm email phụ */}
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
-              Email nhận phụ (đồng thời)
-            </label>
-            <div className="flex items-center gap-2 mb-2.5">
-              <input
-                type="email"
-                value={newExtraEmail}
-                onChange={(e) => setNewExtraEmail(e.target.value)}
-                placeholder="them.email@gmail.com..."
-                className="flex-1 px-3.5 py-2.5 rounded-xl bg-secondary/40 border border-border/70 text-xs text-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all"
-              />
-              <button
-                type="button"
-                onClick={handleAddExtraEmail}
-                className="px-4 py-2.5 rounded-xl bg-secondary hover:bg-muted border border-border/70 text-xs font-bold transition-colors"
-              >
-                + Thêm
-              </button>
-            </div>
-
-            {/* Danh sách email phụ */}
-            <div className="flex flex-wrap gap-1.5 min-h-[30px]">
-              {extraEmails.length === 0 ? (
-                <p className="text-xs text-muted-foreground/70 italic py-1">Chưa có email phụ nào.</p>
+          {/* Email chính của tài khoản */}
+          <div className="p-4 rounded-2xl bg-secondary/30 border border-border/60 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                Email tài khoản chính
+              </span>
+              {profile?.provider === "google" ? (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                  <Globe className="w-3 h-3" />
+                  Tài khoản Google
+                </span>
               ) : (
-                extraEmails.map((email) => (
-                  <span
-                    key={email}
-                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-secondary text-xs text-foreground font-medium border border-border/70 shadow-xs"
-                  >
-                    <span>{email}</span>
-                    <button
-                      onClick={() => handleRemoveExtraEmail(email)}
-                      className="text-muted-foreground hover:text-rose-500 transition-colors"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </span>
-                ))
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                  <Mail className="w-3 h-3" />
+                  Email đăng ký
+                </span>
               )}
             </div>
+
+            {isEditingPrimaryEmail ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="email"
+                    value={newPrimaryEmail}
+                    onChange={(e) => setNewPrimaryEmail(e.target.value)}
+                    placeholder="vidu@gmail.com..."
+                    className="flex-1 px-3.5 py-2 rounded-xl bg-background border border-primary/50 text-xs text-foreground focus:ring-2 focus:ring-primary/20"
+                  />
+                  <button
+                    type="button"
+                    disabled={isUpdatingPrimaryEmail}
+                    onClick={handleUpdatePrimaryEmail}
+                    className="px-3.5 py-2 rounded-xl gradient-brand text-white text-xs font-bold hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50"
+                  >
+                    {isUpdatingPrimaryEmail ? "Lưu..." : "Lưu"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsEditingPrimaryEmail(false);
+                      setNewPrimaryEmail(profile?.email || "");
+                    }}
+                    className="px-3 py-2 rounded-xl bg-secondary hover:bg-muted text-xs font-semibold text-muted-foreground"
+                  >
+                    Hủy
+                  </button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Cập nhật email thực tế của bạn (Gmail, Outlook...) để nhận email thông báo nhắc hẹn.
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground truncate">
+                    {profile?.email || "Chưa có email tài khoản"}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    {profile?.provider === "google"
+                      ? "Hệ thống tự động liên kết tài khoản Google và gửi nhắc hẹn về email này."
+                      : profile?.email?.includes("@ber-app.com")
+                      ? "⚠️ Đang dùng email tạm thời (@ber-app.com). Hãy bấm 'Đổi email' để nhập Gmail thật của bạn!"
+                      : "Email chính dùng để nhận toàn bộ thông báo nhắc nhở sự kiện và thông báo hệ thống."}
+                  </p>
+                </div>
+                {profile?.provider !== "google" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewPrimaryEmail(profile?.email || "");
+                      setIsEditingPrimaryEmail(true);
+                    }}
+                    className="self-start sm:self-auto shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-secondary hover:bg-muted border border-border/80 text-xs font-bold text-foreground transition-all hover:scale-[1.02]"
+                  >
+                    <Edit2 className="w-3.5 h-3.5 text-primary" />
+                    <span>Đổi email</span>
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Xem trước & Thử gửi email */}
-          <div className="pt-4 border-t border-border/60 flex items-center gap-2.5">
-            <button
-              type="button"
-              onClick={() => setShowEmailPreview(true)}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-2xl border border-border/80 hover:bg-secondary/70 text-xs font-semibold text-foreground transition-all shadow-xs"
-            >
-              <Eye className="w-4 h-4 text-muted-foreground" />
-              <span>Xem trước mẫu</span>
-            </button>
+          <div className="pt-4 border-t border-border/60 space-y-2">
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => setShowEmailPreview(true)}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-2xl border border-border/80 hover:bg-secondary/70 text-xs font-semibold text-foreground transition-all shadow-xs"
+              >
+                <Eye className="w-4 h-4 text-muted-foreground" />
+                <span>Xem trước mẫu</span>
+              </button>
 
-            <button
-              type="button"
-              disabled={isTestingEmail}
-              onClick={handleSendTestEmail}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-2xl gradient-brand text-white text-xs font-bold shadow-soft hover:shadow-soft-hover hover:scale-[1.01] active:scale-[0.99] transition-all"
-            >
-              {isTestingEmail ? (
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <>
-                  <Send className="w-4 h-4" />
-                  <span>Gửi email thử</span>
-                </>
-              )}
-            </button>
+              <button
+                type="button"
+                disabled={isTestingEmail}
+                onClick={handleSendTestEmail}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-2xl gradient-brand text-white text-xs font-bold shadow-soft hover:shadow-soft-hover hover:scale-[1.01] active:scale-[0.99] transition-all"
+              >
+                {isTestingEmail ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    <span>Gửi email thử</span>
+                  </>
+                )}
+              </button>
+            </div>
+            <p className="text-[11px] text-muted-foreground/75 text-center leading-relaxed">
+              💡 Để gửi thư thật đến bất kỳ email nào mà không cần tên miền riêng, bạn chỉ cần điền <code className="bg-secondary/80 px-1.5 py-0.5 rounded text-[10px] font-mono text-primary font-semibold">SMTP_USER</code> & <code className="bg-secondary/80 px-1.5 py-0.5 rounded text-[10px] font-mono text-primary font-semibold">SMTP_PASS</code> (Mật khẩu ứng dụng Gmail) vào file <code className="bg-secondary/80 px-1.5 py-0.5 rounded text-[10px] font-mono">.env</code>.
+            </p>
           </div>
         </div>
 
