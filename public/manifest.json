@@ -1,0 +1,21 @@
+{
+  "name": "Nhắc Sinh Nhật & Sự Kiện",
+  "short_name": "Nhắc Sự Kiện",
+  "description": "Ứng dụng nhắc sinh nhật và sự kiện quan trọng của người thân, bạn bè",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#0d0d12",
+  "theme_color": "#8b5cf6",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

@@ -1,0 +1,158 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 250 20% 98%;
+    --foreground: 240 10% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 10%;
+
+    /* Brand Primary Violet-Fuchsia */
+    --primary: 262 83% 58%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 250 20% 94%;
+    --secondary-foreground: 262 60% 30%;
+
+    --muted: 240 10% 93%;
+    --muted-foreground: 240 5% 45%;
+
+    --accent: 330 81% 60%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 240 8% 90%;
+    --input: 240 8% 90%;
+    --ring: 262 83% 58%;
+
+    --radius: 1rem;
+
+    /* Group Pastel Tokens (Light Mode) */
+    --group-family-bg: 350 100% 97%;
+    --group-family-text: 350 80% 40%;
+    --group-family-border: 350 90% 90%;
+
+    --group-friend-bg: 38 100% 96%;
+    --group-friend-text: 35 90% 36%;
+    --group-friend-border: 38 90% 88%;
+
+    --group-work-bg: 230 100% 97%;
+    --group-work-text: 230 75% 45%;
+    --group-work-border: 230 85% 90%;
+
+    --group-other-bg: 155 75% 96%;
+    --group-other-text: 155 75% 30%;
+    --group-other-border: 155 70% 88%;
+  }
+
+  .dark {
+    --background: 240 15% 7%;
+    --foreground: 0 0% 98%;
+
+    --card: 240 15% 11%;
+    --card-foreground: 0 0% 98%;
+
+    --popover: 240 15% 11%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 265 89% 66%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 240 12% 16%;
+    --secondary-foreground: 265 89% 80%;
+
+    --muted: 240 12% 16%;
+    --muted-foreground: 240 5% 65%;
+
+    --accent: 330 81% 65%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 240 10% 18%;
+    --input: 240 10% 18%;
+    --ring: 265 89% 66%;
+
+    /* Group Pastel Tokens (Dark Mode) */
+    --group-family-bg: 350 60% 15%;
+    --group-family-text: 350 100% 80%;
+    --group-family-border: 350 60% 25%;
+
+    --group-friend-bg: 35 60% 15%;
+    --group-friend-text: 35 100% 75%;
+    --group-friend-border: 35 60% 25%;
+
+    --group-work-bg: 230 50% 16%;
+    --group-work-text: 230 100% 80%;
+    --group-work-border: 230 50% 26%;
+
+    --group-other-bg: 155 50% 14%;
+    --group-other-text: 155 100% 75%;
+    --group-other-border: 155 50% 24%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased selection:bg-primary/20 selection:text-primary;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(140, 140, 160, 0.2);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(140, 140, 160, 0.4);
+}
+
+/* Brand Gradients & Glassmorphism */
+.gradient-brand {
+  background: linear-gradient(135deg, #8B5CF6 0%, #EC4899 50%, #F43F5E 100%);
+}
+
+.gradient-brand-subtle {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(236, 72, 153, 0.06) 100%);
+}
+
+.gradient-brand-glow {
+  box-shadow: 0 10px 25px -5px rgba(236, 72, 153, 0.35);
+}
+
+.glass {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.dark .glass {
+  background: rgba(22, 22, 30, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
