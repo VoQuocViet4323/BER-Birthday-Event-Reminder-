@@ -995,6 +995,31 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
   - `npx tsc --noEmit`: **0 TypeScript errors**.
   - Dev Server: Đang chạy ổn định tại `http://localhost:3000`.
 
+---
+
+### 📅 2026-10-23 17:02:00 | Đẩy Toàn Bộ Dự Án Code Lên GitHub Repository
+
+- **Yêu cầu của người dùng**:
+  - "đẩy toàn bộ code lên git cho tôi"
+- **Nội dung đã triển khai**:
+  - Rà soát `.gitignore`: Đảm bảo các biến môi trường nhạy cảm (`.env.local`), thư mục tạm (`supabase/.temp`), build artifact (`.next/`) và file test nội bộ (`scripts/`) được loại trừ an toàn khỏi Git.
+  - Chuẩn bị `.env.example` với đầy đủ mẫu biến môi trường chuẩn.
+  - Kiểm tra và liên kết remote repository: `https://github.com/VoQuocViet4323/BER-Birthday-Event-Reminder-.git`.
+  - Thực thi `git add .` gom toàn bộ 80 files mã nguồn, cấu hình, migrations và tài liệu hướng dẫn.
+  - Tạo commit chuẩn: `feat: complete Birthday & Event Reminder (BER) system with Next.js 14, Supabase Auth, Admin management, Lunar engine, and notifications`.
+  - Đẩy mã nguồn lên nhánh `main` trên GitHub: `git push -u origin main` (thành công 100%).
+- **Danh sách file chính đã push**:
+  - Toàn bộ App Router Next.js 14 (`src/app/`)
+  - Toàn bộ Components (`src/components/` - Calendar, Events, Layout, Providers, UI)
+  - Thư viện Âm lịch Hồ Ngọc Đức, Date Utils, Email Templates (`src/lib/`)
+  - Toàn bộ 8 bản SQL Migrations Supabase (`supabase/migrations/`)
+  - Edge Functions gửi email nhắc nhở (`supabase/functions/send-reminders/`)
+  - Bộ tài liệu đầy đủ: `README.md`, `AI_CONFIG.md`, `AI_DEBUG.md`, `GEMINI.md`, `MEMORIES.md`
+- **Trạng thái kiểm thử**:
+  - `git status`: Working tree clean, up to date with `origin/main`.
+  - Repository URL: [https://github.com/VoQuocViet4323/BER-Birthday-Event-Reminder-](https://github.com/VoQuocViet4323/BER-Birthday-Event-Reminder-)
+
+
 
 
 
