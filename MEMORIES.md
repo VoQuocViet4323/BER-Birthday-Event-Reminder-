@@ -1737,6 +1737,26 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
   - `npx tsc --noEmit`: **0 errors**.
   - Đã gửi thư kiểm thử trực tiếp tới Gmail `voviet4323@gmail.com`.
 
+---
+
+### 📅 2026-10-24 17:34:00 | Triển Khai Thành Công Toàn Diện Nền Tảng Lên Môi Trường Production Vercel (Online Vĩnh Viễn)
+
+- **Yêu cầu của người dùng**:
+  - Mong muốn đưa dự án lên mạng công khai (public online) hoạt động vĩnh viễn mà không cần mua tên miền riêng.
+  - Hướng dẫn chi tiết từng bước kết nối GitHub, nạp biến môi trường và deploy.
+- **Kết quả triển khai thành công 100%**:
+  - **Live Production URL**: [https://ber-birthday-event-reminder.vercel.app](https://ber-birthday-event-reminder.vercel.app)
+  - **Nền tảng**: Vercel (Next.js App Router 14+).
+  - **Chứng chỉ bảo mật**: SSL / HTTPS tự động gia hạn vĩnh viễn.
+  - **Tích hợp Cloud**:
+    - Cơ sở dữ liệu: Supabase Cloud PostgreSQL.
+    - Gửi email: Gmail SMTP Google App Password (`voviet4323@gmail.com`).
+    - Lập lịch: Client Scheduler ngầm + `/api/cron/check-reminders` theo phút.
+  - Cập nhật biến môi trường `NEXT_PUBLIC_APP_URL=https://ber-birthday-event-reminder.vercel.app` đồng bộ ở cả `.env` và `.env.local`.
+- **Trạng thái**:
+  - Build: **Passed (Ready)**.
+  - Deploy status: **Active 24/7/365**.
+
 
 
 
