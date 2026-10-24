@@ -58,6 +58,19 @@ function enrichEvent(ev: EventRow, today: Date = new Date()): EventWithMeta {
   };
 }
 
+// Bộ nhớ đệm kiểm tra tính tương thích cột của bảng events trên Supabase Cloud
+let schemaSupportsCustomType = true;
+let schemaSupportsRemindTime = true;
+
+const isSchemaColumnError = (err: any) =>
+  err &&
+  (err.code === "PGRST204" ||
+    err.code === "42703" ||
+    (typeof err.message === "string" &&
+      (err.message.toLowerCase().includes("column") ||
+        err.message.includes("custom_type") ||
+        err.message.includes("remind_time"))));
+
 export function useEvents() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -121,7 +134,9 @@ export function useEvents() {
         gift_idea: values.gift_idea || null,
         avatar_url: values.avatar_url || null,
         repeat_yearly: values.repeat_yearly,
-        remind_days: values.remind_days || null,
+        remind_days: values.remind_days || [],
+        remind_time: values.remind_time || "08:00",
+        custom_type: values.custom_type || null,
         enabled: values.enabled,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -137,13 +152,48 @@ export function useEvents() {
         } = await supabase.auth.getSession();
         if (session?.user) {
           const { id: _ignore, ...eventPayload } = newEvent;
-          const { data, error } = await (supabase as any)
+          let insertPayload: any = { ...eventPayload, user_id: session.user.id };
+          if (!schemaSupportsCustomType) delete insertPayload.custom_type;
+          if (!schemaSupportsRemindTime) delete insertPayload.remind_time;
+          
+          let { data, error } = await (supabase as any)
             .from("events")
-            .insert({ ...eventPayload, user_id: session.user.id } as any)
+            .insert(insertPayload)
             .select()
             .single();
+
+          if (isSchemaColumnError(error)) {
+            schemaSupportsCustomType = false;
+            schemaSupportsRemindTime = false;
+            delete insertPayload.custom_type;
+            delete insertPayload.remind_time;
+
+            const retryRes = await (supabase as any)
+              .from("events")
+              .insert(insertPayload)
+              .select()
+              .single();
+            data = retryRes.data;
+            error = retryRes.error;
+          }
           if (error) throw error;
-          return data as any;
+
+          // Đồng bộ giờ nhắc sang user_settings để cron job gửi đúng giờ
+          if (values.remind_time) {
+            try {
+              await (supabase as any)
+                .from("user_settings")
+                .update({ remind_time: values.remind_time })
+                .eq("user_id", session.user.id);
+            } catch (syncErr) {
+              console.warn("Không thể đồng bộ remind_time sang user_settings:", syncErr);
+            }
+          }
+
+          return {
+            ...data,
+            custom_type: values.custom_type || null,
+          } as any;
         }
       }
 
@@ -172,6 +222,8 @@ export function useEvents() {
         avatar_url: newValues.avatar_url || null,
         repeat_yearly: newValues.repeat_yearly,
         remind_days: newValues.remind_days || null,
+        remind_time: newValues.remind_time || "08:00",
+        custom_type: newValues.custom_type || null,
         enabled: newValues.enabled,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -211,28 +263,70 @@ export function useEvents() {
         !process.env.NEXT_PUBLIC_SUPABASE_URL.includes("dummy-project");
 
       if (isConfigured) {
-        const { data, error } = await (supabase as any)
+        const updatePayload: any = {
+          name: values.name,
+          event_type: values.event_type,
+          event_day: values.event_day,
+          event_month: values.event_month,
+          event_year: values.event_year || null,
+          is_lunar: values.is_lunar,
+          group_name: values.group_name,
+          note: values.note || null,
+          gift_idea: values.gift_idea || null,
+          avatar_url: values.avatar_url || null,
+          repeat_yearly: values.repeat_yearly,
+          remind_days: values.remind_days || [],
+          remind_time: values.remind_time || "08:00",
+          custom_type: values.custom_type || null,
+          enabled: values.enabled,
+        };
+
+        if (!schemaSupportsCustomType) delete updatePayload.custom_type;
+        if (!schemaSupportsRemindTime) delete updatePayload.remind_time;
+
+        let { data, error } = await (supabase as any)
           .from("events")
-          .update({
-            name: values.name,
-            event_type: values.event_type,
-            event_day: values.event_day,
-            event_month: values.event_month,
-            event_year: values.event_year || null,
-            is_lunar: values.is_lunar,
-            group_name: values.group_name,
-            note: values.note || null,
-            gift_idea: values.gift_idea || null,
-            avatar_url: values.avatar_url || null,
-            repeat_yearly: values.repeat_yearly,
-            remind_days: values.remind_days || null,
-            enabled: values.enabled,
-          } as any)
+          .update(updatePayload)
           .eq("id", id)
           .select()
           .single();
+
+        if (isSchemaColumnError(error)) {
+          schemaSupportsCustomType = false;
+          schemaSupportsRemindTime = false;
+          delete updatePayload.custom_type;
+          delete updatePayload.remind_time;
+
+          const retryRes = await (supabase as any)
+            .from("events")
+            .update(updatePayload)
+            .eq("id", id)
+            .select()
+            .single();
+          data = retryRes.data;
+          error = retryRes.error;
+        }
         if (error) throw error;
-        return data as any;
+
+        // Đồng bộ giờ nhắc sang user_settings
+        if (values.remind_time) {
+          try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.user) {
+              await (supabase as any)
+                .from("user_settings")
+                .update({ remind_time: values.remind_time })
+                .eq("user_id", session.user.id);
+            }
+          } catch (syncErr) {
+            console.warn("Không thể đồng bộ remind_time sang user_settings:", syncErr);
+          }
+        }
+
+        return {
+          ...data,
+          custom_type: values.custom_type || null,
+        } as any;
       }
 
       // Local storage

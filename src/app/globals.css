@@ -130,6 +130,15 @@
   background: rgba(140, 140, 160, 0.4);
 }
 
+/* Hide scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 /* Brand Gradients & Glassmorphism */
 .gradient-brand {
   background: linear-gradient(135deg, #8B5CF6 0%, #EC4899 50%, #F43F5E 100%);

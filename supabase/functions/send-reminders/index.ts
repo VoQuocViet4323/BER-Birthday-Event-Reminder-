@@ -79,20 +79,13 @@ Deno.serve(async (req) => {
       const timezone = profile?.timezone || "Asia/Ho_Chi_Minh";
       const userDisplayName = profile?.display_name || "Bạn";
 
-      // Kiểm tra giờ hiện tại theo múi giờ của người dùng
-      const userLocalTimeStr = nowUtc.toLocaleTimeString("en-US", {
+      // Thời gian hiện tại theo múi giờ của người dùng dạng "HH:mm" (ví dụ: "16:50")
+      const userLocalTimeStr = nowUtc.toLocaleTimeString("en-GB", {
         timeZone: timezone,
         hour12: false,
         hour: "2-digit",
         minute: "2-digit",
       });
-      const [currentHour] = userLocalTimeStr.split(":").map(Number);
-      const [settingHour] = (setting.remind_time || "08:00").split(":").map(Number);
-
-      // Nếu chạy cron thực tế (không phải test) và chưa đúng giờ nhắc -> Bỏ qua
-      if (!isTest && currentHour !== settingHour) {
-        continue;
-      }
 
       // Lấy email chính từ profiles trước, fallback sang auth.users
       let primaryEmail = profile?.email;
@@ -137,6 +130,14 @@ Deno.serve(async (req) => {
 
         // Kiểm tra xem daysDiff có trùng với bất kỳ mốc remindDaysList nào không
         if (remindDaysList.includes(daysDiff)) {
+          // So khớp giờ và phút (ví dụ "16:50" === "16:50") nếu không phải test
+          if (!isTest) {
+            const evTime = (ev.remind_time || setting.remind_time || "08:00").substring(0, 5);
+            if (evTime !== userLocalTimeStr) {
+              continue;
+            }
+          }
+
           const occDateStr = nextOcc.toISOString().split("T")[0];
 
           // 4. Kiểm tra chống gửi trùng trong notification_logs

@@ -107,7 +107,7 @@ export function calculateUpcomingAge(
 ): number | null {
   if (!birthYear || birthYear <= 0) return null;
   const age = nextOccurrenceYear - birthYear;
-  return age >= 0 ? age : null;
+  return age > 0 ? age : null;
 }
 
 /**

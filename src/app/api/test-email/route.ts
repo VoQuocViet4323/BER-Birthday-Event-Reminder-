@@ -19,13 +19,31 @@ export async function POST(request: Request) {
     let targetEmail = body.email;
 
     if (!targetEmail && user) {
-      // Tìm email thật trong bảng profiles nếu có
-      const { data: profile } = await (supabase as any)
-        .from("profiles")
-        .select("email, display_name")
-        .eq("id", user.id)
+      // 1. Tìm email tùy chọn trong bảng user_settings nếu có
+      const { data: userSetting } = await (supabase as any)
+        .from("user_settings")
+        .select("custom_reminder_email, leap_day_rule")
+        .eq("user_id", user.id)
         .maybeSingle();
-      targetEmail = profile?.email || user.email;
+
+      if (userSetting?.custom_reminder_email) {
+        targetEmail = userSetting.custom_reminder_email;
+      }
+
+      // 2. Tìm email trong bảng profiles nếu có
+      if (!targetEmail) {
+        const { data: profile } = await (supabase as any)
+          .from("profiles")
+          .select("email, display_name")
+          .eq("id", user.id)
+          .maybeSingle();
+        targetEmail = profile?.email;
+      }
+
+      // 3. Fallback sang user.email hoặc SMTP_USER nếu đang là @ber-app.com
+      if (!targetEmail || targetEmail.includes("@ber-app.com")) {
+        targetEmail = process.env.SMTP_USER || user.email;
+      }
     }
 
     if (!targetEmail || targetEmail.includes("@ber-app.com")) {
@@ -95,8 +113,17 @@ export async function POST(request: Request) {
       // Sắp xếp các sự kiện gần nhất lên đầu
       calculated.sort((a, b) => a.daysRemaining - b.daysRemaining);
 
-      // Lấy tối đa 3 sự kiện sắp tới nhất
-      itemsToSend = calculated.slice(0, 3);
+      if (body.singleEventId) {
+        const found = calculated.find((i) => i.id === body.singleEventId);
+        if (found) {
+          itemsToSend = [found];
+        } else {
+          itemsToSend = calculated.slice(0, 3);
+        }
+      } else {
+        // Lấy tối đa 3 sự kiện sắp tới nhất
+        itemsToSend = calculated.slice(0, 3);
+      }
     }
 
     // Nếu người dùng chưa có sự kiện nào trên DB, dùng dữ liệu mẫu demo phong phú

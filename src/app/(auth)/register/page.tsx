@@ -232,12 +232,30 @@ export default function RegisterPage() {
   };
 
   const handleGoogleSignup = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/api/auth/callback`,
-      },
-    });
+    setIsLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/api/auth/callback`,
+        },
+      });
+      if (error) {
+        toast({
+          title: "Lỗi liên kết Google",
+          description: error.message || "Chưa thể kết nối tới Google Provider",
+          variant: "error",
+        });
+        setIsLoading(false);
+      }
+    } catch (err: any) {
+      toast({
+        title: "Lỗi đăng ký Google",
+        description: err?.message || "Không thể kết nối đến hệ thống xác thực Google.",
+        variant: "error",
+      });
+      setIsLoading(false);
+    }
   };
 
   return (

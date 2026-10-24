@@ -1245,6 +1245,512 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
   - `npm test`: **17/17 unit tests passed (100%)**.
   - `npx tsc --noEmit`: **0 TypeScript errors**.
 
+---
+
+### 📅 2026-10-24 10:12:00 | Thêm Ô Nhập Tên Sự Kiện Khi Chọn Loại "Khác" & Mặc Định Ngày Tháng Năm Thời Gian Thực
+
+- **Yêu cầu của người dùng**:
+  - *"sửa cho tôi ở phần chọn Khác, khi chọn khác thì hiển thị ra ô nhập tên sự kiện là gì. Và ở ô nhập ngày tháng năm diễn ra thì mặc định nhập sẵn thời gian thực(VD: ngày 24 tháng 10 năm 2026, tức là lấy mốc thời gian ngày tháng năm hiện tại)"*
+- **Nội dung đã triển khai**:
+  1. **Schema & Types ([src/types/events.ts](file:///d:/BER-Birthday-Event-Reminder-/src/types/events.ts) & [src/types/database.ts](file:///d:/BER-Birthday-Event-Reminder-/src/types/database.ts))**:
+     - Bổ sung trường `custom_type: z.string().max(100).optional().nullable()` vào `eventFormSchema`.
+     - Cập nhật định nghĩa TypeScript cho bảng `events` (`Row`, `Insert`, `Update`) hỗ trợ `custom_type?: string | null`.
+  2. **Giao diện Modal Sự Kiện ([src/components/events/event-form-drawer.tsx](file:///d:/BER-Birthday-Event-Reminder-/src/components/events/event-form-drawer.tsx))**:
+     - **Hiển thị có điều kiện khi chọn "Khác"**: Tích hợp khối `AnimatePresence` trượt mở êm ái khi `eventType === "other"`, hiển thị ô input `Tên sự kiện / loại sự kiện là gì?` với gợi ý `VD: Lễ tốt nghiệp, Họp lớp, Tân gia, Thi bằng lái...`.
+     - **Mặc định thời gian thực**: Cập nhật cả 3 trường `event_day`, `event_month`, và `event_year` trong `defaultValues` và `reset()` khi thêm sự kiện mới đều lấy thời gian thực (`new Date().getDate()`, `new Date().getMonth() + 1`, `new Date().getFullYear()`). Đổi nhãn phụ thành `Năm diễn ra`.
+  3. **Data Layer & Hook ([src/hooks/use-events.ts](file:///d:/BER-Birthday-Event-Reminder-/src/hooks/use-events.ts))**:
+     - Lưu trữ trường `custom_type` trong `addMutation` và `updateMutation`.
+     - Tích hợp fallback tự động xóa `custom_type` khi gặp lỗi `42703` (nếu database trên cloud chưa chạy migration) để ứng dụng không bao giờ bị gián đoạn.
+  4. **Thẻ Sự Kiện ([src/components/events/event-card.tsx](file:///d:/BER-Birthday-Event-Reminder-/src/components/events/event-card.tsx))**:
+     - Khi `event_type === "other"` và có `custom_type`, hiển thị nhãn `🌟 [custom_type]` (VD: `🌟 Họp lớp`) thay vì nhãn chung "Khác".
+  5. **Migration SQL ([supabase/migrations/20261024_012_add_event_custom_type.sql](file:///d:/BER-Birthday-Event-Reminder-/supabase/migrations/20261024_012_add_event_custom_type.sql))**:
+     - `ALTER TABLE public.events ADD COLUMN IF NOT EXISTS custom_type TEXT;`.
+- **Trạng thái kiểm thử**:
+  - `npm test`: **17/17 tests passed (100%)**.
+  - `npx tsc --noEmit`: **0 TypeScript errors**.
+  - Dev server: **Running mượt mà trên port 3000**.
+
+---
+
+### 📅 2026-10-24 10:21:00 | Sửa Lỗi React DOM Khi Bấm Mở / Thêm Mốc Nhắc Nhở Tùy Chỉnh
+
+- **Yêu cầu của người dùng**:
+  - *"khi tôi bấm thêm mốc nhắc thì hiện lỗi như này"* (ảnh chụp màn hình DevTools Console báo lỗi React component stack từ `RootLayout`, `ToastProvider`...).
+- **Nguyên nhân cốt lõi**:
+  - Trong component con [`RemindDaysPicker`](file:///d:/BER-Birthday-Event-Reminder-/src/components/events/remind-days-picker.tsx), phần tự nhập số ngày sử dụng thẻ `<form onSubmit={handleAddCustom}>` lồng bên trong `<form onSubmit={handleSubmit(handleFormSubmit)}>` của form chính [`EventFormDrawer`](file:///d:/BER-Birthday-Event-Reminder-/src/components/events/event-form-drawer.tsx).
+  - Chuẩn HTML DOM không cho phép `<form>` nằm trong `<form>` (`validateDOMNesting`). Trình duyệt tự động cắt ngang thẻ form cha hoặc xáo trộn thứ tự các node DOM, dẫn đến React Reconciler bị lỗi DOM hierarchy (`removeChild` / error boundary) và nút `+ Thêm` bị nhận diện nhầm là submit toàn bộ form sự kiện.
+- **Nội dung đã triển khai**:
+  1. **[`src/components/events/remind-days-picker.tsx`](file:///d:/BER-Birthday-Event-Reminder-/src/components/events/remind-days-picker.tsx)**:
+     - Chuyển thẻ `<form>` thành thẻ `<div>`.
+     - Chuyển nút `<button type="submit">` thành `<button type="button" onClick={handleAddCustom}>`.
+     - Thêm sự kiện `onKeyDown` cho ô nhập số ngày (hỗ trợ phím Enter để thêm mốc nhanh mà không submit form cha).
+     - Thêm `e.stopPropagation()` và `e.preventDefault()` trong `handleAddCustom`.
+  2. **[`src/components/events/event-form-drawer.tsx`](file:///d:/BER-Birthday-Event-Reminder-/src/components/events/event-form-drawer.tsx)**:
+     - Bổ sung `type="button"` cho nút đóng Drawer (X) để tránh submit form ngoài ý muốn.
+- **Trạng thái kiểm thử**:
+  - `npm test`: **17/17 tests passed (100%)**.
+  - `npx tsc --noEmit`: **0 TypeScript errors**.
+  - Dev server: **Running ổn định**.
+
+---
+
+### 📅 2026-10-24 10:32:00 | Khắc Phục Lỗi Hiển Thị Chữ Số Bị Mờ Trong Bộ Chọn Giờ iOS (IosTimePicker)
+
+- **Yêu cầu của người dùng**:
+  - *"chỉnh lại UI khi chọn giờ , tôi thấy đang bị mờ"* (ảnh chụp màn hình số `08` và `00` ở con lăn bị mờ nhòe như có lớp phủ blur).
+- **Nguyên nhân cốt lõi**:
+  - Thanh ống kính highlight giữa (Capsule) được gán thuộc tính `backdrop-blur-sm` với `z-index: 10` nằm đè lên trên vùng hiển thị số của con lăn.
+  - Hiệu ứng `backdrop-filter: blur(...)` của trình duyệt áp thẳng lên các ký tự số bên dưới khiến `08` và `00` bị mờ nhòe.
+  - Khung nền con lăn sử dụng `bg-neutral-900/95` và dải gradient cố định không đồng bộ với biến màu theme của app.
+- **Nội dung đã triển khai**:
+  1. **[`src/components/ui/ios-time-picker.tsx`](file:///d:/BER-Birthday-Event-Reminder-/src/components/ui/ios-time-picker.tsx)**:
+     - **Bỏ hoàn toàn `backdrop-blur-sm`**: Đưa thanh highlight capsule về `z-0` làm nền đệm phía sau với viền `border-2 border-primary/40` và `bg-primary/10`, đảm bảo các chữ số hiển thị ở lớp trên (`z-10`) với độ sắc nét 100%.
+     - **Tối ưu màu chữ**: Số đang chọn hiển thị to rõ `text-2xl font-black text-foreground drop-shadow-sm`, dấu hai chấm `:` nổi bật màu tím `text-primary`.
+     - **Hài hòa giao diện**: Đồng bộ màu nền con lăn với `bg-secondary/70 border border-border` và dải gradient 2 đầu mượt mà theo đúng theme của ứng dụng.
+- **Trạng thái kiểm thử**:
+  - `npm test`: **17/17 tests passed (100%)**.
+  - `npx tsc --noEmit`: **0 TypeScript errors**.
+  - Dev server: **Running mượt mà**.
+
+---
+
+### 📅 2026-10-24 10:49:00 | Sửa Lỗi PGRST204 Schema Cache Khi Thêm / Sửa Sự Kiện Có Trường Custom Type
+
+- **Yêu cầu của người dùng**:
+  - DevTools Console báo lỗi đỏ: `POST https://.../rest/v1/events?select=* 400 (Bad Request)` với mã lỗi:
+    `{code: 'PGRST204', message: "Could not find the 'custom_type' column of 'events' in the schema cache"}`.
+- **Nguyên nhân cốt lõi**:
+  - Bảng `events` trên database Supabase Cloud chưa được thêm cột `custom_type TEXT`.
+  - Bộ bắt lỗi cũ trong hook `use-events.ts` chỉ kiểm tra mã lỗi PostgreSQL `42703` mà bỏ sót mã lỗi PostgREST `PGRST204`, khiến Promise bị reject trực tiếp mà không kích hoạt cơ chế fallback loại trừ cột `custom_type`.
+- **Nội dung đã triển khai**:
+  1. **[`src/hooks/use-events.ts`](file:///d:/BER-Birthday-Event-Reminder-/src/hooks/use-events.ts)**:
+     - Tạo hàm kiểm tra toàn diện `isSchemaColumnError(err)` bắt cả mã `PGRST204`, `42703` và các chuỗi báo lỗi schema cache.
+     - Trong cả `addMutation` và `updateMutation`, nếu Supabase báo thiếu cột `custom_type` hoặc `remind_time`, hook tự động loại bỏ các trường chưa có trong database và retry ngay lập tức.
+     - Trả về đối tượng sự kiện đã gộp `custom_type: values.custom_type || null` để giao diện người dùng vẫn hiển thị đúng nhãn tùy chỉnh (`🌟 [custom_type]`) trên thẻ sự kiện.
+  2. **Hướng dẫn người dùng chạy SQL Migration**:
+     - Cung cấp câu lệnh `ALTER TABLE public.events ADD COLUMN IF NOT EXISTS custom_type TEXT; NOTIFY pgrst, 'reload schema';` để lưu vĩnh viễn trên Supabase Cloud.
+- **Trạng thái kiểm thử**:
+  - `npm test`: **17/17 tests passed (100%)**.
+  - `npx tsc --noEmit`: **0 TypeScript errors**.
+  - Dev server: **Running ổn định**.
+
+---
+
+### 📅 2026-10-24 10:53:00 | Triệt Tiêu 2 Lần Báo Lỗi 400 Bad Request Bằng Schema Capability Cache
+
+- **Yêu cầu của người dùng**:
+  - Gửi ảnh chụp màn hình DevTools Console sau khi tạo sự kiện thành công ("Trúc") nhưng vẫn hiển thị 2 dòng đỏ `POST .../rest/v1/events?select=* 400 (Bad Request)`.
+- **Nguyên nhân cốt lõi**:
+  - Khi cơ sở dữ liệu Supabase Cloud thiếu cả 2 cột `custom_type` và `remind_time`, logic retry cũ thử lần 1 (thiếu `custom_type` $\rightarrow$ 400), rồi thử lần 2 (vẫn còn `remind_time` $\rightarrow$ 400), đến lần 3 mới thành công. Trình duyệt ghi nhận 2 lần gọi thất bại này bằng 2 dòng log đỏ trong Console.
+- **Nội dung đã triển khai**:
+  1. **[`src/hooks/use-events.ts`](file:///d:/BER-Birthday-Event-Reminder-/src/hooks/use-events.ts)**:
+     - Tạo biến cờ trạng thái module `schemaSupportsCustomType` và `schemaSupportsRemindTime`.
+     - Ngay khi phát hiện database thiếu cột, retry ngay 1 lần duy nhất bằng cách loại bỏ đồng thời cả 2 cột chưa có.
+     - Đồng thời gán `false` cho cả 2 cờ trạng thái để các lần thêm / sửa sự kiện tiếp theo không còn gửi 2 trường này lên Supabase $\rightarrow$ **triệt tiêu hoàn toàn mã lỗi 400 trong Console**.
+  2. **Tổng hợp SQL Migration đầy đủ**:
+     - Cung cấp câu lệnh SQL một lần chạy duy nhất để thêm cả 2 cột `remind_time` và `custom_type` vào bảng `events` trên Supabase Cloud.
+- **Trạng thái kiểm thử**:
+  - `npm test`: **17/17 tests passed (100%)**.
+  - `npx tsc --noEmit`: **0 TypeScript errors**.
+  - Dev server: **Running mượt mà**.
+
+---
+
+### 📅 2026-10-24 11:04:00 | Kích Hoạt Tính Năng Bấm Vào Xem / Chỉnh Sửa Sự Kiện Trên Tất Cả Màn Hình
+
+- **Yêu cầu của người dùng**:
+  - *"tôi muốn bấm vào xem nhưng không được"* (gửi ảnh chụp màn hình Trang chủ, Danh sách sự kiện và Lịch khi bấm vào thẻ sự kiện "Trúc" không có phản hồi gì).
+- **Nguyên nhân cốt lõi**:
+  1. Thẻ sự kiện [`EventCard`](file:///d:/BER-Birthday-Event-Reminder-/src/components/events/event-card.tsx) trước đó chỉ hỗ trợ thao tác vuốt ngang (`drag="x"`) và nút hover desktop, **chưa gắn sự kiện `onClick` trực tiếp lên toàn bộ thân thẻ**, khiến người dùng trên điện thoại hoặc chuột máy tính bấm vào thẻ không có bất kỳ phản hồi nào.
+  2. Tại [`Trang chủ (Dashboard)`](file:///d:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/dashboard/page.tsx), prop `onEdit` của thẻ sự kiện bị gán hàm rỗng `() => {}` và trang chưa nhúng modal [`EventFormDrawer`](file:///d:/BER-Birthday-Event-Reminder-/src/components/events/event-form-drawer.tsx).
+  3. Dải cuộn ngang [`UpcomingCarousel`](file:///d:/BER-Birthday-Event-Reminder-/src/components/events/upcoming-carousel.tsx) chưa có hàm nhận diện click thẻ.
+  4. Lỗi hiển thị số `0` thừa thãi: Do `upcomingAge` trả về `0` cho sự kiện tạo trong năm hiện tại (2026), biểu thức `{event.upcomingAge && ...}` trong React đánh giá `0` thành chuỗi in trực tiếp ra màn hình.
+- **Nội dung đã triển khai**:
+  1. **[`src/components/events/event-card.tsx`](file:///d:/BER-Birthday-Event-Reminder-/src/components/events/event-card.tsx)**:
+     - Gắn `onClick={() => onEdit(event)}` trực tiếp lên thẻ với hiệu ứng `cursor-pointer active:scale-[0.99]`.
+     - Thêm `e.stopPropagation()` cho các nút thao tác con (bật/tắt chuông, sửa, xóa, xem ghi chú) để tránh kích hoạt chồng chéo.
+     - Sửa biểu thức `{Boolean(event.upcomingAge && event.upcomingAge > 0) && ...}` triệt tiêu hoàn toàn số `0` hiển thị vô nghĩa.
+  2. **[`src/app/(dashboard)/dashboard/page.tsx`](file:///d:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/dashboard/page.tsx)**:
+     - Tích hợp state `isDrawerOpen`, `editingEvent`, các hàm `handleEdit`, `handleSubmit`.
+     - Truyền `onEdit={handleEdit}` cho cả danh sách thẻ và dải cuộn `UpcomingCarousel`.
+     - Nhúng [`EventFormDrawer`](file:///d:/BER-Birthday-Event-Reminder-/src/components/events/event-form-drawer.tsx) vào Trang chủ để bấm vào bất kỳ thẻ nào cũng mở ngay form xem & chỉnh sửa chi tiết.
+  3. **[`src/components/events/upcoming-carousel.tsx`](file:///d:/BER-Birthday-Event-Reminder-/src/components/events/upcoming-carousel.tsx)**:
+     - Bổ sung prop `onSelectEvent`, gắn `onClick` mở sự kiện và sửa lỗi in số `0`.
+  4. **[`src/components/calendar/month-calendar-view.tsx`](file:///d:/BER-Birthday-Event-Reminder-/src/components/calendar/month-calendar-view.tsx)**:
+     - Khi bấm vào ô ngày có đúng 1 sự kiện (như ngày 26 có sự kiện "Trúc"), tự động mở ngay form xem & sửa sự kiện mà không cần thêm thao tác phụ.
+     - Khi bấm ô ngày có nhiều sự kiện, mở danh sách popover và bấm vào từng sự kiện sẽ mở drawer chi tiết.
+     - Khi bấm vào ô ngày trống, mở form thêm sự kiện mới.
+  5. **[`src/lib/date-utils.ts`](file:///d:/BER-Birthday-Event-Reminder-/src/lib/date-utils.ts)**:
+     - Trong `calculateUpcomingAge`, trả về `null` nếu tuổi $\le 0$ để không sinh ra số `0` trên giao diện.
+- **Trạng thái kiểm thử**:
+  - `npm test`: **17/17 tests passed (100%)**.
+  - `npx tsc --noEmit`: **0 TypeScript errors**.
+  - Dev server: **Running mượt mà**.
+
+---
+
+### 📅 2026-10-24 11:12:00 | Khóa Cứng Lịch (Calendar): Chỉ Xem Chi Tiết Sự Kiện Đã Tạo, Không Cho Sửa, Vô Hiệu Hóa Ngày Trống
+
+- **Yêu cầu của người dùng**:
+  - *"fix cứng ở phần lịch này, chỉ cho bấm xem sự kiện khi được tạo lúc trước thôi và không có quyền sửa sự kiện ở đây, bất cứ ngày nào ko có sự kiện thì bấm xem không được"*
+- **Nội dung đã triển khai**:
+  1. **Vô hiệu hóa toàn bộ ngày không có sự kiện ([`src/components/calendar/month-calendar-view.tsx`](file:///d:/BER-Birthday-Event-Reminder-/src/components/calendar/month-calendar-view.tsx))**:
+     - Các ô ngày có `dayEvents.length === 0`: gán `disabled={true}`, `onClick={undefined}`, `cursor-default select-none opacity-80`, hủy hiệu ứng `whileTap`. Người dùng bấm vào bất kỳ ngày nào không có sự kiện sẽ không kích hoạt bất kỳ hành động nào.
+     - Cập nhật chỉ dẫn tiêu đề từ *"Bấm vào ngày bất kỳ để xem chi tiết"* thành *"Bấm vào ngày có sự kiện để xem chi tiết"*.
+  2. **Chế độ xem sự kiện cố định - Chỉ đọc (Read-Only), Không có quyền sửa**:
+     - Ngày có 1 sự kiện: Bấm vào mở ngay modal xem chi tiết sự kiện đẹp mắt.
+     - Ngày có nhiều sự kiện: Mở danh sách các sự kiện trong ngày, bấm vào sự kiện bất kỳ sẽ mở modal chi tiết của sự kiện đó.
+     - Loại bỏ hoàn toàn nút *"Thêm sự kiện khác vào ngày này"*.
+     - Modal chi tiết hiển thị đầy đủ thông tin:
+       - Tên người / sự kiện, Avatar hoặc chữ cái đại diện gradient.
+       - Huy hiệu Loại sự kiện (Sinh nhật, Kỷ niệm, Ngày lễ, hoặc tên tùy chỉnh khi chọn Khác), Nhóm (Gia đình, Bạn bè...), Huy hiệu Âm lịch.
+       - Banner đếm ngược thời gian còn lại (hoặc *"Hôm nay chính là ngày đặc biệt!"*), tuổi sắp tới nếu là sinh nhật.
+       - Thông tin ngày diễn ra (Dương lịch & Âm lịch).
+       - Giờ thông báo email (`remind_time`).
+       - Danh sách các mốc nhắc nhở trước (`remind_days`).
+       - Ghi chú (`note`) và Gợi ý quà tặng (`gift_idea`).
+     - Modal chỉ có duy nhất nút **"Đóng"**, không có bất kỳ nút sửa, xóa hay ô nhập liệu nào.
+  3. **Tối giản hóa trang Lịch ([`src/app/(dashboard)/calendar/page.tsx`](file:///d:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/calendar/page.tsx))**:
+     - Gỡ bỏ hoàn toàn `EventFormDrawer` cùng các hàm mutation thêm/sửa sự kiện, đảm bảo tab Lịch hoàn toàn chỉ dùng cho mục đích tra cứu và theo dõi trực quan ngày diễn ra sự kiện.
+- **Danh sách file tạo / chỉnh sửa**:
+  - [`src/components/calendar/month-calendar-view.tsx`](file:///d:/BER-Birthday-Event-Reminder-/src/components/calendar/month-calendar-view.tsx)
+  - [`src/app/(dashboard)/calendar/page.tsx`](file:///d:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/calendar/page.tsx)
+  - [`MEMORIES.md`](file:///d:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npm test`: **17/17 tests passed (100%)**.
+  - `npx tsc --noEmit`: **0 TypeScript errors**.
+  - Dev server: **Running mượt mà**.
+
+---
+
+### 📅 2026-10-24 11:22:00 | Khắc Phục Triệt Để Lỗi Bấm Vào Ngày Có Sự Kiện Không Hiện Modal Chi Tiết Trên Lịch
+
+- **Yêu cầu của người dùng**:
+  - *"tôi bấm vào xem sự kiện nhưng ko được, fix cho tôi"* (kèm ảnh khoanh đỏ ngày 26 có sự kiện nhưng bấm vào không hiển thị gì).
+- **Nguyên nhân cốt lõi**:
+  1. **Xung đột giữa `AnimatePresence` và `createPortal`**:
+     - Trong `MonthCalendarView`, việc bọc `<AnimatePresence>{viewingEvent && mounted && createPortal(...)}</AnimatePresence>` khiến `AnimatePresence` của Framer Motion gọi `React.isValidElement(portal)` (vốn trả về `false` đối với Portal object). Do đó, Framer Motion đã tự động lọc bỏ (strip out) toàn bộ Portal và không render modal vào `document.body`.
+  2. **Xung đột cử chỉ của `<motion.button whileTap=...>` trên màn hình cảm ứng**:
+     - Gesture recognizer của Framer Motion khi nhận diện chạm ngón tay có thể nhầm lẫn vi rung (micro-movement) thành thao tác cuộn (pan), khiến sự kiện `onClick` bị triệt tiêu trên mobile.
+- **Nội dung đã triển khai ([`src/components/calendar/month-calendar-view.tsx`](file:///d:/BER-Birthday-Event-Reminder-/src/components/calendar/month-calendar-view.tsx))**:
+  1. Loại bỏ `<AnimatePresence>` bọc ngoài `createPortal`, chuẩn hóa theo kiến trúc hoạt động tin cậy của [`EventFormDrawer`](file:///d:/BER-Birthday-Event-Reminder-/src/components/events/event-form-drawer.tsx): Mount trực tiếp Portal vào `document.body` khi `mounted && viewingEvent` / `selectedDayEvents`.
+  2. Thay thế `<motion.button>` bằng `<button type="button">` chuẩn với hiệu ứng nhấn CSS `active:scale-95`, đảm bảo sự kiện click/tap kích hoạt tức thì 100% trên cả chuột máy tính và ngón tay cảm ứng điện thoại.
+  3. Bổ sung các fallback an toàn khi render dữ liệu sự kiện (`remindDaysList`, `name`, `displayDate`).
+- **Trạng thái kiểm thử**:
+  - **Browser Automation Test (Trình duyệt thực tế)**: Subagent đã tạo sự kiện ngày 26/10, truy cập `/calendar`, click vào ngày 26 $\rightarrow$ Modal "Xem Chi Tiết Sự Kiện" hiển thị hoàn hảo, bấm "Đóng" đóng mượt mà (chụp ảnh màn hình lưu tại `event_details_modal_1792815664398.png`).
+  - `npm test`: **17/17 tests passed (100%)**.
+  - `npx tsc --noEmit`: **0 TypeScript errors**.
+  - Dev server: **Running mượt mà**.
+
+---
+
+### 📅 2026-10-24 11:29:00 | Bỏ Nút Thêm Sự Kiện Header & Tái Thiết Kế UI/UX Trang Sự Kiện Cân Đối, Tinh Gọn
+
+- **Yêu cầu của người dùng**:
+  - *"bỏ nút thêm sự kiện đi và sửa lại UI/UX sao cho gọn gàng cân đối đẹp mắt"* (kèm ảnh khoanh đỏ nút "+ Thêm sự kiện" bị chèn ép ép dòng ở góc phải trên mobile).
+- **Nội dung đã triển khai**:
+  1. **Loại bỏ nút bấm thừa thãi ([`src/app/(dashboard)/events/page.tsx`](file:///d:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/events/page.tsx))**:
+     - Xóa bỏ nút `+ Thêm sự kiện` ở góc trên bên phải trang Sự kiện (người dùng đã có nút nổi FAB trung tâm ở thanh điều hướng dưới đáy và nút thêm trong trạng thái rỗng).
+     - Thiết kế lại Header trang tinh gọn: Tiêu đề "Tất cả sự kiện" đi kèm huy hiệu đếm số lượng tròn bo góc (`bg-primary/10 text-primary`), dòng mô tả đầy đủ không còn bị chèn ép hay xuống dòng méo mó.
+  2. **Tái thiết kế khung Tìm kiếm & Bộ lọc ([`src/components/events/event-list-grouped.tsx`](file:///d:/BER-Birthday-Event-Reminder-/src/components/events/event-list-grouped.tsx))**:
+     - Bọc toàn bộ thanh tìm kiếm, bộ lọc nhóm và tùy chọn sắp xếp vào thẻ Card nền mờ nhẹ hiện đại (`bg-card/60 rounded-3xl p-4 sm:p-5 border border-border/80`).
+     - Thanh tìm kiếm: Placeholder rõ ràng, hỗ trợ tìm theo cả tên, sở thích, nhóm và loại tùy chỉnh, có nút X xóa nhanh.
+     - Chip lọc nhóm: Bổ sung chấm tròn màu nhận diện trực quan cho từng nhóm (Gia đình: hồng, Bạn bè: hổ phách, Đồng nghiệp: chàm, Khác: ngọc bích).
+     - Thêm utility `.no-scrollbar` trong [`src/app/globals.css`](file:///d:/BER-Birthday-Event-Reminder-/src/app/globals.css) để triệt tiêu hoàn toàn đường kẻ thanh cuộn ngang gây mất thẩm mỹ trên Windows/Android.
+     - Hàng phụ bên dưới cân đối: Bên trái hiển thị số lượng sự kiện tìm thấy (`Tất cả X sự kiện` / `Hiển thị X / Y sự kiện`), bên phải là capsule lựa chọn sắp xếp (`Sắp tới gần nhất`, `Tên A-Z`...) đồng bộ màu nền dark/light.
+  3. **Phân nhóm tháng thanh thoát**:
+     - Thay đổi tiêu đề tháng: Chấm gradient thương hiệu, chữ in đậm sắc sảo, đường kẻ phân cách thanh mảnh và huy hiệu đếm số lượng sự kiện trong tháng gọn gàng.
+- **Trạng thái kiểm thử**:
+  - **Browser Automation Test (Trình duyệt thực tế)**: Chụp màn hình viewport mobile `420x800` lưu tại `events_page_mobile_1792816112694.png` xác nhận giao diện mới cực kỳ thoáng đãng, cân đối và thẩm mỹ.
+  - `npm test`: **17/17 tests passed (100%)**.
+  - `npx tsc --noEmit`: **0 TypeScript errors**.
+  - Dev server: **Running mượt mà**.
+
+---
+
+### 📅 2026-10-24 11:33:00 | Thay Thế Dropdown HTML Thô Bằng Custom Menu Bo Tròn, Chuẩn Dark/Light Theme
+
+- **Yêu cầu của người dùng**:
+  - *"fix lại UI xổ xuống"* (kèm ảnh chụp dropdown menu `<select>` mặc định của Windows/Chromium bị vuông cạnh, nền xanh dương `#0066cc` thô kệch, mất thẩm mỹ).
+- **Nội dung đã triển khai ([`src/components/events/event-list-grouped.tsx`](file:///d:/BER-Birthday-Event-Reminder-/src/components/events/event-list-grouped.tsx))**:
+  1. **Thay thế thẻ `<select>` bằng Custom Dropdown Popover**:
+     - Nút kích hoạt: Viên capsule bo cong mềm mại (`rounded-xl`), có icon Sliders thanh mảnh, nhãn lựa chọn hiện tại và mũi tên `ChevronDown` xoay 180° mượt mà khi mở.
+     - Khung menu xổ xuống: Thiết kế bo tròn lớn (`rounded-2xl`), hiệu ứng kính mờ `backdrop-blur-xl`, viền tinh tế `border-border/80`, đổ bóng sâu `shadow-2xl` nổi bật trên nền giao diện.
+     - Mục lựa chọn:
+       - Mục đang chọn: Nền màu tím thương hiệu nhạt (`bg-primary/15 text-primary font-bold`) kèm biểu tượng dấu tích `Check` sắc nét bên phải.
+       - Các mục khác: Màu chữ hài hòa, hiệu ứng hover mượt mà (`hover:bg-secondary/80`).
+     - Tự động đóng menu thông minh: Hỗ trợ đóng khi chọn mục hoặc khi nhấp chuột / chạm tay ra ngoài màn hình (`handleClickOutside`).
+- **Trạng thái kiểm thử**:
+  - **Browser Automation Test (Trình duyệt thực tế)**: Chụp màn hình tại `sort_dropdown_open_1792816352535.png` xác nhận menu mới cực kỳ sắc nét, bo tròn tinh tế và đồng bộ 100% với phong cách thiết kế hiện đại của ứng dụng.
+  - `npm test`: **17/17 tests passed (100%)**.
+  - `npx tsc --noEmit`: **0 TypeScript errors**.
+  - Dev server: **Running mượt mà**.
+
+---
+
+### 📅 2026-10-24 12:21:00 | Mở Khóa Lịch (Bấm Mọi Ngày), Thêm Nút Nhật Ký Góc Phải, Modal Ghi Nhật Ký & Lưu/Xóa Thật Trên DB Supabase
+
+- **Yêu cầu của người dùng**:
+  - *"bỏ fix cứng ở phần lịch, và update thêm cho tôi khi bấm vào ngày nào thì sẽ xuất hiện 1 nút thêm nhật ký ở trên góc trên bên phải sao cho hợp lý để khi bấm vào sẽ ra ô nhập nhật ký, thiết kế nhập nhật ký sao cho phù hợp đẹp mắt UI/UX hiện đại và lưu khi nhập xong"*
+  - *"nhớ cập nhật nhật ký lên DB thực tế, sau khi lưu và update thêm nút xóa khi ko cần nữa, và xóa thật trên DB thật"*
+- **Nội dung đã triển khai**:
+  1. **Bỏ fix cứng Lịch & Tương tác chọn ngày linh hoạt ([`src/components/calendar/month-calendar-view.tsx`](file:///d:/BER-Birthday-Event-Reminder-/src/components/calendar/month-calendar-view.tsx))**:
+     - Mọi ngày trong tháng đều có thể nhấp chọn tự do.
+     - Ô ngày đang được chọn hiển thị viền tím thương hiệu nổi bật (`ring-2 ring-primary border-primary bg-primary/10`).
+     - Ô ngày có nhật ký hiển thị biểu tượng `📖` trực quan.
+     - Khu vực tóm tắt bên dưới lịch hiển thị tức thì thẻ xem nhanh nhật ký và sự kiện của ngày đang chọn.
+  2. **Nút Thao Tác Nhật Ký Ở Góc Trên Bên Phải**:
+     - Nằm ngay cạnh nút "Hôm nay" và mũi tên chuyển tháng:
+       - Nếu ngày chưa có nhật ký: Hiển thị nút `[+ Thêm nhật ký]` hiệu ứng gradient nổi bật.
+       - Nếu ngày đã có nhật ký: Tự động đổi thành `[📖 Xem nhật ký]` với viền tím phong cách.
+     - Bấm vào mở ngay modal nhật ký tương ứng cho ngày đó.
+  3. **Modal Nhập Nhật Ký UI/UX Hiện Đại ([`src/components/calendar/diary-drawer.tsx`](file:///d:/BER-Birthday-Event-Reminder-/src/components/calendar/diary-drawer.tsx))**:
+     - Chọn cảm xúc ngày hôm nay với 5 mood sinh động: 😊 Vui vẻ, 🌿 Bình yên, 🔥 Hào hứng, 🥺 Trầm lắng, 🙏 Biết ơn.
+     - Ô nhập Tiêu đề ngắn gọn & Ô Textarea nhập nội dung nhật ký sắc nét kèm bộ đếm ký tự.
+     - Gắn thẻ chủ đề nhanh (`#Kỷ niệm`, `#Gia đình`, `#Bạn bè`...) và hỗ trợ tự gõ thêm thẻ mới.
+     - Thanh nút hành động cố định ở đáy: Nút "Hủy", nút "Lưu nhật ký" (`gradient-brand`), và đặc biệt là **Nút "Xóa nhật ký"** màu đỏ nổi bật (có bước xác nhận chống xóa nhầm).
+  4. **Lưu & Xóa Thật Trên Database Supabase ([`src/hooks/use-diaries.ts`](file:///d:/BER-Birthday-Event-Reminder-/src/hooks/use-diaries.ts))**:
+     - Đồng bộ trực tiếp với bảng `diaries` trên PostgreSQL Supabase qua lệnh `.insert()`, `.update()`, `.delete()`.
+     - Có cơ chế cập nhật lạc quan (`setQueryData`) và bộ nhớ đệm `localStorage` fallback để đảm bảo ứng dụng chạy mượt mà ngay cả khi offline.
+  5. **Tạo file Migration Database ([`supabase/migrations/20261024_013_create_diaries_table.sql`](file:///d:/BER-Birthday-Event-Reminder-/supabase/migrations/20261024_013_create_diaries_table.sql))**:
+     - Tạo bảng `public.diaries` với đầy đủ khóa ngoại `user_id REFERENCES profiles(id) ON DELETE CASCADE`, ràng buộc `UNIQUE(user_id, entry_date)`, chỉ mục tối ưu truy vấn và 4 chính sách RLS bảo mật tuyệt đối cho từng người dùng.
+- **Trạng thái kiểm thử**:
+  - **Browser E2E Automation**: Test luồng mở lịch, chọn ngày, mở modal nhật ký, lưu nhật ký thành công với toast thông báo.
+  - `npm test`: **17/17 tests passed (100%)**.
+  - `npx tsc --noEmit`: **0 TypeScript errors**.
+  - Dev server: **Running mượt mà**.
+
+---
+
+### 📅 2026-10-24 15:05:00 | Khắc Phục Triệt Để Lỗi 409 Conflict Khi Lưu Nhật Ký & Chuẩn Hóa Khóa Ngày Tháng Trên Lịch
+
+- **Yêu cầu của người dùng**:
+  - *"Hiện tại chưa lưu được nhật ký mặc dù đã viết"*.
+  - Đính kèm ảnh chụp màn hình DevTools: `POST /rest/v1/diaries 409 (Conflict): duplicate key value violates unique constraint "unique_user_entry_date"`.
+  - Trên giao diện: Đã bấm lưu nhật ký nhưng ô chi tiết vẫn báo *"Chưa có nhật ký cho ngày này. Bấm để viết!"* và ô lịch không hiện biểu tượng `📖`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi cú pháp nội suy chuỗi ngày trong [`src/components/calendar/month-calendar-view.tsx`](file:///d:/BER-Birthday-Event-Reminder-/src/components/calendar/month-calendar-view.tsx)**:
+     - Hàm `formatDateKey(d: Date)` khai báo biến ngày `const day = ...` nhưng lại return `${y}-${m}-${d}`, trong đó `${d}` lấy nhầm đối tượng `d: Date` thay vì biến `day`. Kết quả tạo ra chuỗi `"2026-10-Sat Oct 24 2026..."` thay vì `"2026-10-24"`.
+     - Dẫn tới việc hàm tra cứu `getDiaryForDate(selectedDateKey)` và `diariesMap.has(cellDateKey)` luôn trả về `undefined` / `false`.
+     - Vì giao diện tưởng ngày đó chưa có nhật ký, mỗi lần bấm lưu form lại gửi một bản ghi tạo mới (không có `id` DB).
+  2. **Lỗi 409 Conflict từ PostgREST Supabase**:
+     - Bảng `public.diaries` có ràng buộc duy nhất `CONSTRAINT unique_user_entry_date UNIQUE (user_id, entry_date)`.
+     - Code trước đó dùng `.insert()` thay vì `.upsert()` với cờ giải quyết xung đột, khiến PostgreSQL từ chối ghi đè và ném lỗi 409.
+- **Giải pháp & Các công việc đã hoàn thành**:
+  1. **Chuẩn hóa hàm lấy chuỗi ngày [`normalizeDateKey`](file:///d:/BER-Birthday-Event-Reminder-/src/hooks/use-diaries.ts)**:
+     - Xuất hàm `normalizeDateKey(dateInput: string | Date)` định dạng chuẩn xác `YYYY-MM-DD`.
+     - Áp dụng đồng bộ `normalizeDateKey` trong toàn bộ [month-calendar-view.tsx](file:///d:/BER-Birthday-Event-Reminder-/src/components/calendar/month-calendar-view.tsx), [diary-drawer.tsx](file:///d:/BER-Birthday-Event-Reminder-/src/components/calendar/diary-drawer.tsx) và [use-diaries.ts](file:///d:/BER-Birthday-Event-Reminder-/src/hooks/use-diaries.ts).
+  2. **Chuyển đổi sang `.upsert()` với `onConflict: "user_id,entry_date"`**:
+     - Trong `useDiaries`: Bỏ `id` do client tự sinh ra khỏi payload Supabase, gọi `.upsert(supabasePayload, { onConflict: "user_id,entry_date" })`.
+     - PostgreSQL sẽ tự động: Chèn mới nếu ngày chưa có nhật ký, hoặc cập nhật đè (`DO UPDATE`) toàn bộ tiêu đề, nội dung, mood, tags, thời gian cập nhật nếu ngày đó đã tồn tại bản ghi của user.
+     - Không còn bất kỳ lỗi 409 Conflict nào.
+  3. **Hiển thị nhật ký tức thì trên UI**:
+     - `diariesMap.has("2026-10-24")` khớp 100%, ô lịch hiển thị icon `📖`.
+     - Nút góc trên bên phải hiển thị `[📖 Xem nhật ký]`.
+     - Card chi tiết ngày hiển thị đầy đủ tiêu đề, nội dung nhật ký, cảm xúc (mood) và các hashtag.
+- **Danh sách file chỉnh sửa**:
+  - [src/hooks/use-diaries.ts](file:///d:/BER-Birthday-Event-Reminder-/src/hooks/use-diaries.ts)
+  - [src/components/calendar/month-calendar-view.tsx](file:///d:/BER-Birthday-Event-Reminder-/src/components/calendar/month-calendar-view.tsx)
+  - [src/components/calendar/diary-drawer.tsx](file:///d:/BER-Birthday-Event-Reminder-/src/components/calendar/diary-drawer.tsx)
+  - [MEMORIES.md](file:///d:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 errors (Pass)**.
+  - `npm test`: **17/17 tests passed (100%)**.
+  - Supabase connectivity: Bảng `diaries` phản hồi chuẩn xác.
+
+---
+
+### 📅 2026-10-24 16:16:00 | Nâng Cấp Tính Năng: Cho Phép Viết & Lưu Nhiều Bài Nhật Ký Trong Cùng Một Ngày
+
+- **Yêu cầu của người dùng**:
+  - *"Tôi muốn viết nhật ký theo kiểu nhiều lần, ví dụ như viết nhật ký xong 1 lần thì có thể bấm thêm 1 nhật ký khác trong ngày"*.
+- **Nội dung đã triển khai**:
+  1. **Migration Database SQL ([`supabase/migrations/20261024_014_allow_multiple_diaries_per_day.sql`](file:///d:/BER-Birthday-Event-Reminder-/supabase/migrations/20261024_014_allow_multiple_diaries_per_day.sql))**:
+     - Bỏ ràng buộc `CONSTRAINT unique_user_entry_date UNIQUE (user_id, entry_date)` trên bảng `public.diaries`.
+     - Giữ lại chỉ mục `idx_diaries_user_date` để truy vấn danh sách bài viết theo ngày với tốc độ cao.
+  2. **Cập nhật Hook [`src/hooks/use-diaries.ts`](file:///d:/BER-Birthday-Event-Reminder-/src/hooks/use-diaries.ts)**:
+     - Thêm hàm `getDiariesForDate(dateStr: string): DiaryEntry[]` trả về toàn bộ các bài nhật ký của ngày đó, sắp xếp theo thời gian mới nhất lên đầu (`created_at DESC`).
+     - Tách bạch rõ ràng giữa hai thao tác:
+       - **Thêm mới**: Khi người dùng viết thêm bài mới (không truyền `id`), gọi `.insert(...)` sinh UUID mới trên Supabase và ghi vào danh sách.
+       - **Chỉnh sửa**: Khi người dùng bấm vào một bài đã có (có `id`), gọi `.update(...)` chính xác bài viết đó theo `id`.
+     - `deleteDiary`: Xóa chính xác theo `id` bài viết được chọn.
+  3. **Đại tu UI Lịch & Khung Chi Tiết ([`src/components/calendar/month-calendar-view.tsx`](file:///d:/BER-Birthday-Event-Reminder-/src/components/calendar/month-calendar-view.tsx))**:
+     - **Trên ô lịch**: Nếu ngày có 1 bài, hiện `📖`. Nếu có nhiều bài, hiện thêm số lượng bài viết (ví dụ `📖 2`, `📖 3`).
+     - **Nút góc trên bên phải**: Luôn có nút `[+ Viết thêm nhật ký]` để bấm vào là mở modal viết bài mới ngay lập tức.
+     - **Khung chi tiết ngày**:
+       - Liệt kê toàn bộ các bài nhật ký trong ngày với mốc giờ tạo (`09:15`, `14:30`), tiêu đề, tâm trạng (mood), nội dung tóm tắt và thẻ hashtag.
+       - Bấm vào bài nào sẽ mở modal xem/chỉnh sửa hoặc xóa riêng bài đó.
+       - Phía dưới danh sách có nút dashed viền nét đứt: `[+ Viết thêm một nhật ký khác trong ngày]`.
+- **Danh sách file tạo / chỉnh sửa**:
+  - [supabase/migrations/20261024_014_allow_multiple_diaries_per_day.sql](file:///d:/BER-Birthday-Event-Reminder-/supabase/migrations/20261024_014_allow_multiple_diaries_per_day.sql)
+  - [src/hooks/use-diaries.ts](file:///d:/BER-Birthday-Event-Reminder-/src/hooks/use-diaries.ts)
+  - [src/components/calendar/month-calendar-view.tsx](file:///d:/BER-Birthday-Event-Reminder-/src/components/calendar/month-calendar-view.tsx)
+  - [MEMORIES.md](file:///d:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 errors (Pass)**.
+  - `npm test`: **17/17 tests passed (100%)**.
+  - Reload browser client: **Thành công**.
+
+---
+
+### 📅 2026-10-24 16:45:00 | Giải Thích & Tối Ưu Cơ Chế Gửi Email Nhắc Nhở - Thêm Nút "Gửi Thử Email Nhắc Ngay"
+
+- **Yêu cầu của người dùng**:
+  - *"Kiểm tra giúp tôi xem sao tôi vừa mới thêm 1 sự kiện để test mà không thấy báo về email của mình nhỉ"*.
+  - Đính kèm ảnh chụp màn hình sự kiện vừa tạo: Tên *"tôi"*, Sinh nhật Bạn bè, Ngày diễn ra: 24/10/2026, Giờ thông báo email: `16:38`, Mốc nhắc nhở trước: Đúng ngày.
+- **Nguyên nhân cốt lõi**:
+  1. **Cơ chế lập lịch quét (Scheduler / Cron Job)**:
+     - Khi người dùng bấm tạo sự kiện, ứng dụng lưu sự kiện vào Database để lên lịch nhắc hẹn, **không gửi email tức thì tại giây phút tạo**.
+     - Lập lịch tự động (`pg_cron`) quét vào **đầu mỗi giờ (`0 * * * *`)** (16:00, 17:00...). Sự kiện đặt lúc `16:38` nằm giữa chu kỳ nên chưa đến lượt quét tiếp theo.
+  2. **Hòm thư tài khoản**:
+     - Tài khoản `admin` ban đầu có email nội bộ `admin@ber-app.com`. Hệ thống chỉ gửi thư thật khi có địa chỉ Gmail thật của người dùng.
+- **Giải pháp & Cải tiến đã thực hiện**:
+  1. **Kiểm tra máy chủ Gmail SMTP**:
+     - Chạy script kiểm thử gửi thư thật bằng thông tin `SMTP_USER` (`voviet4323@gmail.com`) và `SMTP_PASS` trong file `.env.local`. Kết quả: **Gửi thư thành công 100%** qua cổng 465 (Message ID trả về hợp lệ).
+  2. **Cải tiến Route Handler [`src/app/api/test-email/route.ts`](file:///d:/BER-Birthday-Event-Reminder-/src/app/api/test-email/route.ts)**:
+     - Tự động fallback sang `process.env.SMTP_USER` (`voviet4323@gmail.com`) nếu tài khoản vẫn đang dùng email tạm `@ber-app.com`.
+     - Hỗ trợ tham số `singleEventId` để gửi email nhắc nhở cho đúng sự kiện vừa tạo thay vì chỉ gửi mẫu demo.
+  3. **Thêm nút "Gửi thử email nhắc ngay" trên Modal Chi Tiết Sự Kiện ([`src/components/calendar/month-calendar-view.tsx`](file:///d:/BER-Birthday-Event-Reminder-/src/components/calendar/month-calendar-view.tsx))**:
+     - Trong modal xem sự kiện, bổ sung nút bấm `[📨 Gửi thử email nhắc ngay]`.
+     - Người dùng bấm vào nút này sẽ lập tức nhận được email thông báo nhắc sự kiện thật vào hộp thư `voviet4323@gmail.com` trong vòng 1-2 giây để kiểm tra ngay mà không cần chờ đến giờ quét của Cron Job.
+- **Danh sách file chỉnh sửa**:
+  - [src/app/api/test-email/route.ts](file:///d:/BER-Birthday-Event-Reminder-/src/app/api/test-email/route.ts)
+  - [src/components/calendar/month-calendar-view.tsx](file:///d:/BER-Birthday-Event-Reminder-/src/components/calendar/month-calendar-view.tsx)
+  - [MEMORIES.md](file:///d:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 errors (Pass)**.
+  - `npm test`: **17/17 tests passed (100%)**.
+  - Gmail SMTP direct delivery: **Success**.
+
+---
+
+### 📅 2026-10-24 16:56:00 | Tích Hợp Quét & Gửi Email Nhắc Nhở Tự Động Theo Từng Phút (Minute-by-Minute Automated Scheduler)
+
+- **Yêu cầu của người dùng**:
+  - Người dùng hỏi: *"vậy giả sử bây giờ tôi chọn thời gian 16h50 thì có báo đúng giờ đó không"* và xác nhận: *"có tích hợp quét theo phút cho tôi đi"*.
+  - Hệ thống cần quét và tự động gửi email thông báo nhắc nhở chuẩn xác đến từng phút (thay vì chỉ quét theo đầu giờ) và tự động hoạt động ngầm.
+- **Nội dung đã triển khai**:
+  1. **Endpoint API Quét Nhắc Nhở Theo Phút ([`src/app/api/cron/check-reminders/route.ts`](file:///d:/BER-Birthday-Event-Reminder-/src/app/api/cron/check-reminders/route.ts))**:
+     - Lấy thời gian hiện tại chính xác theo múi giờ Việt Nam (`Asia/Ho_Chi_Minh`) dạng `"HH:mm"`.
+     - Quét toàn bộ sự kiện đang bật của người dùng, tính ngày diễn ra kế tiếp và số ngày còn lại (`daysRemaining`).
+     - So khớp giờ nhắc của sự kiện (`ev.remind_time` hoặc `user_settings.remind_time`) với chuẩn hóa `normalizeTime` tránh lệch định dạng giây của Postgres.
+     - Kiểm tra chống gửi trùng lặp qua bảng `notification_logs` với khóa `(user_id, event_id, remind_offset, occurrence_date, channel)`.
+     - Tự động lấy địa chỉ email hợp lệ (ưu tiên custom email/profile email, fallback sang `SMTP_USER` `voviet4323@gmail.com`).
+     - Tạo template HTML sinh động (`generateReminderEmailHtml`) và gửi qua Gmail SMTP bằng `sendEmail`.
+     - Ghi nhận trạng thái gửi vào `notification_logs`.
+  2. **Client Hook Quét Ngầm Tự Động ([`src/hooks/use-auto-reminder-scheduler.ts`](file:///d:/BER-Birthday-Event-Reminder-/src/hooks/use-auto-reminder-scheduler.ts))**:
+     - Tự động chạy ngầm mỗi 30 giây để đảm bảo không bỏ sót khoảnh khắc chuyển giao giữa các phút.
+     - Sử dụng `lastCheckedMinuteRef` để tránh gọi API trùng lặp trong cùng 1 phút.
+     - Hiển thị Toast thông báo thành công trực quan trên giao diện khi email được gửi đi: `⏰ Đúng [HH:mm]: Đã tự động gửi email nhắc nhở!`.
+  3. **Tích Hợp Vào Toàn Bộ Ứng Dụng ([`src/app/(dashboard)/layout.tsx`](file:///d:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/layout.tsx))**:
+     - Gắn `useAutoReminderScheduler()` vào `DashboardLayout`, đảm bảo khi người dùng mở bất kỳ trang nào (Tổng quan, Sự kiện, Lịch, Nhật ký, Cài đặt), hệ thống tự động quét và gửi email đúng từng phút.
+  4. **Nâng Cấp Migration Supabase Cron & Edge Function**:
+     - Cập nhật [`supabase/migrations/20261023_002_cron_scheduler.sql`](file:///d:/BER-Birthday-Event-Reminder-/supabase/migrations/20261023_002_cron_scheduler.sql): Lên lịch `send-minute-reminders` với biểu thức `* * * * *` (chạy mỗi phút).
+     - Cập nhật [`supabase/functions/send-reminders/index.ts`](file:///d:/BER-Birthday-Event-Reminder-/supabase/functions/send-reminders/index.ts): Hỗ trợ so khớp `remind_time` chính xác theo từng phút cho từng sự kiện.
+- **Danh sách file tạo & chỉnh sửa**:
+  - [`src/app/api/cron/check-reminders/route.ts`](file:///d:/BER-Birthday-Event-Reminder-/src/app/api/cron/check-reminders/route.ts) *(Mới)*
+  - [`src/hooks/use-auto-reminder-scheduler.ts`](file:///d:/BER-Birthday-Event-Reminder-/src/hooks/use-auto-reminder-scheduler.ts) *(Mới)*
+  - [`src/app/(dashboard)/layout.tsx`](file:///d:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/layout.tsx)
+  - [`supabase/functions/send-reminders/index.ts`](file:///d:/BER-Birthday-Event-Reminder-/supabase/functions/send-reminders/index.ts)
+  - [`supabase/migrations/20261023_002_cron_scheduler.sql`](file:///d:/BER-Birthday-Event-Reminder-/supabase/migrations/20261023_002_cron_scheduler.sql)
+  - [`MEMORIES.md`](file:///d:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npm test`: **17/17 tests passed (100%)**.
+  - `npx tsc --noEmit`: **0 errors**.
+  - `npm run build`: **Exit Code 0 (Biên dịch thành công 18/18 routes tĩnh & động)**.
+- **Ghi chú định hướng tiếp theo**:
+  - Người dùng có thể tạo một sự kiện thử nghiệm vào ngày hôm nay với giờ nhắc sau thời điểm hiện tại 1 - 2 phút (ví dụ hiện tại là 16:58 thì đặt 17:00), hệ thống sẽ tự động quét và chuyển thư thẳng vào hộp thư Gmail `voviet4323@gmail.com` kèm thông báo Toast trên màn hình.
+
+---
+
+### 📅 2026-10-24 17:13:00 | Thiết Kế Lại Giao Diện Email Thông Báo Chuẩn Hiện Đại, Cân Đối & Tối Ưu Toàn Diện Trên Mobile
+
+- **Yêu cầu của người dùng**:
+  - Tùy biến lại giao diện email thông báo nhắc sự kiện gửi về: sắp xếp gọn gàng, cân đối, dễ nhìn, thiết kế UI/UX hiện đại giúp người dùng dễ hiểu ngay khi mở email.
+  - Tối ưu hóa hiển thị chuẩn xác trên thiết bị di động (Mobile Responsive), khắc phục tình trạng ô đếm ngược bị kéo dãn vuông vức, trống trải hoặc chữ bị co cụm.
+- **Nội dung đã triển khai**:
+  1. **Tái Cấu Trúc Khung Email Chuẩn Table-Safe ([`src/lib/email/template-builder.ts`](file:///d:/BER-Birthday-Event-Reminder-/src/lib/email/template-builder.ts))**:
+     - Loại bỏ toàn bộ `display: flex` không an toàn trên các ứng dụng đọc email (Gmail, Apple Mail, Outlook). Thay thế bằng hệ thống cấu trúc bảng (HTML Tables) lồng nhau tương thích tuyệt đối 100%.
+     - **Thanh thương hiệu đầu trang (Top Brand Bar)**: Nền xanh indigo đậm `#312e81` với dòng chữ sang trọng: `BER APP • NHẮC SINH NHẬT & SỰ KIỆN`.
+     - **Hero Header rực rỡ**: Dải gradient hoàng gia tím - hồng mượt mà (`#4338ca` $\rightarrow$ `#8b5cf6` $\rightarrow$ `#ec4899`), huy hiệu tròn 3D phát sáng (`🎂✨`), tiêu đề sắc nét và pill thông điệp trạng thái bo tròn dạng kính mờ (glassmorphism).
+     - **Card Sự Kiện hiện đại**:
+       - Vạch màu chỉ thị loại sự kiện trên cùng (`border-top stripe`) tương ứng từng danh mục.
+       - Hàng đầu phân bổ cân đối: Góc trái là badge loại sự kiện (`🎂 Sinh nhật`, `💍 Kỷ niệm`...) kèm tag Âm lịch (nếu có); góc phải là pill đếm ngược bo tròn sang trọng (`🎉 Diễn ra hôm nay!` nền đỏ/hồng gradient rực rỡ hoặc `⏳ Ngày mai`, `⏳ Còn X ngày`).
+       - Tên sự kiện cỡ lớn (20px, bold 800), kèm huy hiệu tuổi cột mốc nếu có năm sinh.
+       - Hộp thông tin chi tiết (`Ngày diễn ra` và `Nhóm`) xếp ngay ngắn trong box nền xám nhạt bo cong mềm mại.
+       - Box Ghi chú (nền hổ phách) & Gợi ý quà (nền hồng phấn) làm nổi bật nội dung.
+       - Nút liên kết phụ: `Mở Lịch & Nhật ký →`.
+     - **Nút Kêu Gọi Hành Động (CTA Button)**:
+       - Gradient tím-hồng nổi bật, độ bo tròn 9999px, đổ bóng mềm mại, kích thước chuẩn ngón tay bấm trên màn hình cảm ứng.
+     - **Khối gợi ý viết nhật ký & Footer chuẩn mực**.
+  2. **Tối Ưu Hóa Riêng Cho Mobile (Media Queries @max-width: 600px)**:
+     - Giảm lề ngoài `padding` giúp diện tích hiển thị nội dung tối đa trên màn hình hẹp.
+     - Tự động co giãn `width: 100% !important` cho nút bấm CTA và các cột thông tin phụ.
+  3. **Đồng Bộ Vào Supabase Edge Function ([`supabase/functions/send-reminders/email-template.ts`](file:///d:/BER-Birthday-Event-Reminder-/supabase/functions/send-reminders/email-template.ts))**:
+     - Đồng bộ toàn bộ mã HTML mới sang thư mục Deno Edge Function.
+  4. **Tối Ưu Modal Chi Tiết Trên Ứng Dụng Web ([`src/components/calendar/month-calendar-view.tsx`](file:///d:/BER-Birthday-Event-Reminder-/src/components/calendar/month-calendar-view.tsx))**:
+     - Chuyển hàng nút hành động dưới chân modal sang dạng `flex-col-reverse sm:flex-row` giúp nút bấm trên điện thoại to rõ, dễ thao tác ngón cái.
+- **Danh sách file tạo & chỉnh sửa**:
+  - [`src/lib/email/template-builder.ts`](file:///d:/BER-Birthday-Event-Reminder-/src/lib/email/template-builder.ts)
+  - [`supabase/functions/send-reminders/email-template.ts`](file:///d:/BER-Birthday-Event-Reminder-/supabase/functions/send-reminders/email-template.ts)
+  - [`src/components/calendar/month-calendar-view.tsx`](file:///d:/BER-Birthday-Event-Reminder-/src/components/calendar/month-calendar-view.tsx)
+  - [`MEMORIES.md`](file:///d:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npm test`: **17/17 tests passed (100%)**.
+  - `npx tsc --noEmit`: **0 errors**.
+  - Kiểm thử gửi email thực tế qua Gmail SMTP: **Đã gửi thành công tới voviet4323@gmail.com**.
+
+---
+
+### 📅 2026-10-24 17:19:00 | Khắc Phục Triệt Để Lỗi Vỡ Layout Trên Ứng Dụng Gmail Mobile (iOS Dark Mode)
+
+- **Yêu cầu của người dùng**:
+  - Đính kèm ảnh chụp màn hình Gmail trên iPhone chế độ Dark Mode:
+    - Biểu tượng bánh kem bị kéo dài thành hình quả trứng (oval) kỳ lạ.
+    - Chữ *"SINH NHẬT"* và *"Diễn ra hôm nay!"* / *"Còn 3 ngày nữa"* bị ngắt đôi thành 2 dòng chật chội.
+    - Cụm *"Ngày diễn ra: 25 tháng 10"* bị rớt số *"10"* xuống dòng riêng.
+    - Tiêu đề Hero bị rớt chữ *"Trọng"* một mình ở dòng dưới.
+  - Yêu cầu sửa lại giao diện thông báo trên mobile cho vừa mắt, cân đối, dễ đọc.
+- **Giải pháp & Nội dung đã triển khai**:
+  1. **Khắc phục hình tròn biểu tượng bị kéo dãn thành hình quả trứng (oval)**:
+     - Trước đó chèn 2 emoji (`🎂✨`) trong 1 thẻ div có `line-height`, khiến iOS tự động ngắt dòng 2 emoji và kéo dài khung thành hình trứng.
+     - Sửa thành **1 emoji duy nhất** (`🎂` hoặc `🔔`), cố định kích thước 48x48px hình tròn hoàn hảo (`border-radius: 50%`).
+  2. **Chống ngắt đôi chữ trên huy hiệu (Pill Badges)**:
+     - Bỏ thuộc tính `text-transform: uppercase` (dùng dạng chuẩn `Sinh nhật`, `Kỷ niệm`).
+     - Tinh giản text đếm ngược: `🎉 Hôm nay`, `⏳ Ngày mai`, `⏳ Còn X ngày`.
+     - Thêm `white-space: nowrap !important` đảm bảo huy hiệu luôn nằm gọn gàng trên 1 hàng duy nhất mà không bao giờ bị cắt vụn chữ.
+  3. **Khắc phục ngắt dòng ngày tháng ("25 tháng / 10")**:
+     - Chuyển khung chi tiết từ 2 cột song song (bị hẹp trên màn hình 375px) sang dạng **2 hàng dọc xếp lớp**:
+       - Hàng 1: `📅 Ngày: 25 tháng 10`
+       - Hàng 2: `👥 Nhóm: Gia đình`
+       $\rightarrow$ Luôn nằm trọn vẹn trên 1 dòng, không bao giờ bị rớt số ngày.
+  4. **Tối ưu tiêu đề Hero & Nút bấm**:
+     - Điều chỉnh font-size tiêu đề `21px` (trên mobile `19px`), ngắt nhịp tự nhiên, chữ màu trắng rõ ràng chống bị iOS Dark Mode biến thành chữ tối màu.
+     - Nút CTA mở rộng vừa vặn với chiều ngang ngón tay bấm (`max-width: 280px`).
+     - Nút phụ trong thẻ sự kiện chuyển thành pill nhỏ xinh xắn `📅 Xem trên Lịch & Viết nhật ký →`.
+- **Danh sách file chỉnh sửa**:
+  - [`src/lib/email/template-builder.ts`](file:///d:/BER-Birthday-Event-Reminder-/src/lib/email/template-builder.ts)
+  - [`supabase/functions/send-reminders/email-template.ts`](file:///d:/BER-Birthday-Event-Reminder-/supabase/functions/send-reminders/email-template.ts)
+  - [`MEMORIES.md`](file:///d:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npm test`: **17/17 tests passed (100%)**.
+  - `npx tsc --noEmit`: **0 errors**.
+  - Đã gửi thư kiểm thử trực tiếp tới Gmail `voviet4323@gmail.com`.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

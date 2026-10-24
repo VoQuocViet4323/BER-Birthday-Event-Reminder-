@@ -81,8 +81,9 @@ export function EventCard({
             onDelete(event.id);
           }
         }}
+        onClick={() => onEdit(event)}
         className={cn(
-          "relative bg-card rounded-3xl border border-border/80 p-4 sm:p-5 shadow-card hover:shadow-soft-hover transition-all duration-200",
+          "relative bg-card rounded-3xl border border-border/80 p-4 sm:p-5 shadow-card hover:shadow-soft-hover transition-all duration-200 cursor-pointer active:scale-[0.99]",
           !event.enabled && "opacity-60 grayscale-[40%]"
         )}
       >
@@ -102,7 +103,9 @@ export function EventCard({
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-0.5">
                 <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide">
-                  {typeLabels[event.event_type] || "Sự kiện"}
+                  {event.event_type === "other" && (event as any).custom_type
+                    ? `🌟 ${(event as any).custom_type}`
+                    : (typeLabels[event.event_type] || "Sự kiện")}
                 </span>
                 {event.is_lunar && (
                   <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200/50">
@@ -121,7 +124,7 @@ export function EventCard({
                   {event.displayDate}
                 </span>
 
-                {event.upcomingAge && (
+                {Boolean(event.upcomingAge && event.upcomingAge > 0) && (
                   <span className="text-primary font-bold">
                     • {event.upcomingAge} tuổi
                   </span>
@@ -153,21 +156,33 @@ export function EventCard({
             {/* Desktop Action Buttons (Visible on hover) */}
             <div className="hidden sm:flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
               <button
-                onClick={() => onToggleEnabled(event.id, !event.enabled)}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleEnabled(event.id, !event.enabled);
+                }}
                 className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
                 title={event.enabled ? "Tắt nhắc nhở" : "Bật nhắc nhở"}
               >
                 {event.enabled ? <Bell className="w-4 h-4 text-primary" /> : <BellOff className="w-4 h-4 text-muted-foreground" />}
               </button>
               <button
-                onClick={() => onEdit(event)}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit(event);
+                }}
                 className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
                 title="Chỉnh sửa"
               >
                 <Edit2 className="w-4 h-4" />
               </button>
               <button
-                onClick={() => onDelete(event.id)}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(event.id);
+                }}
                 className="p-1.5 rounded-lg hover:bg-rose-50 text-muted-foreground hover:text-rose-600 transition-colors"
                 title="Xóa sự kiện"
               >
@@ -181,7 +196,11 @@ export function EventCard({
         {(event.note || event.gift_idea) && (
           <div className="mt-3 pt-2.5 border-t border-border/50">
             <button
-              onClick={() => setShowDetails(!showDetails)}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowDetails(!showDetails);
+              }}
               className="text-[11px] font-semibold text-primary hover:underline flex items-center gap-1"
             >
               {showDetails ? "Ẩn ghi chú & quà tặng" : "Xem ghi chú & gợi ý quà tặng"}

@@ -1,15 +1,43 @@
 "use client";
 
+import { useState } from "react";
 import { useEvents } from "@/hooks/use-events";
 import { TodayHighlightCard } from "@/components/events/today-highlight-card";
 import { UpcomingCarousel } from "@/components/events/upcoming-carousel";
 import { EventCard } from "@/components/events/event-card";
+import { EventFormDrawer } from "@/components/events/event-form-drawer";
+import { EventWithMeta, EventFormValues } from "@/types/events";
 import { Users, Calendar as CalendarIcon, Clock, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 
 export default function DashboardPage() {
-  const { events, isLoading, deleteEvent, toggleEventEnabled } = useEvents();
+  const {
+    events,
+    isLoading,
+    addEvent,
+    updateEvent,
+    deleteEvent,
+    toggleEventEnabled,
+    isAdding,
+    isUpdating,
+  } = useEvents();
+
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<EventWithMeta | null>(null);
+
+  const handleEdit = (event: EventWithMeta) => {
+    setEditingEvent(event);
+    setIsDrawerOpen(true);
+  };
+
+  const handleSubmit = async (values: EventFormValues) => {
+    if (editingEvent) {
+      await updateEvent({ id: editingEvent.id, values });
+    } else {
+      await addEvent(values);
+    }
+  };
 
   // Sự kiện hôm nay
   const todayEvents = events.filter((e) => e.daysRemaining === 0);
@@ -98,7 +126,7 @@ export default function DashboardPage() {
       </div>
 
       {/* 3. Dải cuộn ngang "Sắp tới" */}
-      <UpcomingCarousel events={events} />
+      <UpcomingCarousel events={events} onSelectEvent={handleEdit} />
 
       {/* 4. Danh sách sự kiện gần đây */}
       <section className="space-y-4">
@@ -126,13 +154,25 @@ export default function DashboardPage() {
               <EventCard
                 key={ev.id}
                 event={ev}
-                onEdit={() => {}}
+                onEdit={handleEdit}
                 onDelete={deleteEvent}
                 onToggleEnabled={toggleEventEnabled}
               />
             ))}
         </div>
       </section>
+
+      {/* Drawer xem & chỉnh sửa sự kiện khi bấm vào card trên Dashboard */}
+      <EventFormDrawer
+        isOpen={isDrawerOpen}
+        onClose={() => {
+          setIsDrawerOpen(false);
+          setEditingEvent(null);
+        }}
+        onSubmit={handleSubmit}
+        initialData={editingEvent}
+        isSubmitting={isAdding || isUpdating}
+      />
     </div>
   );
 }

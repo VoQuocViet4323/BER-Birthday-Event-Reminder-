@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUserSettings } from "@/hooks/use-user-settings";
 import { useToast } from "@/components/ui/toast";
@@ -659,13 +660,19 @@ export default function SettingsPage() {
 
       {/* Modal Xem trước Email */}
       <AnimatePresence>
-        {showEmailPreview && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm text-foreground">
+        {showEmailPreview && typeof document !== "undefined" && createPortal(
+          <div
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setShowEmailPreview(false);
+            }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md text-foreground animate-in fade-in duration-200"
+          >
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
               className="w-full max-w-lg bg-card rounded-3xl border border-border shadow-2xl p-6 overflow-hidden max-h-[85vh] flex flex-col"
+              onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between pb-3 border-b border-border">
                 <h3 className="font-bold text-sm">Xem trước mẫu email gửi tới bạn</h3>
@@ -707,19 +714,26 @@ export default function SettingsPage() {
                 Đóng xem trước
               </button>
             </motion.div>
-          </div>
+          </div>,
+          document.body
         )}
       </AnimatePresence>
 
       {/* Modal Xác nhận Xóa tài khoản */}
       <AnimatePresence>
-        {showDeleteConfirm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+        {showDeleteConfirm && typeof document !== "undefined" && createPortal(
+          <div
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setShowDeleteConfirm(false);
+            }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200"
+          >
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
               className="w-full max-w-sm bg-card rounded-3xl border border-rose-500/30 shadow-2xl p-6 text-center space-y-4"
+              onClick={(e) => e.stopPropagation()}
             >
               <div className="w-12 h-12 rounded-2xl bg-rose-500/10 text-rose-500 mx-auto flex items-center justify-center">
                 <AlertTriangle className="w-6 h-6" />
@@ -756,7 +770,8 @@ export default function SettingsPage() {
                 </button>
               </div>
             </motion.div>
-          </div>
+          </div>,
+          document.body
         )}
       </AnimatePresence>
     </div>

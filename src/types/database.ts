@@ -98,6 +98,8 @@ export interface Database {
           avatar_url: string | null;
           repeat_yearly: boolean;
           remind_days: number[] | null;
+          remind_time?: string | null;
+          custom_type?: string | null;
           enabled: boolean;
           created_at: string;
           updated_at: string;
@@ -117,6 +119,8 @@ export interface Database {
           avatar_url?: string | null;
           repeat_yearly?: boolean;
           remind_days?: number[] | null;
+          remind_time?: string | null;
+          custom_type?: string | null;
           enabled?: boolean;
           created_at?: string;
           updated_at?: string;
@@ -136,6 +140,8 @@ export interface Database {
           avatar_url?: string | null;
           repeat_yearly?: boolean;
           remind_days?: number[] | null;
+          remind_time?: string | null;
+          custom_type?: string | null;
           enabled?: boolean;
           created_at?: string;
           updated_at?: string;
@@ -174,6 +180,41 @@ export interface Database {
           status?: "sent" | "failed" | "pending";
           error?: string | null;
           sent_at?: string;
+        };
+      };
+      diaries: {
+        Row: {
+          id: string;
+          user_id: string;
+          entry_date: string;
+          title: string | null;
+          content: string;
+          mood: "happy" | "calm" | "excited" | "sad" | "grateful" | null;
+          tags: string[] | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id?: string;
+          entry_date: string;
+          title?: string | null;
+          content: string;
+          mood?: "happy" | "calm" | "excited" | "sad" | "grateful" | null;
+          tags?: string[] | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          entry_date?: string;
+          title?: string | null;
+          content?: string;
+          mood?: "happy" | "calm" | "excited" | "sad" | "grateful" | null;
+          tags?: string[] | null;
+          created_at?: string;
+          updated_at?: string;
         };
       };
     };

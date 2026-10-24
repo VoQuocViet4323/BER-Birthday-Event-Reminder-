@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { EventWithMeta } from "@/types/events";
 import { fireCelebrationConfetti } from "@/components/common/confetti-celebration";
 import { Sparkles, MessageCircle, Send, Heart, Copy, Check } from "lucide-react";
@@ -12,9 +13,14 @@ interface TodayHighlightCardProps {
 }
 
 export function TodayHighlightCard({ events }: TodayHighlightCardProps) {
+  const [mounted, setMounted] = useState(false);
   const [selectedWishEvent, setSelectedWishEvent] = useState<EventWithMeta | null>(null);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const { toast } = useToast();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   if (events.length === 0) return null;
 
@@ -87,7 +93,7 @@ export function TodayHighlightCard({ events }: TodayHighlightCardProps) {
             </div>
             <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
               {currentEvent.name}
-              {currentEvent.upcomingAge && (
+              {Boolean(currentEvent.upcomingAge && currentEvent.upcomingAge > 0) && (
                 <span className="ml-2.5 text-lg font-semibold opacity-90">
                   (Tròn {currentEvent.upcomingAge} tuổi)
                 </span>
@@ -121,13 +127,17 @@ export function TodayHighlightCard({ events }: TodayHighlightCardProps) {
 
       {/* Modal / Dialog Gợi ý lời chúc và gửi qua Zalo / Messenger / SMS */}
       <AnimatePresence>
-        {selectedWishEvent && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm text-foreground">
+        {selectedWishEvent && mounted && createPortal(
+          <div
+            onClick={() => setSelectedWishEvent(null)}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md text-foreground animate-in fade-in duration-200"
+          >
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
               className="w-full max-w-lg bg-card rounded-3xl border border-border shadow-2xl p-6 overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between pb-4 border-b border-border">
                 <div className="flex items-center gap-2">
@@ -207,7 +217,8 @@ export function TodayHighlightCard({ events }: TodayHighlightCardProps) {
                 </div>
               </div>
             </motion.div>
-          </div>
+          </div>,
+          document.body
         )}
       </AnimatePresence>
     </motion.div>

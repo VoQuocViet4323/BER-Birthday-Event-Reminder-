@@ -1,13 +1,16 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { eventFormSchema, EventFormValues, EventWithMeta } from "@/types/events";
-import { X, ChevronDown, ChevronUp, Sparkles, Calendar as CalendarIcon, Gift, FileText, Check } from "lucide-react";
+import { X, ChevronDown, ChevronUp, Sparkles, Calendar as CalendarIcon, Gift, FileText, Check, Clock, Bell } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { convertLunar2Solar, convertSolar2Lunar } from "@/lib/lunar/amlich";
 import { cn } from "@/lib/utils";
+import { IosTimePicker } from "@/components/ui/ios-time-picker";
+import { RemindDaysPicker } from "@/components/events/remind-days-picker";
 
 interface EventFormDrawerProps {
   isOpen: boolean;
@@ -24,7 +27,12 @@ export function EventFormDrawer({
   initialData,
   isSubmitting,
 }: EventFormDrawerProps) {
+  const [mounted, setMounted] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const {
     register,
@@ -40,14 +48,16 @@ export function EventFormDrawer({
       event_type: "birthday",
       event_day: new Date().getDate(),
       event_month: new Date().getMonth() + 1,
-      event_year: null,
+      event_year: new Date().getFullYear(),
       is_lunar: false,
       group_name: "Gia đình",
       note: "",
       gift_idea: "",
       avatar_url: "",
       repeat_yearly: true,
-      remind_days: null,
+      remind_days: [],
+      remind_time: "08:00",
+      custom_type: "",
       enabled: true,
     },
   });
@@ -59,7 +69,8 @@ export function EventFormDrawer({
   const eventYear = watch("event_year");
   const eventType = watch("event_type");
   const groupName = watch("group_name");
-  const remindDays = watch("remind_days") || [7, 3, 1, 0];
+  const remindDays = watch("remind_days") || [];
+  const remindTime = watch("remind_time") || "08:00";
 
   // Populate data when editing
   useEffect(() => {
@@ -69,33 +80,38 @@ export function EventFormDrawer({
         event_type: initialData.event_type,
         event_day: initialData.event_day,
         event_month: initialData.event_month,
-        event_year: initialData.event_year,
+        event_year: initialData.event_year ?? new Date().getFullYear(),
         is_lunar: initialData.is_lunar,
         group_name: initialData.group_name,
         note: initialData.note || "",
         gift_idea: initialData.gift_idea || "",
         avatar_url: initialData.avatar_url || "",
         repeat_yearly: initialData.repeat_yearly,
-        remind_days: initialData.remind_days,
+        remind_days: initialData.remind_days || [],
+        remind_time: (initialData as any)?.remind_time || "08:00",
+        custom_type: (initialData as any)?.custom_type || "",
         enabled: initialData.enabled,
       });
-      if (initialData.note || initialData.gift_idea || initialData.is_lunar) {
+      if (initialData.note || initialData.gift_idea || initialData.is_lunar || (initialData.remind_days && initialData.remind_days.length > 0)) {
         setShowAdvanced(true);
       }
     } else {
+      const now = new Date();
       reset({
         name: "",
         event_type: "birthday",
-        event_day: new Date().getDate(),
-        event_month: new Date().getMonth() + 1,
-        event_year: null,
+        event_day: now.getDate(),
+        event_month: now.getMonth() + 1,
+        event_year: now.getFullYear(),
         is_lunar: false,
         group_name: "Gia đình",
         note: "",
         gift_idea: "",
         avatar_url: "",
         repeat_yearly: true,
-        remind_days: null,
+        remind_days: [],
+        remind_time: "08:00",
+        custom_type: "",
         enabled: true,
       });
       setShowAdvanced(false);
@@ -129,22 +145,28 @@ export function EventFormDrawer({
   };
 
   const toggleRemindOffset = (offset: number) => {
-    const cur = remindDays || [7, 3, 1, 0];
+    const cur = Array.isArray(remindDays) ? remindDays : [];
     const exists = cur.includes(offset);
     const updated = exists ? cur.filter((d) => d !== offset) : [...cur, offset].sort((a, b) => b - a);
     setValue("remind_days", updated);
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || !mounted) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4">
+  return createPortal(
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-md p-0 sm:p-4 animate-in fade-in duration-200"
+    >
       <motion.div
         initial={{ y: "100%", opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         exit={{ y: "100%", opacity: 0 }}
         transition={{ type: "spring", damping: 25, stiffness: 280 }}
         className="w-full max-w-lg bg-card rounded-t-3xl sm:rounded-3xl border border-border shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Drawer Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
@@ -157,6 +179,7 @@ export function EventFormDrawer({
             </p>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="p-2 rounded-full hover:bg-secondary text-muted-foreground transition-colors"
           >
@@ -211,6 +234,34 @@ export function EventFormDrawer({
                 </button>
               ))}
             </div>
+
+            {/* Ô nhập tên loại sự kiện khi chọn "Khác" */}
+            <AnimatePresence>
+              {eventType === "other" && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0, y: -6 }}
+                  animate={{ opacity: 1, height: "auto", y: 0 }}
+                  exit={{ opacity: 0, height: 0, y: -6 }}
+                  transition={{ duration: 0.2 }}
+                  className="mt-2.5 overflow-hidden"
+                >
+                  <label className="block text-xs font-semibold text-primary mb-1">
+                    Tên sự kiện / loại sự kiện là gì? <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    {...register("custom_type")}
+                    placeholder="VD: Lễ tốt nghiệp, Họp lớp, Tân gia, Thi bằng lái..."
+                    className={cn(
+                      "w-full px-3.5 py-2.5 rounded-xl bg-secondary/60 border border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary text-sm font-medium placeholder:text-muted-foreground/60 transition-all",
+                      errors.custom_type && "border-rose-500 focus:ring-rose-500"
+                    )}
+                  />
+                  {errors.custom_type && (
+                    <p className="text-xs text-rose-500 mt-1 font-medium">{errors.custom_type.message}</p>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* 3. Ngày, Tháng & Năm sinh (BẮT BUỘC NGÀY/THÁNG) */}
@@ -261,10 +312,10 @@ export function EventFormDrawer({
                   min={1900}
                   max={2100}
                   {...register("event_year")}
-                  placeholder="Năm (tùy chọn)"
+                  placeholder="Năm"
                   className="w-full px-3 py-2.5 rounded-xl bg-secondary/50 border border-border focus:ring-2 focus:ring-primary text-sm text-center font-bold"
                 />
-                <span className="block text-[10px] text-muted-foreground text-center mt-1">Năm sinh / Năm tạo</span>
+                <span className="block text-[10px] text-muted-foreground text-center mt-1">Năm diễn ra</span>
               </div>
             </div>
 
@@ -325,32 +376,18 @@ export function EventFormDrawer({
                     </div>
                   </div>
 
-                  {/* Mốc nhắc nhở */}
-                  <div>
-                    <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
-                      Mốc nhắc nhở trước (ngày)
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      {[14, 7, 3, 1, 0].map((offset) => {
-                        const isSelected = remindDays.includes(offset);
-                        return (
-                          <button
-                            type="button"
-                            key={offset}
-                            onClick={() => toggleRemindOffset(offset)}
-                            className={cn(
-                              "px-3 py-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5",
-                              isSelected
-                                ? "bg-primary text-white border-primary shadow-sm"
-                                : "bg-secondary text-muted-foreground border-border hover:bg-muted"
-                            )}
-                          >
-                            {isSelected && <Check className="w-3 h-3" />}
-                            {offset === 0 ? "Đúng ngày" : `Trước ${offset} ngày`}
-                          </button>
-                        );
-                      })}
-                    </div>
+                  {/* Mốc nhắc nhở tùy chỉnh gọn gàng */}
+                  <RemindDaysPicker
+                    value={remindDays}
+                    onChange={(days) => setValue("remind_days", days)}
+                  />
+
+                  {/* Thời gian gửi lời nhắc qua email (Chỉ mở con lăn khi bấm vào) */}
+                  <div className="pt-1">
+                    <IosTimePicker
+                      value={remindTime}
+                      onChange={(t) => setValue("remind_time", t)}
+                    />
                   </div>
 
                   {/* Ghi chú */}
@@ -405,6 +442,7 @@ export function EventFormDrawer({
           </div>
         </form>
       </motion.div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -152,9 +152,11 @@ export function AppHeader({ onOpenCreateModal }: AppHeaderProps) {
                         </span>
                       )}
                     </div>
-                    <p className="text-muted-foreground truncate">
-                      {profile?.timezone || "Asia/Ho_Chi_Minh"}
-                    </p>
+                    {profile?.email ? (
+                      <p className="text-muted-foreground truncate text-xs font-normal mt-0.5">
+                        {profile.email}
+                      </p>
+                    ) : null}
                   </div>
 
                   {isAdmin && (

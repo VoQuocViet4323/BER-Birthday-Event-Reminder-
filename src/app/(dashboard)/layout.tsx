@@ -7,6 +7,7 @@ import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
 import { OfflineIndicator } from "@/components/common/offline-indicator";
 import { EventFormDrawer } from "@/components/events/event-form-drawer";
 import { useEvents } from "@/hooks/use-events";
+import { useAutoReminderScheduler } from "@/hooks/use-auto-reminder-scheduler";
 import { EventWithMeta, EventFormValues } from "@/types/events";
 
 export default function DashboardLayout({
@@ -14,6 +15,9 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // Tự động quét và gửi email nhắc nhở theo phút khi người dùng mở ứng dụng
+  useAutoReminderScheduler();
+
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<EventWithMeta | null>(null);
   const { addEvent, updateEvent, isAdding, isUpdating } = useEvents();

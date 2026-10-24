@@ -20,6 +20,21 @@ export default function LoginPage() {
   // Tự động điền tài khoản & mật khẩu nếu đã được ghi nhớ ở máy (nếu không ghi nhớ thì xóa sạch)
   useEffect(() => {
     try {
+      if (typeof window !== "undefined") {
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlError = urlParams.get("error");
+        if (urlError) {
+          toast({
+            title: "Đăng nhập Google không thành công",
+            description:
+              urlError === "auth-callback-failed"
+                ? "Không thể hoàn tất xác thực từ Google. Vui lòng kiểm tra cấu hình Google Provider trên Supabase."
+                : `Mã lỗi xác thực: ${urlError}`,
+            variant: "error",
+          });
+        }
+      }
+
       const isRemembered = localStorage.getItem("ber_remember_me") === "true";
       const savedUser = localStorage.getItem("ber_remembered_username");
       const savedPass = localStorage.getItem("ber_remembered_password");
@@ -223,12 +238,30 @@ export default function LoginPage() {
   };
 
   const handleGoogleLogin = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/api/auth/callback`,
-      },
-    });
+    setIsLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/api/auth/callback`,
+        },
+      });
+      if (error) {
+        toast({
+          title: "Lỗi đăng nhập Google",
+          description: error.message || "Chưa thể kết nối tới Google Provider",
+          variant: "error",
+        });
+        setIsLoading(false);
+      }
+    } catch (err: any) {
+      toast({
+        title: "Lỗi đăng nhập Google",
+        description: err?.message || "Không thể kết nối đến hệ thống xác thực Google.",
+        variant: "error",
+      });
+      setIsLoading(false);
+    }
   };
 
   return (

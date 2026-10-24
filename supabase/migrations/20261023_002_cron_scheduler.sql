@@ -35,14 +35,17 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Lên lịch chạy mỗi giờ tại phút thứ 0: '0 * * * *'
+-- Lên lịch chạy mỗi phút: '* * * * *' (quét chính xác theo từng phút)
 -- Xóa job cũ nếu đã tồn tại để tránh tạo trùng lặp
 SELECT cron.unschedule('send-hourly-reminders') WHERE EXISTS (
     SELECT 1 FROM cron.job WHERE jobname = 'send-hourly-reminders'
 );
+SELECT cron.unschedule('send-minute-reminders') WHERE EXISTS (
+    SELECT 1 FROM cron.job WHERE jobname = 'send-minute-reminders'
+);
 
 SELECT cron.schedule(
-    'send-hourly-reminders',
-    '0 * * * *',
+    'send-minute-reminders',
+    '* * * * *',
     'SELECT public.invoke_send_reminders();'
 );

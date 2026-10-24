@@ -8,9 +8,10 @@ import { cn } from "@/lib/utils";
 
 interface UpcomingCarouselProps {
   events: EventWithMeta[];
+  onSelectEvent?: (event: EventWithMeta) => void;
 }
 
-export function UpcomingCarousel({ events }: UpcomingCarouselProps) {
+export function UpcomingCarousel({ events, onSelectEvent }: UpcomingCarouselProps) {
   // Lọc các sự kiện sắp tới trong 30 ngày (bỏ qua hôm nay vì đã có thẻ Hôm Nay)
   const upcomingEvents = events
     .filter((e) => e.daysRemaining > 0 && e.daysRemaining <= 30)
@@ -56,7 +57,8 @@ export function UpcomingCarousel({ events }: UpcomingCarouselProps) {
           return (
             <div
               key={ev.id}
-              className="min-w-[240px] max-w-[260px] snap-start rounded-3xl bg-card border border-border/80 p-4 shadow-card hover:shadow-soft-hover transition-all duration-200 flex flex-col justify-between shrink-0 group"
+              onClick={() => onSelectEvent?.(ev)}
+              className="min-w-[240px] max-w-[260px] snap-start rounded-3xl bg-card border border-border/80 p-4 shadow-card hover:shadow-soft-hover transition-all duration-200 flex flex-col justify-between shrink-0 group cursor-pointer active:scale-[0.98]"
             >
               <div>
                 {/* Header card: Avatar & Countdown badge */}
@@ -87,7 +89,7 @@ export function UpcomingCarousel({ events }: UpcomingCarouselProps) {
                 </h3>
                 <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5">
                   <span>{typeLabel}</span>
-                  {ev.upcomingAge && (
+                  {Boolean(ev.upcomingAge && ev.upcomingAge > 0) && (
                     <span className="font-semibold text-primary">
                       • Tròn {ev.upcomingAge} tuổi
                     </span>

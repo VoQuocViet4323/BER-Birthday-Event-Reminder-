@@ -6,7 +6,6 @@ import { useState, Suspense } from "react";
 import { EventFormDrawer } from "@/components/events/event-form-drawer";
 import { EventWithMeta, EventFormValues } from "@/types/events";
 import { useSearchParams } from "next/navigation";
-import { Plus } from "lucide-react";
 
 function EventsContent() {
   const {
@@ -53,26 +52,21 @@ function EventsContent() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Page Header - Tinh gọn, cân đối, loại bỏ nút thêm thừa thãi */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-extrabold text-foreground tracking-tight">
-            Tất cả sự kiện ({events.length})
-          </h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Tìm kiếm, lọc theo nhóm và sắp xếp theo nhu cầu
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-2xl sm:text-3xl font-black text-foreground tracking-tight">
+              Tất cả sự kiện
+            </h1>
+            <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+              {events.length}
+            </span>
+          </div>
+          <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+            Tìm kiếm, lọc theo nhóm và quản lý các ngày quan trọng
           </p>
         </div>
-
-        <button
-          onClick={() => {
-            setEditingEvent(null);
-            setIsDrawerOpen(true);
-          }}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl gradient-brand text-white text-xs font-bold shadow-soft hover:shadow-soft-hover transition-all"
-        >
-          <Plus className="w-4 h-4 stroke-[2.5]" />
-          <span>Thêm sự kiện</span>
-        </button>
       </div>
 
       <EventListGrouped
