@@ -1836,6 +1836,33 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
   - Unit tests: **17/17 tests PASS**.
   - Next.js build: **`npm run build` PASS 100% (Compiled successfully, all 18 routes generated)**.
 
+---
+
+### 📅 [2026-10-25 16:08:00] - Sửa Lỗi Tab "Sự Kiện" Bị Lệch và Bị Nút FAB Đè Lấn Trên Mobile Bottom Nav
+
+- **Yêu cầu của người dùng**:
+  - Sửa lỗi tab "Sự kiện" trên thanh điều hướng chân trang (Mobile Bottom Nav) bị lệch vị trí so với các tab còn lại (kèm ảnh chụp khoanh đỏ tab Sự kiện sát vách và bị nút FAB "+" hồng đè mép phải).
+- **Nguyên nhân phát hiện**:
+  1. **Layout cũ dùng Flexbox không đối xứng**: `flex items-center justify-around` phân bổ 4 item nhưng tab 2 (Sự kiện) lại gán `mr-6` và tab 3 (Lịch) gán `ml-6` thủ công.
+  2. Nút FAB `Plus` được định vị `absolute left-1/2 -top-6 -translate-x-1/2` với kích thước lớn `w-14 h-14` (56px).
+  3. Trên màn hình mobile (chiều rộng 360px - 390px), tab "Sự kiện" có tên dài 7 ký tự kèm dấu tiếng Việt nên vùng chạm mở rộng bị nút FAB lấn đè lên mép phải, trong khi khoảng trống giữa "Trang chủ" và "Sự kiện" lại bị giãn quá mức, tạo cảm giác tab Sự kiện bị lệch tâm và xô dạt vào nút tròn.
+- **Giải pháp đã thực hiện**:
+  1. Chuyển đổi toàn bộ layout của `MobileBottomNav` sang **CSS Grid 5 cột cân bằng tuyệt đối** (`grid grid-cols-5 items-center`):
+     - Cột 1 (20%): Tab Trang chủ.
+     - Cột 2 (20%): Tab Sự kiện - định vị chính giữa slot 20%, không bị xô lệch.
+     - Cột 3 (20%): Nút FAB "+" chính giữa - căn tâm 50% hoàn hảo, kích thước tối ưu `w-[52px] h-[52px]` `-top-7` không bao giờ chạm hay đè lên các tab liền kề.
+     - Cột 4 (20%): Tab Lịch.
+     - Cột 5 (20%): Tab Cài đặt.
+  2. Xóa bỏ hoàn toàn các class cưỡng chế lệch margin `mr-6` và `ml-6`.
+  3. Bổ sung `whitespace-nowrap tracking-tight` để chữ "Sự kiện" và các tab luôn hiển thị thẳng hàng, sắc nét, không gãy dòng trên mọi kích thước màn hình.
+- **Danh sách file đã chỉnh sửa**:
+  - `src/components/layout/mobile-bottom-nav.tsx`
+  - `MEMORIES.md`
+- **Trạng thái kiểm thử**:
+  - Unit tests: **17/17 tests PASS**.
+  - Next.js build: **`npm run build` PASS 100% (Compiled successfully, all 18 routes generated)**.
+
+
 
 
 
