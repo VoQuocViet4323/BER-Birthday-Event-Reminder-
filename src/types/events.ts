@@ -38,6 +38,7 @@ export const eventFormSchema = z.object({
   remind_days: z.array(z.number()).optional().nullable(),
   remind_time: z.string().optional().nullable(),
   custom_type: z.string().max(100, "Tên loại sự kiện không quá 100 ký tự").optional().nullable(),
+  custom_group: z.string().max(100, "Tên nhóm không quá 100 ký tự").optional().nullable(),
   enabled: z.boolean().default(true),
 });
 

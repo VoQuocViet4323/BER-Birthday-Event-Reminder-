@@ -18,7 +18,7 @@ import {
   Plus,
   Send,
 } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { useDiaries, normalizeDateKey } from "@/hooks/use-diaries";
@@ -235,14 +235,14 @@ export function MonthCalendarView({ events }: MonthCalendarViewProps) {
       </div>
 
       {/* Calendar Grid */}
-      <div className="bg-card rounded-3xl border border-border p-4 sm:p-6 shadow-card overflow-hidden">
+      <div className="bg-card rounded-3xl border border-border p-2.5 sm:p-6 shadow-card overflow-hidden">
         {/* Day Name Headers */}
         <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-2 text-center">
           {dayNames.map((name, i) => (
             <div
               key={name}
               className={cn(
-                "py-2 text-xs font-bold",
+                "py-1.5 sm:py-2 text-xs font-bold",
                 i >= 5 ? "text-rose-500/80" : "text-muted-foreground"
               )}
             >
@@ -257,7 +257,7 @@ export function MonthCalendarView({ events }: MonthCalendarViewProps) {
           {Array.from({ length: startOffset }).map((_, idx) => (
             <div
               key={`empty-${idx}`}
-              className="min-h-[70px] sm:min-h-[90px] rounded-2xl bg-secondary/20 opacity-30 pointer-events-none"
+              className="min-h-[66px] sm:min-h-[90px] rounded-xl sm:rounded-2xl bg-secondary/20 opacity-30 pointer-events-none"
             />
           ))}
 
@@ -289,7 +289,7 @@ export function MonthCalendarView({ events }: MonthCalendarViewProps) {
                   setSelectedDate(new Date(year, month, dayNumber));
                 }}
                 className={cn(
-                  "min-h-[70px] sm:min-h-[90px] p-2 rounded-2xl border transition-all text-left flex flex-col justify-between relative cursor-pointer group active:scale-95",
+                  "min-h-[66px] sm:min-h-[90px] p-1.5 sm:p-2 rounded-xl sm:rounded-2xl border transition-all text-left flex flex-col justify-between relative cursor-pointer group active:scale-95 overflow-hidden",
                   isSelected
                     ? "ring-2 ring-primary border-primary bg-primary/10 shadow-sm"
                     : isToday
@@ -303,7 +303,7 @@ export function MonthCalendarView({ events }: MonthCalendarViewProps) {
                 <div className="flex items-center justify-between w-full">
                   <span
                     className={cn(
-                      "text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center transition-colors",
+                      "text-xs font-bold w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center transition-colors shrink-0",
                       isToday
                         ? "gradient-brand text-white shadow-xs"
                         : isSelected
@@ -316,7 +316,8 @@ export function MonthCalendarView({ events }: MonthCalendarViewProps) {
                     {dayNumber}
                   </span>
 
-                  <div className="flex items-center gap-1">
+                  {/* Chỉ hiển thị badge chi tiết ở góc trên khi ở màn hình máy tính (sm:) */}
+                  <div className="hidden sm:flex items-center gap-1 shrink-0">
                     {/* Biểu tượng nhật ký */}
                     {hasDiary && (
                       <span
@@ -341,22 +342,47 @@ export function MonthCalendarView({ events }: MonthCalendarViewProps) {
                   </div>
                 </div>
 
-                {/* Event Dot Indicators & Names on desktop */}
-                <div className="w-full space-y-1">
-                  {/* Chấm màu tròn trên mobile */}
-                  <div className="flex items-center gap-1 sm:hidden flex-wrap">
-                    {dayEvents.slice(0, 3).map((ev) => (
-                      <span
-                        key={ev.id}
-                        className={cn(
-                          "w-2.5 h-2.5 rounded-full shadow-xs",
-                          groupColors[ev.group_name] || "bg-primary"
+                {/* Indicators & Event details */}
+                <div className="w-full mt-auto">
+                  {/* Mobile: Chấm tròn sự kiện và Icon nhật ký nằm gọn gàng bên dưới */}
+                  <div className="flex sm:hidden flex-col items-center justify-end w-full gap-0.5">
+                    {/* Chấm tròn sự kiện */}
+                    {hasEvents && (
+                      <div className="flex items-center justify-center gap-1 max-w-full">
+                        {dayEvents.slice(0, 3).map((ev) => (
+                          <span
+                            key={ev.id}
+                            className={cn(
+                              "w-1.5 h-1.5 rounded-full shadow-xs shrink-0",
+                              groupColors[ev.group_name] || "bg-primary"
+                            )}
+                          />
+                        ))}
+                        {dayEvents.length > 3 && (
+                          <span className="text-[8px] font-bold text-muted-foreground leading-none">
+                            +{dayEvents.length - 3}
+                          </span>
                         )}
-                      />
-                    ))}
+                      </div>
+                    )}
+
+                    {/* Icon nhật ký trên mobile */}
+                    {hasDiary && (
+                      <div
+                        className="flex items-center justify-center text-[10px] leading-none text-primary"
+                        title={`${cellDiaries.length} bài nhật ký`}
+                      >
+                        <span>📖</span>
+                        {cellDiaries.length > 1 && (
+                          <span className="text-[8px] font-bold text-primary ml-0.5">
+                            {cellDiaries.length}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
 
-                  {/* Nhãn sự kiện trên desktop */}
+                  {/* Desktop: Danh sách nhãn sự kiện */}
                   <div className="hidden sm:block space-y-0.5">
                     {dayEvents.slice(0, 2).map((ev) => (
                       <div
@@ -555,7 +581,7 @@ export function MonthCalendarView({ events }: MonthCalendarViewProps) {
                     <div>
                       <p className="font-bold text-xs text-foreground">{ev.name}</p>
                       <p className="text-[11px] text-muted-foreground">
-                        {ev.group_name} {Boolean(ev.upcomingAge && ev.upcomingAge > 0) ? `• ${ev.upcomingAge} tuổi` : ""}
+                        {(ev as any).custom_group || ev.group_name} {Boolean(ev.upcomingAge && ev.upcomingAge > 0) ? `• ${ev.upcomingAge} tuổi` : ""}
                       </p>
                     </div>
                   </div>
@@ -595,20 +621,44 @@ export function MonthCalendarView({ events }: MonthCalendarViewProps) {
       />
 
       {/* Modal Xem Chi Tiết Sự Kiện (Chỉ Xem) */}
-      {mounted && viewingEvent && createPortal(
-        <div
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setViewingEvent(null);
-          }}
-          className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-md p-0 sm:p-4 animate-in fade-in duration-200"
-        >
-          <motion.div
-            initial={{ y: "100%", opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ type: "spring", damping: 25, stiffness: 280 }}
-            className="w-full max-w-lg bg-card rounded-t-3xl sm:rounded-3xl border border-border shadow-2xl p-6 overflow-hidden flex flex-col max-h-[90vh]"
-            onClick={(e) => e.stopPropagation()}
-          >
+      {mounted && typeof document !== "undefined" && createPortal(
+        <AnimatePresence mode="wait">
+          {viewingEvent && (
+            <motion.div
+              key="viewing-event-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.22, ease: "easeOut" }}
+              onClick={(e) => {
+                if (e.target === e.currentTarget) setViewingEvent(null);
+              }}
+              className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-[3px] p-0 sm:p-4 touch-none"
+            >
+              <motion.div
+                key="viewing-event-sheet"
+                initial={{ y: "100%", opacity: 0.95 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: "100%", opacity: 0.95 }}
+                transition={{
+                  type: "spring",
+                  damping: 30,
+                  stiffness: 340,
+                  mass: 0.8,
+                }}
+                drag="y"
+                dragConstraints={{ top: 0 }}
+                dragElastic={{ top: 0, bottom: 0.4 }}
+                onDragEnd={(_e, info) => {
+                  if (info.offset.y > 100 || info.velocity.y > 450) {
+                    setViewingEvent(null);
+                  }
+                }}
+                className="w-full max-w-lg bg-card rounded-t-3xl sm:rounded-3xl border border-border shadow-2xl p-6 overflow-hidden flex flex-col max-h-[92vh] will-change-transform transform-gpu"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Mobile Drag Indicator Handle */}
+                <div className="w-12 h-1.5 bg-muted-foreground/30 rounded-full mx-auto -mt-2 mb-3 sm:hidden shrink-0 cursor-grab active:cursor-grabbing" />
             {/* Header */}
             <div className="flex items-start justify-between pb-4 border-b border-border">
               <div className="flex items-center gap-3">
@@ -637,7 +687,7 @@ export function MonthCalendarView({ events }: MonthCalendarViewProps) {
                     </span>
                     <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground flex items-center gap-1">
                       <span className={cn("w-2 h-2 rounded-full", groupColors[viewingEvent.group_name] || "bg-primary")} />
-                      {viewingEvent.group_name}
+                      {(viewingEvent as any).custom_group || viewingEvent.group_name}
                     </span>
                     {viewingEvent.is_lunar && (
                       <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/20">
@@ -787,7 +837,9 @@ export function MonthCalendarView({ events }: MonthCalendarViewProps) {
               </button>
             </div>
           </motion.div>
-        </div>,
+        </motion.div>
+      )}
+    </AnimatePresence>,
         document.body
       )}
     </div>

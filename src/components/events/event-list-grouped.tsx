@@ -75,7 +75,8 @@ export function EventListGrouped({
           ev.group_name.toLowerCase().includes(search.toLowerCase()) ||
           (ev.note && ev.note.toLowerCase().includes(search.toLowerCase())) ||
           (ev.gift_idea && ev.gift_idea.toLowerCase().includes(search.toLowerCase())) ||
-          ((ev as any).custom_type && (ev as any).custom_type.toLowerCase().includes(search.toLowerCase()));
+          ((ev as any).custom_type && (ev as any).custom_type.toLowerCase().includes(search.toLowerCase())) ||
+          ((ev as any).custom_group && (ev as any).custom_group.toLowerCase().includes(search.toLowerCase()));
 
         const matchesGroup =
           selectedGroup === "Tất cả" || ev.group_name === selectedGroup;

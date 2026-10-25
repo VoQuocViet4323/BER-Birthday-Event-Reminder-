@@ -100,6 +100,7 @@ export interface Database {
           remind_days: number[] | null;
           remind_time?: string | null;
           custom_type?: string | null;
+          custom_group?: string | null;
           enabled: boolean;
           created_at: string;
           updated_at: string;
@@ -121,6 +122,7 @@ export interface Database {
           remind_days?: number[] | null;
           remind_time?: string | null;
           custom_type?: string | null;
+          custom_group?: string | null;
           enabled?: boolean;
           created_at?: string;
           updated_at?: string;
@@ -142,6 +144,7 @@ export interface Database {
           remind_days?: number[] | null;
           remind_time?: string | null;
           custom_type?: string | null;
+          custom_group?: string | null;
           enabled?: boolean;
           created_at?: string;
           updated_at?: string;

@@ -1757,6 +1757,44 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
   - Build: **Passed (Ready)**.
   - Deploy status: **Active 24/7/365**.
 
+---
+
+### 📅 2026-10-25 15:37:00 | Nâng Cấp Hiệu Ứng Animation Mượt Mà & Hậu Animation (Exit Animation) Cho Mobile
+
+- **Yêu cầu của người dùng**:
+  - Làm lại animation khi bấm vào xem thông tin sự kiện hoặc thêm mới sự kiện ở mobile sao cho mượt hơn, không bị lag hay cảm giác trì trệ.
+  - Phải có đầy đủ **hậu animation** (hiệu ứng mượt mà cả khi trượt mở ra lẫn khi đóng/vuốt tắt).
+- **Nguyên nhân phát hiện**:
+  1. Thiếu `AnimatePresence` bọc ngoài `createPortal`: khiến `exit` animation bị bỏ qua hoàn toàn, khi đóng modal/drawer bị biến mất ngay lập tức (0ms snap) mà không có hậu animation.
+  2. Backdrop trước đó dùng CSS `animate-in` tĩnh và `backdrop-blur-md` (12px) trên toàn màn hình điện thoại gây drop FPS nặng (GPU overdraw) trong lúc sheet đang trượt.
+  3. Lò xo `spring` trước đó có damping thấp (`damping: 25, stiffness: 280`) tạo cảm giác chao đảo, trễ nải (spongy).
+  4. Nút bấm trên thiết bị di động có độ trễ tap 300ms do thiếu `touch-manipulation`.
+- **Nội dung đã triển khai**:
+  1. **Bọc `<AnimatePresence mode="wait">` cho toàn bộ Drawer & Modal**:
+     - `src/components/events/event-form-drawer.tsx` (Thêm mới & Chỉnh sửa sự kiện).
+     - `src/components/calendar/month-calendar-view.tsx` (Xem chi tiết sự kiện).
+     - `src/components/calendar/diary-drawer.tsx` (Xem & Viết nhật ký).
+  2. **Chuẩn hóa thông số vật lý Animation theo chuẩn iOS Sheet**:
+     - Lò xo trượt mở: `type: "spring", damping: 30, stiffness: 340, mass: 0.8` $\rightarrow$ Phản hồi tức thì, mượt mà dứt khoát.
+     - Hậu animation (trượt đóng): Trượt êm ái xuống `y: "100%"` với `opacity: 0.95` và nền mờ mờ dần về `0` trong `0.22s`.
+     - Kích hoạt gia tốc phần cứng GPU: `transform-gpu` và `will-change-transform`.
+     - Tối ưu nền mờ: Giảm tải GPU mobile từ `backdrop-blur-md` xuống `backdrop-blur-[3px] bg-black/60`.
+  3. **Thêm thanh tay cầm kéo (Drag Handle) & Cử chỉ vuốt để đóng (Drag-to-Dismiss)**:
+     - Thêm thanh pill handle tròn ở đỉnh drawer trên mobile.
+     - Hỗ trợ vuốt xuống (`drag="y"`) để tự động đóng sheet tự nhiên như ứng dụng gốc (Native App).
+  4. **Loại bỏ độ trễ Tap 300ms**:
+     - Thêm `touch-manipulation` vào nút FAB "+" ở bottom navigation, thẻ sự kiện `EventCard` và `UpcomingCarousel`.
+- **Các file đã chỉnh sửa**:
+  - `src/components/events/event-form-drawer.tsx`
+  - `src/components/calendar/month-calendar-view.tsx`
+  - `src/components/calendar/diary-drawer.tsx`
+  - `src/components/layout/mobile-bottom-nav.tsx`
+  - `src/components/events/event-card.tsx`
+  - `src/components/events/upcoming-carousel.tsx`
+- **Trạng thái kiểm thử**:
+  - Unit tests: **17/17 tests PASS**.
+  - Build status: **`npm run build` thành công 100%**.
+
 
 
 

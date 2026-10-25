@@ -55,7 +55,7 @@ export function MobileBottomNav({ onOpenCreateModal }: MobileBottomNavProps) {
         <div className="absolute left-1/2 -top-6 -translate-x-1/2">
           <button
             onClick={onOpenCreateModal}
-            className="w-13 h-13 p-3.5 rounded-full gradient-brand text-white shadow-glow hover:scale-110 active:scale-95 transition-all flex items-center justify-center"
+            className="w-14 h-14 p-3.5 rounded-full gradient-brand text-white shadow-glow hover:scale-105 active:scale-95 transition-all flex items-center justify-center cursor-pointer touch-manipulation"
             title="Thêm sự kiện mới"
             aria-label="Thêm sự kiện mới"
           >

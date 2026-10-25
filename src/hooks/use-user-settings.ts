@@ -140,6 +140,21 @@ export function useUserSettings() {
                 timezone: values.timezone,
               })
               .eq("id", session.user.id);
+
+            // Đồng bộ trực tiếp metadata sang auth.users của Supabase Authentication
+            if (values.display_name !== undefined) {
+              try {
+                await supabase.auth.updateUser({
+                  data: {
+                    full_name: values.display_name,
+                    display_name: values.display_name,
+                    name: values.display_name,
+                  },
+                });
+              } catch (authErr) {
+                console.warn("Lỗi đồng bộ metadata sang auth.users:", authErr);
+              }
+            }
           }
 
           await (supabase as any)

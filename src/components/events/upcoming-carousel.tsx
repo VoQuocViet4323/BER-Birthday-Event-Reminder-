@@ -58,7 +58,7 @@ export function UpcomingCarousel({ events, onSelectEvent }: UpcomingCarouselProp
             <div
               key={ev.id}
               onClick={() => onSelectEvent?.(ev)}
-              className="min-w-[240px] max-w-[260px] snap-start rounded-3xl bg-card border border-border/80 p-4 shadow-card hover:shadow-soft-hover transition-all duration-200 flex flex-col justify-between shrink-0 group cursor-pointer active:scale-[0.98]"
+              className="min-w-[240px] max-w-[260px] snap-start rounded-3xl bg-card border border-border/80 p-4 shadow-card hover:shadow-soft-hover transition-all duration-200 flex flex-col justify-between shrink-0 group cursor-pointer active:scale-[0.98] touch-manipulation"
             >
               <div>
                 {/* Header card: Avatar & Countdown badge */}

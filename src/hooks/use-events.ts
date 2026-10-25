@@ -61,6 +61,7 @@ function enrichEvent(ev: EventRow, today: Date = new Date()): EventWithMeta {
 // Bộ nhớ đệm kiểm tra tính tương thích cột của bảng events trên Supabase Cloud
 let schemaSupportsCustomType = true;
 let schemaSupportsRemindTime = true;
+let schemaSupportsCustomGroup = true;
 
 const isSchemaColumnError = (err: any) =>
   err &&
@@ -69,6 +70,7 @@ const isSchemaColumnError = (err: any) =>
     (typeof err.message === "string" &&
       (err.message.toLowerCase().includes("column") ||
         err.message.includes("custom_type") ||
+        err.message.includes("custom_group") ||
         err.message.includes("remind_time"))));
 
 export function useEvents() {
@@ -137,6 +139,7 @@ export function useEvents() {
         remind_days: values.remind_days || [],
         remind_time: values.remind_time || "08:00",
         custom_type: values.custom_type || null,
+        custom_group: values.custom_group || null,
         enabled: values.enabled,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -154,6 +157,7 @@ export function useEvents() {
           const { id: _ignore, ...eventPayload } = newEvent;
           let insertPayload: any = { ...eventPayload, user_id: session.user.id };
           if (!schemaSupportsCustomType) delete insertPayload.custom_type;
+          if (!schemaSupportsCustomGroup) delete insertPayload.custom_group;
           if (!schemaSupportsRemindTime) delete insertPayload.remind_time;
           
           let { data, error } = await (supabase as any)
@@ -164,8 +168,10 @@ export function useEvents() {
 
           if (isSchemaColumnError(error)) {
             schemaSupportsCustomType = false;
+            schemaSupportsCustomGroup = false;
             schemaSupportsRemindTime = false;
             delete insertPayload.custom_type;
+            delete insertPayload.custom_group;
             delete insertPayload.remind_time;
 
             const retryRes = await (supabase as any)
@@ -193,6 +199,7 @@ export function useEvents() {
           return {
             ...data,
             custom_type: values.custom_type || null,
+            custom_group: values.custom_group || null,
           } as any;
         }
       }
@@ -224,6 +231,7 @@ export function useEvents() {
         remind_days: newValues.remind_days || null,
         remind_time: newValues.remind_time || "08:00",
         custom_type: newValues.custom_type || null,
+        custom_group: newValues.custom_group || null,
         enabled: newValues.enabled,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -278,10 +286,12 @@ export function useEvents() {
           remind_days: values.remind_days || [],
           remind_time: values.remind_time || "08:00",
           custom_type: values.custom_type || null,
+          custom_group: values.custom_group || null,
           enabled: values.enabled,
         };
 
         if (!schemaSupportsCustomType) delete updatePayload.custom_type;
+        if (!schemaSupportsCustomGroup) delete updatePayload.custom_group;
         if (!schemaSupportsRemindTime) delete updatePayload.remind_time;
 
         let { data, error } = await (supabase as any)
@@ -293,8 +303,10 @@ export function useEvents() {
 
         if (isSchemaColumnError(error)) {
           schemaSupportsCustomType = false;
+          schemaSupportsCustomGroup = false;
           schemaSupportsRemindTime = false;
           delete updatePayload.custom_type;
+          delete updatePayload.custom_group;
           delete updatePayload.remind_time;
 
           const retryRes = await (supabase as any)
@@ -326,6 +338,7 @@ export function useEvents() {
         return {
           ...data,
           custom_type: values.custom_type || null,
+          custom_group: values.custom_group || null,
         } as any;
       }
 

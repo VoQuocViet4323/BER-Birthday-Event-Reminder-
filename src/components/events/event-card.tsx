@@ -83,7 +83,7 @@ export function EventCard({
         }}
         onClick={() => onEdit(event)}
         className={cn(
-          "relative bg-card rounded-3xl border border-border/80 p-4 sm:p-5 shadow-card hover:shadow-soft-hover transition-all duration-200 cursor-pointer active:scale-[0.99]",
+          "relative bg-card rounded-3xl border border-border/80 p-4 sm:p-5 shadow-card hover:shadow-soft-hover transition-all duration-200 cursor-pointer active:scale-[0.98] touch-manipulation",
           !event.enabled && "opacity-60 grayscale-[40%]"
         )}
       >
@@ -136,7 +136,7 @@ export function EventCard({
                     groupStyles[event.group_name] || groupStyles["Khác"]
                   )}
                 >
-                  {event.group_name}
+                  {(event as any).custom_group || event.group_name}
                 </span>
               </div>
             </div>

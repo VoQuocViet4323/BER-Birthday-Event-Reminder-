@@ -7,7 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { diaryFormSchema, DiaryFormValues, DiaryEntry, DiaryMood } from "@/types/diary";
 import { normalizeDateKey } from "@/hooks/use-diaries";
 import { X, BookOpen, Trash2, Check, Sparkles, Hash } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 
@@ -87,7 +87,7 @@ export function DiaryDrawer({
     setTagInput("");
   }, [initialData, entryDateStr, reset, isOpen]);
 
-  if (!isOpen || !mounted) return null;
+  if (!mounted) return null;
 
   const moods: { mood: DiaryMood; label: string; icon: string; activeColor: string }[] = [
     { mood: "happy", label: "Vui vẻ", icon: "😊", activeColor: "border-amber-500 bg-amber-500/10 text-amber-500" },
@@ -137,29 +137,53 @@ export function DiaryDrawer({
     onClose();
   };
 
-  return createPortal(
-    <div
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-md p-0 sm:p-4 animate-in fade-in duration-200"
-    >
-      <motion.div
-        initial={{ y: "100%", opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        exit={{ y: "100%", opacity: 0 }}
-        transition={{ type: "spring", damping: 25, stiffness: 280 }}
-        className="w-full max-w-lg bg-card rounded-t-3xl sm:rounded-3xl border border-border shadow-2xl p-6 overflow-hidden flex flex-col max-h-[90vh]"
-        onClick={(e) => e.stopPropagation()}
-      >
+  return typeof document !== "undefined"
+    ? createPortal(
+        <AnimatePresence mode="wait">
+          {isOpen && (
+            <motion.div
+              key="diary-drawer-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.22, ease: "easeOut" }}
+              onClick={(e) => {
+                if (e.target === e.currentTarget) onClose();
+              }}
+              className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-[3px] p-0 sm:p-4 touch-none"
+            >
+              <motion.div
+                key="diary-drawer-sheet"
+                initial={{ y: "100%", opacity: 0.95 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: "100%", opacity: 0.95 }}
+                transition={{
+                  type: "spring",
+                  damping: 30,
+                  stiffness: 340,
+                  mass: 0.8,
+                }}
+                drag="y"
+                dragConstraints={{ top: 0 }}
+                dragElastic={{ top: 0, bottom: 0.4 }}
+                onDragEnd={(_e, info) => {
+                  if (info.offset.y > 100 || info.velocity.y > 450) {
+                    onClose();
+                  }
+                }}
+                className="w-full max-w-lg bg-card rounded-t-3xl sm:rounded-3xl border border-border shadow-2xl overflow-hidden flex flex-col max-h-[92vh] will-change-transform transform-gpu"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Mobile Drag Indicator Handle */}
+                <div className="w-12 h-1.5 bg-muted-foreground/30 rounded-full mx-auto mt-2.5 mb-1 sm:hidden shrink-0 cursor-grab active:cursor-grabbing" />
         {/* Header (Cố định ở trên) */}
-        <div className="flex items-start justify-between pb-4 border-b border-border shrink-0">
+        <div className="flex items-start justify-between px-5 sm:px-6 py-4 border-b border-border shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl overflow-hidden bg-primary/10 border border-primary/20 shrink-0 flex items-center justify-center text-primary shadow-xs">
-              <BookOpen className="w-6 h-6" />
+            <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl overflow-hidden bg-primary/10 border border-primary/20 shrink-0 flex items-center justify-center text-primary shadow-xs">
+              <BookOpen className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
             <div>
-              <h2 className="font-extrabold text-lg text-foreground tracking-tight">
+              <h2 className="font-extrabold text-base sm:text-lg text-foreground tracking-tight">
                 {initialData ? "Chỉnh sửa nhật ký" : "Thêm nhật ký mới"}
               </h2>
               <p className="text-xs text-muted-foreground mt-0.5">
@@ -181,7 +205,7 @@ export function DiaryDrawer({
         <form
           id="diary-form"
           onSubmit={handleSubmit(handleFormSubmit)}
-          className="space-y-4 my-4 overflow-y-auto pr-1 flex-1"
+          className="flex-1 overflow-y-auto px-5 sm:px-6 py-4 sm:py-5 space-y-4"
         >
           {/* 1. Chọn cảm xúc trong ngày */}
           <div>
@@ -199,7 +223,7 @@ export function DiaryDrawer({
                     className={cn(
                       "py-2 px-1 rounded-2xl border text-center transition-all flex flex-col items-center justify-center gap-1 cursor-pointer",
                       isActive
-                        ? cn(m.activeColor, "shadow-xs scale-105 font-bold")
+                        ? cn(m.activeColor, "shadow-xs ring-2 ring-primary/50 font-bold")
                         : "border-border/70 bg-secondary/40 text-muted-foreground hover:border-primary/40 hover:bg-secondary/80"
                     )}
                   >
@@ -220,7 +244,7 @@ export function DiaryDrawer({
               id="diary-title-input"
               {...register("title")}
               placeholder="VD: Một ngày tuyệt vời cùng gia đình, Kỷ niệm đáng nhớ..."
-              className="w-full px-4 py-2.5 rounded-2xl bg-secondary/50 border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary text-sm font-medium transition-all placeholder:text-muted-foreground/60"
+              className="w-full px-4 py-2.5 rounded-2xl bg-secondary/50 border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm font-medium transition-all placeholder:text-muted-foreground/60"
             />
             {errors.title && (
               <p className="text-xs text-rose-500 mt-1">{errors.title.message}</p>
@@ -243,7 +267,7 @@ export function DiaryDrawer({
               rows={4}
               placeholder="Hôm nay có điều gì đặc biệt xảy ra? Những kỷ niệm, cảm xúc hay điều gì khiến bạn biết ơn..."
               className={cn(
-                "w-full px-4 py-3 rounded-2xl bg-secondary/50 border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary text-sm font-medium transition-all leading-relaxed placeholder:text-muted-foreground/60 resize-none",
+                "w-full px-4 py-3 rounded-2xl bg-secondary/50 border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm font-medium transition-all leading-relaxed placeholder:text-muted-foreground/60 resize-none",
                 errors.content && "border-rose-500 focus:ring-rose-500"
               )}
             />
@@ -308,7 +332,7 @@ export function DiaryDrawer({
         </form>
 
         {/* Footer Actions (Cố định ở dưới cùng, luôn nhìn thấy 100%) */}
-        <div className="pt-3 border-t border-border shrink-0 flex items-center justify-between gap-3 bg-card">
+        <div className="px-5 sm:px-6 py-3.5 border-t border-border shrink-0 flex items-center justify-between gap-3 bg-card">
           {initialData ? (
             confirmDelete ? (
               <div className="flex items-center gap-2">
@@ -377,7 +401,10 @@ export function DiaryDrawer({
           </div>
         </div>
       </motion.div>
-    </div>,
-    document.body
-  );
+    </motion.div>
+  )}
+</AnimatePresence>,
+        document.body
+      )
+    : null;
 }

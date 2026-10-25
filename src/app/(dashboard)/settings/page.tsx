@@ -7,14 +7,14 @@ import { useUserSettings } from "@/hooks/use-user-settings";
 import { useToast } from "@/components/ui/toast";
 import { createClient } from "@/lib/supabase/client";
 import {
-  Bell,
-  Clock,
   Mail,
   User,
   Shield,
   Send,
   Eye,
-  Plus,
+  EyeOff,
+  Lock,
+  ShieldCheck,
   X,
   Check,
   AlertTriangle,
@@ -34,9 +34,7 @@ export default function SettingsPage() {
 
   // Local state form values
   const [displayName, setDisplayName] = useState(profile?.display_name || "");
-  const [emailEnabled, setEmailEnabled] = useState(settings?.email_enabled ?? true);
   const [remindDays, setRemindDays] = useState<number[]>(settings?.default_remind_days || [7, 3, 1, 0]);
-  const [customDayInput, setCustomDayInput] = useState("");
   const [remindTime, setRemindTime] = useState(settings?.remind_time || "08:00");
   const [timezone, setTimezone] = useState(profile?.timezone || "Asia/Ho_Chi_Minh");
   const [leapDayRule, setLeapDayRule] = useState<"feb28" | "mar01">(settings?.leap_day_rule || "feb28");
@@ -45,6 +43,16 @@ export default function SettingsPage() {
   const [isEditingPrimaryEmail, setIsEditingPrimaryEmail] = useState(false);
   const [newPrimaryEmail, setNewPrimaryEmail] = useState(profile?.email || "");
   const [isUpdatingPrimaryEmail, setIsUpdatingPrimaryEmail] = useState(false);
+
+  // Password change states
+  const [isChangingPasswordOpen, setIsChangingPasswordOpen] = useState(false);
+  const [oldPassword, setOldPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showOldPassword, setShowOldPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
 
   // Đồng bộ form khi profile hoặc settings nạp xong từ máy chủ
   useEffect(() => {
@@ -55,7 +63,6 @@ export default function SettingsPage() {
       setTimezone(profile.timezone);
     }
     if (settings) {
-      setEmailEnabled(settings.email_enabled ?? true);
       setRemindDays(settings.default_remind_days || [7, 3, 1, 0]);
       setRemindTime(settings.remind_time || "08:00");
       setLeapDayRule(settings.leap_day_rule || "feb28");
@@ -141,24 +148,7 @@ export default function SettingsPage() {
     }
   };
 
-  // Mốc nhắc nhanh
-  const quickOffsets = [14, 7, 3, 1, 0];
 
-  const toggleOffset = (offset: number) => {
-    if (remindDays.includes(offset)) {
-      setRemindDays(remindDays.filter((d) => d !== offset));
-    } else {
-      setRemindDays([...remindDays, offset].sort((a, b) => b - a));
-    }
-  };
-
-  const handleAddCustomDay = () => {
-    const val = parseInt(customDayInput.trim(), 10);
-    if (!isNaN(val) && val >= 0 && val <= 365 && !remindDays.includes(val)) {
-      setRemindDays([...remindDays, val].sort((a, b) => b - a));
-      setCustomDayInput("");
-    }
-  };
 
   // Cập nhật địa chỉ email nhận thông báo chính của tài khoản
   const handleUpdatePrimaryEmail = async () => {
@@ -235,12 +225,137 @@ export default function SettingsPage() {
   const handleSaveAll = async () => {
     await updateSettings({
       display_name: displayName,
-      email_enabled: emailEnabled,
+      email_enabled: true,
       default_remind_days: remindDays,
       remind_time: remindTime,
       timezone: timezone,
       leap_day_rule: leapDayRule,
     });
+  };
+
+  // Đổi mật khẩu tài khoản - Bắt buộc xác thực mật khẩu cũ
+  const handleChangePassword = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+
+    if (!oldPassword.trim()) {
+      toast({
+        title: "Thiếu mật khẩu cũ",
+        description: "Vui lòng nhập mật khẩu hiện tại của tài khoản.",
+        variant: "error",
+      });
+      return;
+    }
+
+    if (!newPassword) {
+      toast({
+        title: "Thiếu mật khẩu mới",
+        description: "Vui lòng nhập mật khẩu mới muốn thay đổi.",
+        variant: "error",
+      });
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      toast({
+        title: "Mật khẩu quá ngắn",
+        description: "Mật khẩu mới phải có ít nhất 6 ký tự.",
+        variant: "error",
+      });
+      return;
+    }
+
+    if (newPassword === oldPassword) {
+      toast({
+        title: "Mật khẩu không đổi",
+        description: "Mật khẩu mới không được trùng với mật khẩu hiện tại.",
+        variant: "warning",
+      });
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      toast({
+        title: "Mật khẩu không khớp",
+        description: "Xác nhận mật khẩu mới không trùng khớp. Vui lòng kiểm tra lại.",
+        variant: "error",
+      });
+      return;
+    }
+
+    setIsUpdatingPassword(true);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const authEmail = session?.user?.email || profile?.email;
+
+      if (!authEmail) {
+        toast({
+          title: "Phiên đăng nhập hết hạn",
+          description: "Vui lòng tải lại trang hoặc đăng nhập lại để tiếp tục.",
+          variant: "error",
+        });
+        setIsUpdatingPassword(false);
+        return;
+      }
+
+      // Xác thực mật khẩu cũ bằng cách thử đăng nhập lại với email phiên hiện tại
+      const { error: verifyErr } = await supabase.auth.signInWithPassword({
+        email: authEmail,
+        password: oldPassword,
+      });
+
+      if (verifyErr) {
+        toast({
+          title: "Mật khẩu cũ không chính xác",
+          description: "Mật khẩu hiện tại bạn vừa nhập không đúng. Vui lòng kiểm tra lại!",
+          variant: "error",
+        });
+        setIsUpdatingPassword(false);
+        return;
+      }
+
+      // Mật khẩu cũ chính xác -> Cập nhật sang mật khẩu mới
+      const { error: updateErr } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (updateErr) {
+        toast({
+          title: "Đổi mật khẩu thất bại",
+          description: updateErr.message || "Đã xảy ra sự cố khi cập nhật mật khẩu mới.",
+          variant: "error",
+        });
+        setIsUpdatingPassword(false);
+        return;
+      }
+
+      // Cập nhật lại mật khẩu đã lưu trong trình duyệt nếu người dùng bật "Ghi nhớ"
+      try {
+        if (localStorage.getItem("ber_remember_me") === "true") {
+          localStorage.setItem("ber_remembered_password", newPassword);
+        }
+      } catch {}
+
+      toast({
+        title: "Đổi mật khẩu thành công! 🔐",
+        description: "Mật khẩu tài khoản của bạn đã được cập nhật thành công.",
+        variant: "success",
+      });
+
+      setOldPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setIsChangingPasswordOpen(false);
+    } catch (err: any) {
+      toast({
+        title: "Lỗi hệ thống",
+        description: err?.message || "Đã xảy ra sự cố trong quá trình đổi mật khẩu.",
+        variant: "error",
+      });
+    } finally {
+      setIsUpdatingPassword(false);
+    }
   };
 
   const handleSendTestEmail = async () => {
@@ -306,7 +421,7 @@ export default function SettingsPage() {
             Cài đặt & Hồ sơ
           </h1>
           <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-            Quản lý thông báo email, giờ gửi, múi giờ và cấu hình tài khoản
+            Quản lý email nhận thông báo, đổi mật khẩu, quy tắc năm nhuận và cấu hình tài khoản
           </p>
         </div>
 
@@ -327,109 +442,7 @@ export default function SettingsPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* 1. Thông báo Email */}
-        <div className="bg-card/70 backdrop-blur-xl rounded-3xl border border-border/70 p-6 sm:p-7 shadow-xs hover:border-border transition-all space-y-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3.5">
-              <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-purple-500/15 via-purple-500/10 to-transparent border border-purple-500/20 text-purple-400 flex items-center justify-center shadow-xs">
-                <Bell className="w-5 h-5 stroke-[2.2]" />
-              </div>
-              <div>
-                <h3 className="font-bold text-sm text-foreground">Thông báo Email</h3>
-                <p className="text-xs text-muted-foreground">Tự động gửi email khi đến mốc</p>
-              </div>
-            </div>
-
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={emailEnabled}
-                onChange={(e) => setEmailEnabled(e.target.checked)}
-                className="sr-only peer"
-              />
-              <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-            </label>
-          </div>
-
-          {/* Mốc nhắc nhở mặc định */}
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2.5">
-              Mốc nhắc trước mặc định (ngày)
-            </label>
-            <div className="flex flex-wrap gap-2 mb-3">
-              {quickOffsets.map((offset) => {
-                const active = remindDays.includes(offset);
-                return (
-                  <button
-                    key={offset}
-                    onClick={() => toggleOffset(offset)}
-                    className={cn(
-                      "px-3.5 py-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5",
-                      active
-                        ? "bg-gradient-to-r from-purple-600 to-pink-600 text-white border-transparent shadow-soft"
-                        : "bg-secondary/60 text-muted-foreground border-border/70 hover:bg-secondary hover:text-foreground"
-                    )}
-                  >
-                    {active && <Check className="w-3 h-3 stroke-[2.5]" />}
-                    {offset === 0 ? "Đúng ngày (0)" : `Trước ${offset} ngày`}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Nhập số ngày tùy ý */}
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                min={0}
-                max={365}
-                value={customDayInput}
-                onChange={(e) => setCustomDayInput(e.target.value)}
-                placeholder="Nhập số ngày tùy ý (VD: 5, 10, 30)..."
-                className="flex-1 px-3.5 py-2.5 rounded-xl bg-secondary/40 border border-border/70 text-xs text-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all"
-              />
-              <button
-                type="button"
-                onClick={handleAddCustomDay}
-                className="px-4 py-2.5 rounded-xl bg-secondary hover:bg-muted border border-border/70 text-xs font-bold transition-colors"
-              >
-                + Thêm
-              </button>
-            </div>
-          </div>
-
-          {/* Giờ gửi email hàng ngày & Múi giờ */}
-          <div className="grid grid-cols-2 gap-3 pt-4 border-t border-border/60">
-            <div>
-              <label className="block text-xs font-bold text-muted-foreground mb-1.5 flex items-center gap-1">
-                <Clock className="w-3.5 h-3.5" /> Giờ gửi email
-              </label>
-              <input
-                type="time"
-                value={remindTime}
-                onChange={(e) => setRemindTime(e.target.value)}
-                className="w-full px-3.5 py-2 rounded-xl bg-secondary/40 border border-border/70 text-xs font-bold text-center text-foreground"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-muted-foreground mb-1.5">
-                Múi giờ
-              </label>
-              <select
-                value={timezone}
-                onChange={(e) => setTimezone(e.target.value)}
-                className="w-full px-3.5 py-2 rounded-xl bg-secondary/40 border border-border/70 text-xs font-bold text-foreground"
-              >
-                <option value="Asia/Ho_Chi_Minh">Việt Nam (GMT+7)</option>
-                <option value="Asia/Tokyo">Nhật Bản (GMT+9)</option>
-                <option value="America/New_York">New York (EST)</option>
-                <option value="Europe/London">London (GMT)</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        {/* 2. Email nhận thông báo & Thử nghiệm */}
+        {/* 1. Email nhận thông báo & Thử nghiệm */}
         <div className="bg-card/70 backdrop-blur-xl rounded-3xl border border-border/70 p-6 sm:p-7 shadow-xs hover:border-border transition-all space-y-6">
           <div className="flex items-center gap-3.5">
             <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-pink-500/15 via-pink-500/10 to-transparent border border-pink-500/20 text-pink-400 flex items-center justify-center shadow-xs">
@@ -557,6 +570,156 @@ export default function SettingsPage() {
               💡 Để gửi thư thật đến bất kỳ email nào mà không cần tên miền riêng, bạn chỉ cần điền <code className="bg-secondary/80 px-1.5 py-0.5 rounded text-[10px] font-mono text-primary font-semibold">SMTP_USER</code> & <code className="bg-secondary/80 px-1.5 py-0.5 rounded text-[10px] font-mono text-primary font-semibold">SMTP_PASS</code> (Mật khẩu ứng dụng Gmail) vào file <code className="bg-secondary/80 px-1.5 py-0.5 rounded text-[10px] font-mono">.env</code>.
             </p>
           </div>
+        </div>
+
+        {/* 2. Bảo mật & Đổi mật khẩu */}
+        <div className="bg-card/70 backdrop-blur-xl rounded-3xl border border-border/70 p-6 sm:p-7 shadow-xs hover:border-border transition-all space-y-5">
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-500/15 via-emerald-500/10 to-transparent border border-emerald-500/20 text-emerald-400 flex items-center justify-center shadow-xs">
+              <Lock className="w-5 h-5 stroke-[2.2]" />
+            </div>
+            <div>
+              <h3 className="font-bold text-sm text-foreground">Bảo mật & Đổi mật khẩu</h3>
+              <p className="text-xs text-muted-foreground">Đổi mật khẩu bảo vệ tài khoản</p>
+            </div>
+          </div>
+
+          {profile?.provider === "google" ? (
+            <div className="p-4 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400 space-y-1">
+              <div className="flex items-center gap-2">
+                <Globe className="w-4 h-4 text-blue-400" />
+                <p className="text-xs font-bold text-foreground">Tài khoản Google</p>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Tài khoản của bạn được liên kết với Google và không sử dụng mật khẩu riêng. Bạn có thể quản lý bảo mật trực tiếp trên tài khoản Google.
+              </p>
+            </div>
+          ) : !isChangingPasswordOpen ? (
+            <div className="p-4 rounded-2xl bg-secondary/30 border border-border/60 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs font-bold text-foreground">
+                  <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                  <span>Mật khẩu tài khoản</span>
+                </div>
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  Đang hoạt động
+                </span>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Để bảo vệ an toàn cho tài khoản, hệ thống yêu cầu bạn nhập chính xác mật khẩu hiện tại trước khi thiết lập mật khẩu mới.
+              </p>
+              <button
+                type="button"
+                onClick={() => setIsChangingPasswordOpen(true)}
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl gradient-brand text-white text-xs font-bold shadow-soft hover:shadow-soft-hover hover:scale-[1.01] active:scale-[0.99] transition-all"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span>Đổi mật khẩu mới</span>
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={handleChangePassword} className="space-y-3.5">
+              {/* Mật khẩu cũ */}
+              <div>
+                <label className="block text-xs font-bold text-foreground mb-1">
+                  Mật khẩu hiện tại (cũ) <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type={showOldPassword ? "text" : "password"}
+                    value={oldPassword}
+                    onChange={(e) => setOldPassword(e.target.value)}
+                    placeholder="Nhập mật khẩu đang dùng..."
+                    className="w-full px-3.5 py-2.5 pr-10 rounded-xl bg-secondary/40 border border-border/70 text-xs text-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowOldPassword(!showOldPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5"
+                  >
+                    {showOldPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Mật khẩu mới */}
+              <div>
+                <label className="block text-xs font-bold text-foreground mb-1">
+                  Mật khẩu mới (tối thiểu 6 ký tự) <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type={showNewPassword ? "text" : "password"}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Nhập mật khẩu mới..."
+                    className="w-full px-3.5 py-2.5 pr-10 rounded-xl bg-secondary/40 border border-border/70 text-xs text-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5"
+                  >
+                    {showNewPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Xác nhận mật khẩu mới */}
+              <div>
+                <label className="block text-xs font-bold text-foreground mb-1">
+                  Xác nhận mật khẩu mới <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type={showConfirmPassword ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Nhập lại mật khẩu mới..."
+                    className="w-full px-3.5 py-2.5 pr-10 rounded-xl bg-secondary/40 border border-border/70 text-xs text-foreground focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5"
+                  >
+                    {showConfirmPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="submit"
+                  disabled={isUpdatingPassword}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl gradient-brand text-white text-xs font-bold shadow-soft hover:shadow-soft-hover hover:scale-[1.01] active:scale-[0.99] transition-all disabled:opacity-50"
+                >
+                  {isUpdatingPassword ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                      <span>Xác nhận đổi</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  disabled={isUpdatingPassword}
+                  onClick={() => {
+                    setIsChangingPasswordOpen(false);
+                    setOldPassword("");
+                    setNewPassword("");
+                    setConfirmPassword("");
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-secondary hover:bg-muted text-xs font-bold text-muted-foreground transition-colors"
+                >
+                  Hủy
+                </button>
+              </div>
+            </form>
+          )}
         </div>
 
         {/* 3. Quy tắc 29/02 (Năm nhuận) */}

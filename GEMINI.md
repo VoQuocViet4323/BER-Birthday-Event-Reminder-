@@ -137,6 +137,20 @@
 
 ---
 
+### 🔴 Lỗi 8: `A conflicting public file and page file was found for path /favicon.ico` (Lỗi 500 trắng trang)
+- **Mã lỗi / Triệu chứng**:
+  ```
+  Failed to load resource: the server responded with a status of 500 (Internal Server Error) webpack.js, main.js, favicon.ico
+  Server log: Error: A conflicting public file and page file was found for path /favicon.ico
+  ```
+- **Nguyên nhân**: Để đồng thời cả `src/app/favicon.ico` (hoặc `src/app/icon.png`) và `public/favicon.ico` (hoặc `public/icon.png`). Next.js App Router coi cả hai cùng trỏ về 1 route path gây xung đột định tuyến và sập dev server (500).
+- **Cách fix triệt để**:
+  1. Chỉ giữ icon trong `public/` (ví dụ `public/favicon.ico`, `public/icon.png`, `public/favicon-32x32.png`, v.v.).
+  2. Xóa các file icon trùng lặp trong `src/app/` (`src/app/favicon.ico`, `src/app/icon.png`, `src/app/apple-icon.png`).
+  3. Cấu hình khai báo tập trung trong `metadata.icons` tại `src/app/layout.tsx`.
+
+---
+
 ## 3. Quy Trình Kiểm Tra Chuẩn (Verification Workflow)
 Mỗi khi chỉnh sửa code hoặc thêm tính năng mới, AI cần tự chạy 2 lệnh sau để đảm bảo chất lượng:
 1. `npm test` $\rightarrow$ Đảm bảo toàn bộ 8+ unit test ngày tháng, âm lịch, 29/2 đều pass.

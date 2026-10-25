@@ -58,6 +58,7 @@ export function EventFormDrawer({
       remind_days: [],
       remind_time: "08:00",
       custom_type: "",
+      custom_group: "",
       enabled: true,
     },
   });
@@ -90,9 +91,10 @@ export function EventFormDrawer({
         remind_days: initialData.remind_days || [],
         remind_time: (initialData as any)?.remind_time || "08:00",
         custom_type: (initialData as any)?.custom_type || "",
+        custom_group: (initialData as any)?.custom_group || "",
         enabled: initialData.enabled,
       });
-      if (initialData.note || initialData.gift_idea || initialData.is_lunar || (initialData.remind_days && initialData.remind_days.length > 0)) {
+      if (initialData.note || initialData.gift_idea || initialData.is_lunar || (initialData as any)?.custom_group || (initialData.remind_days && initialData.remind_days.length > 0)) {
         setShowAdvanced(true);
       }
     } else {
@@ -112,6 +114,7 @@ export function EventFormDrawer({
         remind_days: [],
         remind_time: "08:00",
         custom_type: "",
+        custom_group: "",
         enabled: true,
       });
       setShowAdvanced(false);
@@ -151,23 +154,47 @@ export function EventFormDrawer({
     setValue("remind_days", updated);
   };
 
-  if (!isOpen || !mounted) return null;
+  if (!mounted) return null;
 
-  return createPortal(
-    <div
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-md p-0 sm:p-4 animate-in fade-in duration-200"
-    >
-      <motion.div
-        initial={{ y: "100%", opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        exit={{ y: "100%", opacity: 0 }}
-        transition={{ type: "spring", damping: 25, stiffness: 280 }}
-        className="w-full max-w-lg bg-card rounded-t-3xl sm:rounded-3xl border border-border shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
+  return typeof document !== "undefined"
+    ? createPortal(
+        <AnimatePresence mode="wait">
+          {isOpen && (
+            <motion.div
+              key="event-form-drawer-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.22, ease: "easeOut" }}
+              onClick={(e) => {
+                if (e.target === e.currentTarget) onClose();
+              }}
+              className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-[3px] p-0 sm:p-4 touch-none"
+            >
+              <motion.div
+                key="event-form-drawer-sheet"
+                initial={{ y: "100%", opacity: 0.95 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: "100%", opacity: 0.95 }}
+                transition={{
+                  type: "spring",
+                  damping: 30,
+                  stiffness: 340,
+                  mass: 0.8,
+                }}
+                drag="y"
+                dragConstraints={{ top: 0 }}
+                dragElastic={{ top: 0, bottom: 0.4 }}
+                onDragEnd={(_e, info) => {
+                  if (info.offset.y > 100 || info.velocity.y > 450) {
+                    onClose();
+                  }
+                }}
+                className="w-full max-w-lg bg-card rounded-t-3xl sm:rounded-3xl border border-border shadow-2xl overflow-hidden max-h-[92vh] flex flex-col will-change-transform transform-gpu"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Mobile Drag Indicator Handle */}
+                <div className="w-12 h-1.5 bg-muted-foreground/30 rounded-full mx-auto mt-2.5 mb-1 sm:hidden shrink-0 cursor-grab active:cursor-grabbing" />
         {/* Drawer Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <div>
@@ -374,6 +401,34 @@ export function EventFormDrawer({
                         </button>
                       ))}
                     </div>
+
+                    {/* Ô nhập tên nhóm tùy chỉnh khi chọn "Khác" */}
+                    <AnimatePresence>
+                      {groupName === "Khác" && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0, y: -6 }}
+                          animate={{ opacity: 1, height: "auto", y: 0 }}
+                          exit={{ opacity: 0, height: 0, y: -6 }}
+                          transition={{ duration: 0.2 }}
+                          className="mt-2.5 overflow-hidden"
+                        >
+                          <label className="block text-xs font-semibold text-emerald-600 dark:text-emerald-400 mb-1">
+                            Tên phân loại nhóm tùy chỉnh <span className="text-muted-foreground font-normal">(tùy chọn)</span>
+                          </label>
+                          <input
+                            {...register("custom_group")}
+                            placeholder="VD: Họ hàng, Đối tác, Khách hàng, Hàng xóm, CLB bóng đá..."
+                            className={cn(
+                              "w-full px-3.5 py-2.5 rounded-xl bg-secondary/60 border border-emerald-500/40 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm font-medium placeholder:text-muted-foreground/60 transition-all",
+                              errors.custom_group && "border-rose-500 focus:ring-rose-500"
+                            )}
+                          />
+                          {errors.custom_group && (
+                            <p className="text-xs text-rose-500 mt-1 font-medium">{errors.custom_group.message}</p>
+                          )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
 
                   {/* Mốc nhắc nhở tùy chỉnh gọn gàng */}
@@ -442,7 +497,10 @@ export function EventFormDrawer({
           </div>
         </form>
       </motion.div>
-    </div>,
-    document.body
-  );
+    </motion.div>
+  )}
+</AnimatePresence>,
+        document.body
+      )
+    : null;
 }

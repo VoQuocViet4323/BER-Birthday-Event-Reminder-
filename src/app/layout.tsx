@@ -4,6 +4,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { AppQueryProvider } from "@/components/providers/query-provider";
 import { ToastProvider } from "@/components/ui/toast";
+import { NavigationProgress } from "@/components/common/navigation-progress";
 
 const beVietnamPro = Be_Vietnam_Pro({
   subsets: ["latin", "vietnamese"],
@@ -26,8 +27,16 @@ export const metadata: Metadata = {
     "Ứng dụng lưu trữ và tự động nhắc nhở sinh nhật, ngày kỷ niệm, ngày giỗ của người thân, bạn bè qua email với giao diện trẻ trung, hỗ trợ cả âm lịch và dương lịch.",
   manifest: "/manifest.json",
   icons: {
-    icon: "/favicon.ico",
-    apple: "/icon-192.png",
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/favicon-32x32.png", type: "image/png", sizes: "32x32" },
+      { url: "/favicon-16x16.png", type: "image/png", sizes: "16x16" },
+      { url: "/icon.png", type: "image/png" },
+    ],
+    apple: [
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+    ],
+    shortcut: "/favicon.ico",
   },
   openGraph: {
     title: "Nhắc Sinh Nhật & Sự Kiện (BER)",
@@ -48,6 +57,7 @@ export default function RootLayout({
         <ThemeProvider>
           <AppQueryProvider>
             <ToastProvider>
+              <NavigationProgress />
               {children}
             </ToastProvider>
           </AppQueryProvider>
