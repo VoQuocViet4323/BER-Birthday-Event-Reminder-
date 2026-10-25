@@ -1967,6 +1967,33 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
   - Unit tests: **17/17 tests PASS**.
   - Next.js build: **`npm run build` PASS 100% (Compiled successfully, all 18 routes generated)**.
 
+---
+
+### 📅 [2026-10-25 16:51:00] - Hiển Thị Đầy Đủ Thông Tin Sự Kiện Trong Lịch Sử Thông Báo & Tinh Chỉnh UI Cân Đối, Dễ Nhìn Dễ Đọc
+
+- **Yêu cầu của người dùng**:
+  1. Ở phần lịch sử thông báo: hiển thị chi tiết thêm gửi sự kiện gì, đầy đủ thông tin (tên người/sự kiện, avatar, loại sự kiện, nhóm, ngày sự kiện, âm lịch, ghi chú, quà tặng).
+  2. Sửa lại UI giao diện sao cho cân đối, thoáng đãng, dễ nhìn, dễ đọc, không bị ngắt dòng lỗi.
+- **Các công việc đã hoàn thành**:
+  1. **Hiển thị thông tin sự kiện chi tiết trong [page.tsx (history)](file:///e:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/history/page.tsx)**:
+     - Mở rộng kiểu dữ liệu `NotificationLogWithEvent` để chứa thông tin sự kiện liên kết.
+     - Cập nhật truy vấn Supabase PostgREST `.from("notification_logs").select("*, events(*)")` để join dữ liệu sự kiện tự động theo foreign key `event_id`.
+     - Tích hợp lớp fallback kép đối soát với cache TanStack Query `queryClient.getQueryData(["events"])` và `getLocalCustomGroups()` để đảm bảo luôn hiển thị đủ 100% avatar, tên sự kiện, nhãn nhóm (kể cả nhóm tùy chỉnh tự tạo), ngày diễn ra và ghi chú/quà tặng.
+  2. **Tinh chỉnh UI cân đối, dễ nhìn, dễ đọc**:
+     - **Trục Timeline chuẩn mực**: Căn chỉnh đường kẻ timeline và icon node đồng trục chính xác tuyệt đối ở tâm.
+     - **Khung thông tin sự kiện đa tầng cân đối**:
+       - *Header hàng 1*: Nhãn mốc nhắc nhở (Email nhắc trước X ngày / nhắc đúng ngày) + Huy hiệu trạng thái gửi kèm chấm pulse xanh lá nhẹ nhàng.
+       - *Body hàng 2*: Khung thẻ sự kiện với avatar bo góc mềm mại, tên sự kiện nổi bật, huy hiệu loại sự kiện (🎂 Sinh nhật, 💍 Kỷ niệm, 🕯️ Ngày giỗ, 🌟 Tùy chỉnh), huy hiệu phân nhóm chuẩn màu, ngày diễn ra định dạng tiếng Việt tự nhiên (`24 tháng 10, 2026`), nhãn 🌙 Âm lịch, cùng hộp ghi chú 📝 và gợi ý quà 🎁 gọn gàng.
+       - *Footer hàng 3*: Thời gian gửi chi tiết (`21:12 • 24/10/2026`) kèm nhãn kênh thông báo Resend Email.
+     - **Thẻ thống kê tổng quan (Mini-Stats Widget)**: Bổ sung 3 thẻ thống kê ở đầu trang (Tổng thông báo, Đã gửi thành công, Kênh thông báo) với typography cân đối và trực quan.
+     - **Tối ưu hiển thị responsive di động**: Loại bỏ hoàn toàn tình trạng ngắt dòng vụn vặt ngày tháng trên màn hình điện thoại.
+- **Danh sách file đã chỉnh sửa**:
+  - `src/app/(dashboard)/history/page.tsx`
+  - `MEMORIES.md`
+- **Trạng thái kiểm thử**:
+  - Unit tests: **17/17 tests PASS (`npm test`)**.
+  - Production build: **`npm run build` PASS 100% (Compiled successfully, toàn bộ 18 routes thành công)**.
+
 
 
 
