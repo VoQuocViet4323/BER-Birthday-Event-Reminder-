@@ -110,6 +110,17 @@ export function useEvents() {
   const supabase = createClient();
   const lastDeletedRef = useRef<EventRow | null>(null);
 
+  const getAuthUser = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) return session.user;
+      const { data } = await supabase.auth.getUser();
+      return data?.user || null;
+    } catch {
+      return null;
+    }
+  };
+
   const queryKey = ["events"];
 
   const {
@@ -125,15 +136,13 @@ export function useEvents() {
         !process.env.NEXT_PUBLIC_SUPABASE_URL.includes("dummy-project");
 
       if (isConfigured) {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
+        const user = await getAuthUser();
 
-        if (session?.user) {
+        if (user) {
           const { data, error } = await (supabase as any)
             .from("events")
             .select("*")
-            .eq("user_id", session.user.id)
+            .eq("user_id", user.id)
             .order("created_at", { ascending: false });
 
           if (!error && data) {
@@ -190,12 +199,10 @@ export function useEvents() {
         !process.env.NEXT_PUBLIC_SUPABASE_URL.includes("dummy-project");
 
       if (isConfigured) {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        if (session?.user) {
+        const user = await getAuthUser();
+        if (user) {
           const { id: _ignore, ...eventPayload } = newEvent;
-          let insertPayload: any = { ...eventPayload, user_id: session.user.id };
+          let insertPayload: any = { ...eventPayload, user_id: user.id };
           if (!schemaSupportsCustomType) delete insertPayload.custom_type;
           if (!schemaSupportsCustomGroup) delete insertPayload.custom_group;
           if (!schemaSupportsRemindTime) delete insertPayload.remind_time;
@@ -230,7 +237,7 @@ export function useEvents() {
               await (supabase as any)
                 .from("user_settings")
                 .update({ remind_time: values.remind_time })
-                .eq("user_id", session.user.id);
+                .eq("user_id", user.id);
             } catch (syncErr) {
               console.warn("Không thể đồng bộ remind_time sang user_settings:", syncErr);
             }
@@ -320,6 +327,7 @@ export function useEvents() {
         !process.env.NEXT_PUBLIC_SUPABASE_URL.includes("dummy-project");
 
       if (isConfigured) {
+        const user = await getAuthUser();
         const updatePayload: any = {
           name: values.name,
           event_type: values.event_type,
@@ -343,10 +351,10 @@ export function useEvents() {
         if (!schemaSupportsCustomGroup) delete updatePayload.custom_group;
         if (!schemaSupportsRemindTime) delete updatePayload.remind_time;
 
-        let { data, error } = await (supabase as any)
-          .from("events")
-          .update(updatePayload)
-          .eq("id", id)
+        let query = (supabase as any).from("events").update(updatePayload).eq("id", id);
+        if (user) query = query.eq("user_id", user.id);
+
+        let { data, error } = await query
           .select()
           .single();
 
@@ -370,15 +378,12 @@ export function useEvents() {
         if (error) throw error;
 
         // Đồng bộ giờ nhắc sang user_settings
-        if (values.remind_time) {
+        if (values.remind_time && user) {
           try {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session?.user) {
-              await (supabase as any)
-                .from("user_settings")
-                .update({ remind_time: values.remind_time })
-                .eq("user_id", session.user.id);
-            }
+            await (supabase as any)
+              .from("user_settings")
+              .update({ remind_time: values.remind_time })
+              .eq("user_id", user.id);
           } catch (syncErr) {
             console.warn("Không thể đồng bộ remind_time sang user_settings:", syncErr);
           }
@@ -459,7 +464,10 @@ export function useEvents() {
         !process.env.NEXT_PUBLIC_SUPABASE_URL.includes("dummy-project");
 
       if (isConfigured) {
-        const { error } = await (supabase as any).from("events").delete().eq("id", id);
+        const user = await getAuthUser();
+        let query = (supabase as any).from("events").delete().eq("id", id);
+        if (user) query = query.eq("user_id", user.id);
+        const { error } = await query;
         if (error) throw error;
         setLocalCustomGroup(id, null);
         return id;
@@ -518,7 +526,11 @@ export function useEvents() {
         !process.env.NEXT_PUBLIC_SUPABASE_URL.includes("dummy-project");
 
       if (isConfigured) {
-        await (supabase as any).from("events").update({ enabled } as any).eq("id", id);
+        const user = await getAuthUser();
+        let query = (supabase as any).from("events").update({ enabled } as any).eq("id", id);
+        if (user) query = query.eq("user_id", user.id);
+        const { error } = await query;
+        if (error) throw error;
       } else {
         const local = getLocalEvents();
         const updated = local.map((e) => (e.id === id ? { ...e, enabled } : e));

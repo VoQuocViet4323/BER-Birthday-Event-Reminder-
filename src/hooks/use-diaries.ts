@@ -43,18 +43,30 @@ export function useDiaries() {
   const supabase = createClient();
   const { toast } = useToast();
 
+  const getAuthUser = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) return session.user;
+      const { data } = await supabase.auth.getUser();
+      return data?.user || null;
+    } catch {
+      return null;
+    }
+  };
+
   const diariesQuery = useQuery({
     queryKey: ["diaries"],
     queryFn: async (): Promise<DiaryEntry[]> => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
+        const user = await getAuthUser();
+        if (!user) {
           return getLocalDiaries();
         }
 
         const { data, error } = await (supabase as any)
           .from("diaries")
           .select("*")
+          .eq("user_id", user.id)
           .order("entry_date", { ascending: false })
           .order("created_at", { ascending: false });
 
@@ -87,7 +99,7 @@ export function useDiaries() {
 
   const saveMutation = useMutation({
     mutationFn: async (payload: { id?: string; values: DiaryFormValues }) => {
-      const { data: { session } } = await supabase.auth.getSession();
+      const user = await getAuthUser();
       const localList = getLocalDiaries();
       const cleanDate = normalizeDateKey(payload.values.entry_date);
 
@@ -102,19 +114,19 @@ export function useDiaries() {
 
       let savedEntry: DiaryEntry = {
         id: payload.id || crypto.randomUUID(),
-        user_id: session?.user?.id || "local_user",
+        user_id: user?.id || "local_user",
         ...entryPayload,
         created_at: new Date().toISOString(),
       };
 
-      if (session) {
+      if (user) {
         if (payload.id) {
           // CẬP NHẬT (UPDATE) bản ghi đã tồn tại theo ID và user_id
           const { data, error } = await (supabase as any)
             .from("diaries")
             .update(entryPayload)
             .eq("id", payload.id)
-            .eq("user_id", session.user.id)
+            .eq("user_id", user.id)
             .select()
             .single();
 
@@ -140,7 +152,7 @@ export function useDiaries() {
           // THÊM MỚI (INSERT) một bài nhật ký mới
           const insertPayload = {
             ...entryPayload,
-            user_id: session.user.id,
+            user_id: user.id,
           };
 
           const { data, error } = await (supabase as any)
@@ -212,14 +224,14 @@ export function useDiaries() {
 
   const deleteMutation = useMutation({
     mutationFn: async ({ id, entry_date }: { id?: string; entry_date?: string }) => {
-      const { data: { session } } = await supabase.auth.getSession();
+      const user = await getAuthUser();
       const cleanDate = entry_date ? normalizeDateKey(entry_date) : undefined;
 
-      if (session) {
+      if (user) {
         let query = (supabase as any)
           .from("diaries")
           .delete()
-          .eq("user_id", session.user.id);
+          .eq("user_id", user.id);
 
         if (id) {
           query = query.eq("id", id);

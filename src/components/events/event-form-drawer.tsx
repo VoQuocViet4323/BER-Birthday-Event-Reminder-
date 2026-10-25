@@ -17,6 +17,7 @@ interface EventFormDrawerProps {
   onClose: () => void;
   onSubmit: (values: EventFormValues) => Promise<any>;
   initialData?: EventWithMeta | null;
+  initialDate?: { day: number; month: number; year?: number } | null;
   isSubmitting?: boolean;
 }
 
@@ -25,6 +26,7 @@ export function EventFormDrawer({
   onClose,
   onSubmit,
   initialData,
+  initialDate,
   isSubmitting,
 }: EventFormDrawerProps) {
   const [mounted, setMounted] = useState(false);
@@ -102,9 +104,9 @@ export function EventFormDrawer({
       reset({
         name: "",
         event_type: "birthday",
-        event_day: now.getDate(),
-        event_month: now.getMonth() + 1,
-        event_year: now.getFullYear(),
+        event_day: initialDate?.day ?? now.getDate(),
+        event_month: initialDate?.month ?? (now.getMonth() + 1),
+        event_year: initialDate?.year ?? now.getFullYear(),
         is_lunar: false,
         group_name: "Gia đình",
         note: "",
@@ -119,7 +121,7 @@ export function EventFormDrawer({
       });
       setShowAdvanced(false);
     }
-  }, [initialData, reset, isOpen]);
+  }, [initialData, initialDate, reset, isOpen]);
 
   // Live conversion preview
   const currentYear = new Date().getFullYear();
@@ -199,10 +201,18 @@ export function EventFormDrawer({
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <div>
             <h2 className="text-lg font-bold text-foreground">
-              {initialData ? "Chỉnh sửa sự kiện" : "Thêm sự kiện mới"}
+              {initialData
+                ? "Chỉnh sửa sự kiện"
+                : initialDate
+                ? `Thêm sự kiện ngày ${initialDate.day}/${initialDate.month}`
+                : "Thêm sự kiện mới"}
             </h2>
             <p className="text-xs text-muted-foreground">
-              {initialData ? "Cập nhật ngày và mốc nhắc nhở" : "Chỉ mất 10 giây để lưu ngày quan trọng"}
+              {initialData
+                ? "Cập nhật ngày và mốc nhắc nhở"
+                : initialDate
+                ? `Đang chọn ngày ${initialDate.day} tháng ${initialDate.month}${initialDate.year ? `, ${initialDate.year}` : ""}`
+                : "Chỉ mất 10 giây để lưu ngày quan trọng"}
             </p>
           </div>
           <button

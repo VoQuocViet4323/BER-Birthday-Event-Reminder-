@@ -2093,6 +2093,140 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
   - Unit tests: **26/26 tests PASS (`npm test`)**.
   - Production build: **`npm run build` PASS 100% (18/18 static/dynamic routes)** với code exit 0.
 
+---
+
+### 📅 [2026-10-25 20:14:00] - Hoàn Thiện Thao Tác Sự Kiện Trực Tiếp Trên Lịch (Thêm Ngày Đang Chọn & Xóa Thật Khỏi DB)
+
+- **Yêu cầu của người dùng**:
+  1. Xóa nút "thêm nhật ký" ở trên (gần ô "hôm nay").
+  2. Làm thêm 1 nút "Thêm sự kiện" ở cạnh nút "Viết thêm nhật ký" bên dưới: khi chọn một ngày nào đó trên bảng lịch thì bấm thêm sự kiện để thêm 1 sự kiện vào ngày đó luôn (không cần bấm dấu cộng), preset sẵn ngày tháng đã chọn.
+  3. Đảm bảo sau khi thêm sự kiện hoặc nhật ký thì dữ liệu phải được lưu lại trên DB và thông báo phải đúng chuẩn ngày giờ, không bị miss.
+  4. Có thể chọn để xóa sự kiện đó tương tự với nút xóa nhật ký, đảm bảo sau khi xóa xong thì trên DB tự động phải xóa thật theo.
+- **Nội dung đã triển khai**:
+  1. **Xóa nút "Thêm nhật ký" ở trên**:
+     - Trong [month-calendar-view.tsx](file:///d:/BER-Birthday-Event-Reminder-/src/components/calendar/month-calendar-view.tsx), loại bỏ button `#btn-diary-action` ở Calendar Header trên cùng, chỉ giữ lại nút "Hôm nay" và cụm mũi tên điều hướng tháng gọn gàng, thoáng đãng.
+  2. **Thêm nút "Thêm sự kiện" cạnh nút "Viết thêm nhật ký" ở dưới**:
+     - Cập nhật thanh thao tác của khối ngày đang chọn ("Chi tiết ngày...") chứa cả 2 nút: `+ Thêm sự kiện` (Gradient Brand) và `+ Viết thêm nhật ký` (Secondary border).
+     - Khi bấm `+ Thêm sự kiện`, hệ thống tự động truyền ngày đang chọn (`day`, `month`, `year`) vào [event-form-drawer.tsx](file:///d:/BER-Birthday-Event-Reminder-/src/components/events/event-form-drawer.tsx) qua prop `initialDate`. Drawer sẽ tự động điền sẵn ngày và tháng tương ứng với ngày đang click trên lịch!
+  3. **Hỗ trợ chọn ngày linh hoạt & Empty State tương tác**:
+     - Khi bấm vào bất kỳ ô ngày nào trên lịch, ngày đó lập tức được chọn.
+     - Ở cột "Sự kiện trong ngày":
+       - Nếu có sự kiện: có nút `+ Thêm sự kiện` trên tiêu đề cột và nút xóa nhanh trên từng thẻ.
+       - Nếu chưa có sự kiện: khối rỗng trở thành nút bấm tương tác: *"Chưa có sự kiện nào cho ngày này. Bấm để thêm!"*.
+  4. **Chức năng Xóa sự kiện thực tế khỏi Database**:
+     - Trong modal chi tiết sự kiện (`viewingEvent`), bổ sung nút **"Xóa sự kiện"** có cơ chế xác nhận an toàn ("Xác nhận xóa" / "Hủy") tương tự nút Xóa nhật ký.
+     - Khi xác nhận, gọi hàm `deleteEvent(id)` qua Supabase Client: `(supabase as any).from("events").delete().eq("id", id)`, xóa sạch trong DB và đồng bộ TanStack Query tức thì.
+     - Bổ sung thêm nút **"Chỉnh sửa"** sự kiện tiện lợi.
+  5. **Đảm bảo thông báo chuẩn xác & không bị miss**:
+     - Giữ nguyên cơ chế Catch-up Reminders và kích hoạt ngầm `fetch("/api/cron/check-reminders", { method: "POST" })` kèm `trigger-reminder-check` tức thì khi tạo/cập nhật sự kiện.
+  6. **Cập nhật Calendar Page ([src/app/(dashboard)/calendar/page.tsx](file:///d:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/calendar/page.tsx))**:
+     - Truyền đầy đủ `addEvent`, `updateEvent`, `deleteEvent` vào `MonthCalendarView`.
+- **Danh sách file đã chỉnh sửa**:
+  - `src/components/events/event-form-drawer.tsx`
+  - `src/components/calendar/month-calendar-view.tsx`
+  - `src/app/(dashboard)/calendar/page.tsx`
+  - `MEMORIES.md`
+- **Trạng thái kiểm thử**:
+  - `npm test`: **26/26 tests PASS**
+  - `npx tsc --noEmit`: **0 errors** (Type check hoàn toàn sạch sẽ)
+---
+
+### 📅 [2026-10-25 20:25:00] - Tinh Gọn Giao Diện Khối Ngày Đang Chọn (/calendar): Xóa Bỏ Các Nút Thêm Thừa
+
+- **Yêu cầu của người dùng**:
+  1. Xóa 2 nút nhỏ thừa được khoanh đỏ trên tiêu đề: nút `+ + Viết thêm` (cạnh "Nhật ký trong ngày") và nút `+ + Thêm sự kiện` (cạnh "Sự kiện trong ngày").
+  2. Xóa luôn 2 nút viền nét đứt ở đáy danh sách khi đã có bài/sự kiện: "Viết thêm một nhật ký khác trong ngày" và "Thêm một sự kiện khác trong ngày".
+- **Nội dung đã triển khai**:
+  - Trong [month-calendar-view.tsx](file:///d:/BER-Birthday-Event-Reminder-/src/components/calendar/month-calendar-view.tsx):
+    - Đã loại bỏ hoàn toàn 2 nút nhỏ tại header của cột "Nhật ký trong ngày" và "Sự kiện trong ngày".
+    - Đã loại bỏ 2 nút viền nét đứt ở đáy danh sách ("Viết thêm một nhật ký khác trong ngày" và "Thêm một sự kiện khác trong ngày").
+    - Giữ lại duy nhất 2 nút hành động tập trung và trực quan nhất tại tiêu đề của card chi tiết ngày: `+ Thêm sự kiện` (Gradient Brand) và `+ Viết thêm nhật ký` (Secondary border).
+    - Khối rỗng (Empty State) khi chưa có nhật ký/sự kiện nào vẫn hiển thị thân thiện để người dùng bấm vào tạo bài đầu tiên.
+- **Danh sách file đã chỉnh sửa**:
+  - `src/components/calendar/month-calendar-view.tsx`
+  - `MEMORIES.md`
+- **Trạng thái kiểm thử**:
+  - `npm test`: **26/26 tests PASS**
+  - `npx tsc --noEmit`: **0 errors**
+---
+
+### 📅 [2026-10-25 20:38:00] - Chuẩn Hóa Cấu Trúc Khối Nhật Ký Tương Tự Sự Kiện: Chế Độ Chỉ Xem (Read-Only) & Nút Chỉnh Sửa / Xóa
+
+- **Yêu cầu của người dùng**:
+  - Tại ô "Nhật ký trong ngày" (chỗ khoanh đỏ trong ảnh), khi bấm vào thẻ nhật ký chỉ hiển thị xem chi tiết (chỉ xem, không được sửa gì trực tiếp), tương tự như ô sự kiện trong ngày ở bên dưới.
+  - Thêm 1 nút "Chỉnh sửa" trong modal nếu người dùng muốn sửa.
+  - Chuẩn hóa toàn bộ cấu trúc của thẻ nhật ký trong danh sách giống hệt thẻ sự kiện bên dưới (gồm icon đại diện/emoji, tiêu đề, thời gian, snippet, badge trạng thái và nút xóa nhanh).
+- **Nội dung đã triển khai**:
+  1. **Tái cấu trúc thẻ bài viết "Nhật ký trong ngày" ([month-calendar-view.tsx](file:///d:/BER-Birthday-Event-Reminder-/src/components/calendar/month-calendar-view.tsx))**:
+     - Thiết kế giống hệt cấu trúc thẻ sự kiện bên dưới:
+       - Bên trái: Khối avatar vuông bo tròn `w-9 h-9 rounded-xl` hiển thị emoji tâm trạng (`😊`, `🌿`, `🔥`, `🥺`, `🙏`) hoặc icon `BookOpen` trên nền pastel `bg-primary/10`.
+       - Ở giữa: Tiêu đề in đậm `font-bold text-xs truncate`, kèm dòng thông tin phụ gồm icon đồng hồ `Clock` + giờ phút (`00:13`) và trích dẫn nội dung bài viết.
+       - Bên phải: Badge tâm trạng hoặc giờ viết `text-[11px] font-semibold px-2 py-0.5 rounded-full`, kèm nút xóa nhanh `Trash2` (hover mượt mà trên desktop, hiển thị trực quan trên mobile).
+  2. **Modal Xem Chi Tiết Nhật Ký Chuyên Biệt (Chỉ Xem - Read-Only Modal)**:
+     - Khi bấm vào thẻ nhật ký: mở modal `viewingDiary` qua `createPortal` với hiệu ứng trượt spring mượt mà của Framer Motion.
+     - **Chế độ chỉ xem an toàn**: Toàn bộ nội dung, ngày ghi, giờ tạo, tâm trạng và các thẻ tags hiển thị dạng thuần văn bản đọc (`select-text`, `whitespace-pre-wrap`), không chứa các ô input/textarea tránh bị sửa nhầm dữ liệu.
+     - **Cụm nút thao tác ở Footer**:
+       - Nút **"Xóa nhật ký"**: Có cơ chế xác nhận an toàn ("Xác nhận xóa" / "Hủy"), gọi hàm `deleteDiary(id)` xóa sạch trong database Supabase và cập nhật TanStack Query.
+       - Nút **"Chỉnh sửa"**: Bấm vào sẽ đóng modal xem và mở `DiaryDrawer` với dữ liệu bài viết để người dùng biên tập khi có nhu cầu.
+       - Nút **"Đóng"**: Thoát khỏi modal xem.
+- **Danh sách file đã chỉnh sửa**:
+  - `src/components/calendar/month-calendar-view.tsx`
+  - `MEMORIES.md`
+- **Trạng thái kiểm thử**:
+  - `npm test`: **26/26 tests PASS**
+  - `npx tsc --noEmit`: **0 errors** (Type check hoàn toàn sạch sẽ)
+---
+
+### 📅 [2026-10-25 20:45:00] - Giới Hạn Viết Nhật Ký Chỉ Cho Ngày Hiện Tại & Quá Khứ (Ẩn Nút Thêm Nhật Ký Khi Chọn Ngày Tương Lai)
+
+- **Yêu cầu của người dùng**:
+  - Chỉ được viết nhật ký vào đúng ngày hiện tại (hôm nay) và các ngày trước đó (quá khứ).
+  - Khi chọn ngày ở tương lai thì không được viết.
+  - Khi chọn ngày tương lai thì nút "Viết thêm nhật ký" phải bị ẩn biến mất hoàn toàn.
+- **Nội dung đã triển khai**:
+  - Trong [month-calendar-view.tsx](file:///d:/BER-Birthday-Event-Reminder-/src/components/calendar/month-calendar-view.tsx):
+    - Xây dựng hàm kiểm tra `isDateInFuture(date: Date)` so sánh chính xác theo mốc 00:00:00 của ngày được chọn so với ngày hôm nay.
+    - Tạo biến cờ `isFutureDate = isDateInFuture(selectedDate)`.
+    - **Ẩn nút Thêm nhật ký**: Tại header thẻ *"Chi tiết ngày..."*, bọc nút `btn-add-diary-for-date` trong điều kiện `{!isFutureDate && ( ... )}`. Khi người dùng click chọn ngày mai hoặc bất kỳ ngày nào trong tương lai, nút "Viết thêm nhật ký" sẽ tự động biến mất 100%!
+    - **Cập nhật Empty State**: Nếu ngày tương lai chưa có nhật ký, không hiển thị nút bấm "Bấm để viết!", mà hiển thị thông báo nhẹ nhàng: *"Chưa thể viết nhật ký cho ngày trong tương lai"*.
+    - **Khóa an toàn trong logic**: Trong hàm `handleAddNewDiary`, bổ sung kiểm tra chặn nếu `isFutureDate`, ném toast cảnh báo: *"Bạn chỉ có thể viết nhật ký cho ngày hôm nay hoặc các ngày trong quá khứ."*.
+- **Danh sách file đã chỉnh sửa**:
+  - `src/components/calendar/month-calendar-view.tsx`
+  - `MEMORIES.md`
+- **Trạng thái kiểm thử**:
+  - `npm test`: **26/26 tests PASS**
+  - `npx tsc --noEmit`: **0 errors** (Type check hoàn toàn sạch sẽ)
+---
+
+### 📅 [2026-10-25 21:08:00] - Đảm Bảo Dữ Liệu Sự Kiện & Nhật Ký Lưu Trữ Trực Tiếp Lên Database Supabase
+
+- **Yêu cầu của người dùng**:
+  - Đảm bảo dữ liệu khi được viết (nhật ký) hoặc được thêm (sự kiện) thì phải update trực tiếp lên Database để lưu trữ thật, không bị mất khi reload hoặc đăng nhập lại.
+- **Nội dung đã triển khai**:
+  1. **Nâng Cấp Tầng Xác Thực & Phân Giải Tài Khoản (`getAuthUser`)**:
+     - Cả 2 hook [use-diaries.ts](file:///d:/BER-Birthday-Event-Reminder-/src/hooks/use-diaries.ts) và [use-events.ts](file:///d:/BER-Birthday-Event-Reminder-/src/hooks/use-events.ts) được bổ sung hàm `getAuthUser`:
+       - Tự động kiểm tra `getSession()`, nếu session cookie chưa kịp nạp thì gọi ngay `supabase.auth.getUser()` để lấy `user.id` xác thực từ Supabase Cloud.
+       - Loại bỏ hoàn toàn nguy cơ rớt về chế độ demo/local khi người dùng đã đăng nhập.
+  2. **Ghi Trực Tiếp Vào Database Supabase (`diaries` table)**:
+     - Khi Thêm mới nhật ký: Gọi trực tiếp `(supabase as any).from("diaries").insert({ ...entryPayload, user_id: user.id }).select().single()`.
+     - Khi Sửa nhật ký: Gọi trực tiếp `(supabase as any).from("diaries").update(entryPayload).eq("id", id).eq("user_id", user.id)`.
+     - Khi Xóa nhật ký: Gọi trực tiếp `(supabase as any).from("diaries").delete().eq("id", id).eq("user_id", user.id)`.
+     - Sau khi ghi xong, tự động gọi `queryClient.invalidateQueries({ queryKey: ["diaries"] })` để tải lại dữ liệu mới nhất từ database PostgreSQL.
+  3. **Ghi Trực Tiếp Vào Database Supabase (`events` table)**:
+     - Khi Thêm sự kiện: Gọi trực tiếp `(supabase as any).from("events").insert({ ...eventPayload, user_id: user.id })`.
+     - Khi Sửa sự kiện: Gọi trực tiếp `(supabase as any).from("events").update(updatePayload).eq("id", id).eq("user_id", user.id)`.
+     - Khi Xóa sự kiện: Gọi trực tiếp `(supabase as any).from("events").delete().eq("id", id).eq("user_id", user.id)`.
+     - Khi Bật/Tắt sự kiện: Gọi trực tiếp `(supabase as any).from("events").update({ enabled }).eq("id", id).eq("user_id", user.id)`.
+     - Tự động nạp `user_settings.remind_time` và kích hoạt ngay tức thì Catch-up Reminders (`/api/cron/check-reminders`).
+- **Danh sách file đã chỉnh sửa**:
+  - `src/hooks/use-diaries.ts`
+  - `src/hooks/use-events.ts`
+  - `MEMORIES.md`
+- **Trạng thái kiểm thử**:
+  - `npm test`: **26/26 tests PASS**
+  - `npx tsc --noEmit`: **0 errors** (Type check hoàn toàn sạch sẽ)
+  - Dev Server: Running mượt mà, phản hồi HTTP 200 tại `/calendar`.
+
 
 
 

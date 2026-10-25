@@ -4,7 +4,13 @@ import { useEvents } from "@/hooks/use-events";
 import { MonthCalendarView } from "@/components/calendar/month-calendar-view";
 
 export default function CalendarPage() {
-  const { events, isLoading } = useEvents();
+  const {
+    events,
+    isLoading,
+    addEvent,
+    updateEvent,
+    deleteEvent,
+  } = useEvents();
 
   if (isLoading) {
     return (
@@ -17,7 +23,12 @@ export default function CalendarPage() {
 
   return (
     <div className="space-y-6">
-      <MonthCalendarView events={events} />
+      <MonthCalendarView
+        events={events}
+        onAddEvent={addEvent}
+        onUpdateEvent={(id, values) => updateEvent({ id, values })}
+        onDeleteEvent={deleteEvent}
+      />
     </div>
   );
 }
