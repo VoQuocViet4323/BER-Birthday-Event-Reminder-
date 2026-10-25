@@ -38,7 +38,37 @@ function saveLocalEvents(events: EventRow[]) {
   }
 }
 
+const CUSTOM_GROUPS_STORAGE_KEY = "ber_custom_groups";
+
+export function getLocalCustomGroups(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(CUSTOM_GROUPS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function setLocalCustomGroup(eventId: string, customGroup: string | null | undefined) {
+  if (typeof window === "undefined" || !eventId) return;
+  try {
+    const map = getLocalCustomGroups();
+    if (customGroup && customGroup.trim()) {
+      map[eventId] = customGroup.trim();
+    } else {
+      delete map[eventId];
+    }
+    localStorage.setItem(CUSTOM_GROUPS_STORAGE_KEY, JSON.stringify(map));
+  } catch (err) {
+    console.warn("Lỗi lưu local custom group:", err);
+  }
+}
+
 function enrichEvent(ev: EventRow, today: Date = new Date()): EventWithMeta {
+  const localMap = getLocalCustomGroups();
+  const customGroup = ev.custom_group || localMap[ev.id] || null;
+
   const nextOccurrence = calculateNextOccurrence(ev, today);
   const daysRemaining = calculateDaysRemaining(nextOccurrence, today);
   const upcomingAge = calculateUpcomingAge(ev.event_year, nextOccurrence.getFullYear());
@@ -51,6 +81,7 @@ function enrichEvent(ev: EventRow, today: Date = new Date()): EventWithMeta {
 
   return {
     ...ev,
+    custom_group: customGroup,
     nextOccurrence,
     daysRemaining,
     upcomingAge,
@@ -107,7 +138,16 @@ export function useEvents() {
 
           if (!error && data) {
             const today = new Date();
-            return data.map((ev: any) => enrichEvent(ev, today));
+            const localMap = getLocalCustomGroups();
+            return data.map((ev: any) =>
+              enrichEvent(
+                {
+                  ...ev,
+                  custom_group: ev.custom_group || localMap[ev.id] || null,
+                },
+                today
+              )
+            );
           }
         }
       }
@@ -194,6 +234,10 @@ export function useEvents() {
             } catch (syncErr) {
               console.warn("Không thể đồng bộ remind_time sang user_settings:", syncErr);
             }
+          }
+
+          if (data?.id) {
+            setLocalCustomGroup(data.id, values.custom_group);
           }
 
           return {
@@ -335,6 +379,8 @@ export function useEvents() {
           }
         }
 
+        setLocalCustomGroup(id, values.custom_group);
+
         return {
           ...data,
           custom_type: values.custom_type || null,
@@ -405,6 +451,7 @@ export function useEvents() {
       if (isConfigured) {
         const { error } = await (supabase as any).from("events").delete().eq("id", id);
         if (error) throw error;
+        setLocalCustomGroup(id, null);
         return id;
       }
 

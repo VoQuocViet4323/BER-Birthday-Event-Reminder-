@@ -104,7 +104,7 @@ export function UpcomingCarousel({ events, onSelectEvent }: UpcomingCarouselProp
                   {ev.displayDate}
                 </span>
                 <span className="px-2 py-0.5 rounded-md bg-secondary font-semibold">
-                  {ev.group_name}
+                  {(ev as any).custom_group || ev.group_name}
                 </span>
               </div>
             </div>

@@ -132,7 +132,7 @@ export function CommandMenu({ onOpenCreateModal }: CommandMenuProps) {
                           <div>
                             <p className="font-semibold text-foreground">{item.name}</p>
                             <p className="text-xs text-muted-foreground">
-                              {item.displayDate} • {item.group_name}
+                              {item.displayDate} • {(item as any).custom_group || item.group_name}
                             </p>
                           </div>
                         </div>

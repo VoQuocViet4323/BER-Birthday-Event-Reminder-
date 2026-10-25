@@ -409,23 +409,30 @@ export function EventFormDrawer({
                           initial={{ opacity: 0, height: 0, y: -6 }}
                           animate={{ opacity: 1, height: "auto", y: 0 }}
                           exit={{ opacity: 0, height: 0, y: -6 }}
-                          transition={{ duration: 0.2 }}
-                          className="mt-2.5 overflow-hidden"
+                          transition={{ duration: 0.22, ease: "easeOut" }}
+                          className="mt-3 overflow-hidden"
                         >
-                          <label className="block text-xs font-semibold text-emerald-600 dark:text-emerald-400 mb-1">
-                            Tên phân loại nhóm tùy chỉnh <span className="text-muted-foreground font-normal">(tùy chọn)</span>
-                          </label>
-                          <input
-                            {...register("custom_group")}
-                            placeholder="VD: Họ hàng, Đối tác, Khách hàng, Hàng xóm, CLB bóng đá..."
-                            className={cn(
-                              "w-full px-3.5 py-2.5 rounded-xl bg-secondary/60 border border-emerald-500/40 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm font-medium placeholder:text-muted-foreground/60 transition-all",
-                              errors.custom_group && "border-rose-500 focus:ring-rose-500"
+                          <div className="p-3 sm:p-3.5 rounded-2xl bg-secondary/35 border border-border/80 space-y-2 shadow-2xs">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="flex items-center gap-1.5 font-bold text-foreground">
+                                <Sparkles className="w-3.5 h-3.5 text-primary" />
+                                Tên phân loại nhóm tùy chỉnh
+                              </span>
+                              <span className="text-[11px] text-muted-foreground/80 font-normal">Tùy chọn</span>
+                            </div>
+                            <input
+                              {...register("custom_group")}
+                              placeholder="VD: Concert, Họ hàng, Đối tác, CLB..."
+                              maxLength={50}
+                              className={cn(
+                                "w-full px-3.5 py-2.5 rounded-xl bg-card border border-border hover:border-border/90 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none text-sm font-medium placeholder:text-muted-foreground/50 transition-all",
+                                errors.custom_group && "border-rose-500 focus:ring-rose-500"
+                              )}
+                            />
+                            {errors.custom_group && (
+                              <p className="text-xs text-rose-500 font-medium">{errors.custom_group.message}</p>
                             )}
-                          />
-                          {errors.custom_group && (
-                            <p className="text-xs text-rose-500 mt-1 font-medium">{errors.custom_group.message}</p>
-                          )}
+                          </div>
                         </motion.div>
                       )}
                     </AnimatePresence>

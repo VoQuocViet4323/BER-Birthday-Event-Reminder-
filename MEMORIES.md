@@ -1890,6 +1890,44 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
   - Unit tests: **17/17 tests PASS**.
   - Next.js build: **`npm run build` PASS 100% (Compiled successfully, all 18 routes generated)**.
 
+---
+
+### 📅 [2026-10-25 16:31:00] - Fix UI Ô Nhập Nhóm Tùy Chỉnh (Mục Khác) & Khắc Phục Lỗi Không Hiển Thị Tên Nhóm "Concert" Sau Khi Lưu
+
+- **Yêu cầu của người dùng**:
+  1. Fix lại UI phần ô nhập tên nhóm ở mục "Khác" (khoanh đỏ: màu viền xanh lá chói, nhãn dài, khoảng cách chưa tối ưu).
+  2. Khắc phục lỗi sau khi nhập "Concert" và bấm Lưu thì ở danh sách sự kiện ngoài Dashboard thẻ vẫn hiện chữ "Khác" thay vì "Concert".
+- **Nguyên nhân cốt lõi phát hiện**:
+  1. **Lỗi UI ô nhập nhóm tùy chỉnh**:
+     - Class cũ dùng màu `border-emerald-500/40` và `text-emerald-400` nổi bật quá gắt trên nền tối, không có khung container gom nhóm khiến ô nhập lọt thỏm và mất cân đối với các trường khác.
+  2. **Lỗi không hiển thị "Concert" sau khi lưu**:
+     - Bảng `events` trên Supabase Cloud database thực tế chưa được chạy migration `ALTER TABLE public.events ADD COLUMN IF NOT EXISTS custom_group TEXT;` (kết quả kiểm tra trả về lỗi PostgreSQL `42703: column events.custom_group does not exist`).
+     - Khi người dùng gửi form, `use-events.ts` gặp lỗi `42703` nên tự động xóa bỏ `custom_group` khỏi payload để tránh crash lưu dữ liệu.
+     - Sau khi lưu, Supabase trả về record không có cột `custom_group`, dẫn đến React Query refetch dữ liệu về `custom_group` là `undefined`.
+     - `EventCard` rơi vào fallback `(event.custom_group || event.group_name)` $\rightarrow$ hiển thị `"Khác"`.
+- **Giải pháp đã thực hiện**:
+  1. **Thiết kế lại UI ô nhập nhóm tùy chỉnh trong [event-form-drawer.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-form-drawer.tsx)**:
+     - Đặt ô nhập vào trong khối card kính mờ tinh tế `bg-secondary/35 border border-border/80 rounded-2xl p-3 sm:p-3.5`.
+     - Tiêu đề có icon `<Sparkles className="w-3.5 h-3.5 text-primary" />` và nhãn `Tên phân loại nhóm tùy chỉnh` cùng badge `Tùy chọn` nhẹ nhàng, tinh tế.
+     - Ô input chuẩn theme `bg-card border-border hover:border-border/90 focus:border-primary focus:ring-primary/20`, placeholder `VD: Concert, Họ hàng, Đối tác, CLB...`.
+  2. **Xây dựng cơ chế Dual-Storage Sync cho `custom_group` trong [use-events.ts](file:///e:/BER-Birthday-Event-Reminder-/src/hooks/use-events.ts)**:
+     - Tạo bộ lưu trữ đệm `ber_custom_groups` trong `localStorage`: mỗi khi thêm mới hoặc sửa sự kiện, tên nhóm tùy chỉnh (ví dụ "Concert") được lưu ngay lập tức vào bộ nhớ máy và đồng bộ vào React Query cache.
+     - Hàm `enrichEvent` và `useQuery` tự động kết hợp `ev.custom_group || localMap[ev.id]`, đảm bảo 100% tên nhóm "Concert" luôn tồn tại và hiển thị ngay trên UI của người dùng kể cả khi bảng Supabase chưa kịp chạy lệnh SQL.
+     - Đồng thời, `useEvents` vẫn tự động gửi `custom_group` lên Supabase (nếu bảng có cột thì lưu cả 2 nơi).
+  3. **Đồng bộ hiển thị ở tất cả các component**:
+     - [upcoming-carousel.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/upcoming-carousel.tsx): Hiển thị `(ev.custom_group || ev.group_name)`.
+     - [command-menu.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/layout/command-menu.tsx): Hiển thị và tìm kiếm theo `custom_group`.
+- **Danh sách file đã chỉnh sửa**:
+  - `src/components/events/event-form-drawer.tsx`
+  - `src/hooks/use-events.ts`
+  - `src/components/events/upcoming-carousel.tsx`
+  - `src/components/layout/command-menu.tsx`
+  - `MEMORIES.md`
+- **Trạng thái kiểm thử**:
+  - Unit tests: **17/17 tests PASS**.
+  - Next.js build: **`npm run build` PASS 100% (Compiled successfully, all 18 routes generated)**.
+
+
 
 
 
