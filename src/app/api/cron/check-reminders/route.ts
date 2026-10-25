@@ -104,7 +104,7 @@ async function handleCheckReminders(request: Request) {
 
       // Chuẩn hóa định dạng "HH:mm" để tránh sai lệch khi Postgres trả về "HH:mm:ss"
       const normalizeTime = (t: string | null | undefined) => {
-        if (!t) return "";
+        if (!t) return "08:00";
         const parts = t.trim().split(":");
         if (parts.length >= 2) {
           return `${parts[0].padStart(2, "0")}:${parts[1].padStart(2, "0")}`;
@@ -112,12 +112,16 @@ async function handleCheckReminders(request: Request) {
         return t;
       };
 
-      // So khớp giờ và phút (ví dụ "16:50" === "16:50")
-      if (normalizeTime(eventTime) !== normalizeTime(currentTimeStr)) {
+      const normalizedEventTime = normalizeTime(eventTime);
+      const normalizedCurrentTime = normalizeTime(currentTimeStr);
+
+      // Nếu chưa đến giờ nhắc trong ngày hôm nay -> bỏ qua chờ đến đúng giờ
+      if (normalizedCurrentTime < normalizedEventTime) {
         continue;
       }
 
       // 4. Kiểm tra chống gửi trùng lặp bằng bảng notification_logs
+      // Nếu đã đến hoặc qua giờ nhắc (ví dụ cài 08:00 nhưng mở app lúc 16:54) và chưa từng gửi -> gửi bù ngay!
       const occurrenceDateStr = nextOcc.toISOString().split("T")[0];
       const { data: existingLog } = await (supabase as any)
         .from("notification_logs")

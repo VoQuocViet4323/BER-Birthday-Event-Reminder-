@@ -134,10 +134,10 @@ Deno.serve(async (req) => {
 
         // Kiểm tra xem daysDiff có trùng với bất kỳ mốc remindDaysList nào không
         if (remindDaysList.includes(daysDiff)) {
-          // So khớp giờ và phút (ví dụ "16:50" === "16:50") nếu không phải test
+          // Kiểm tra xem đã đến hoặc qua giờ nhắc trong ngày chưa (cho phép gửi bù nếu trễ giờ)
           if (!isTest) {
             const evTime = (ev.remind_time || setting.remind_time || "08:00").substring(0, 5);
-            if (evTime !== userLocalTimeStr) {
+            if (userLocalTimeStr < evTime) {
               continue;
             }
           }
