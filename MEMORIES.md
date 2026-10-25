@@ -1795,6 +1795,48 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
   - Unit tests: **17/17 tests PASS**.
   - Build status: **`npm run build` thành công 100%**.
 
+---
+
+### 📅 [2026-10-25 16:01:00] - Khắc Phục Liên Kết Email Trỏ Chính Xác Về Web App Real (Production)
+
+- **Yêu cầu của người dùng**:
+  - Sửa lỗi các nút bấm và liên kết trong email gửi tới không mở được ứng dụng web thật:
+    1. Nút "🚀 Mở Ứng Dụng BER →"
+    2. Liên kết "Lịch" (trong mẹo: *💡 Mẹo: Bạn có thể mở Lịch để lưu lại những dòng Nhật ký kỷ niệm đáng nhớ sau sự kiện!*)
+    3. Nút "📅 Xem trên Lịch & Viết nhật ký →"
+    4. Các liên kết footer: "Cài đặt thông báo", "Quản lý sự kiện", "Hủy nhận email".
+- **Nguyên nhân cốt lõi**:
+  1. Trong `src/app/api/test-email/route.ts` và `src/app/api/cron/check-reminders/route.ts`, fallback `appUrl` được đặt là `"http://localhost:3000"`. Khi test email hoặc chạy gửi email từ môi trường phát triển / cron, link email sinh ra trỏ vào `http://localhost:3000`, dẫn đến khi mở trên điện thoại (email client trên mobile) sẽ bị lỗi kết nối `ERR_CONNECTION_REFUSED` vì điện thoại không thể truy cập localhost của máy tính.
+  2. Trong `supabase/functions/send-reminders/index.ts`, fallback `appUrl` đặt nhầm là `"https://ber-reminder.vercel.app"` (thiếu `-birthday-event-`) dẫn đến liên kết bị 404 không tồn tại.
+- **Giải pháp đã thực hiện**:
+  1. **Tạo hàm chuẩn hóa `resolveProductionAppUrl`** trong `src/lib/email/template-builder.ts` và `supabase/functions/send-reminders/email-template.ts`:
+     - Tự động nhận diện và chặn các URL chứa `localhost`, `127.0.0.1`, hoặc tên miền cũ `ber-reminder.vercel.app`.
+     - Luôn ép trỏ chuẩn xác 100% về Web App Real chính thức: **`https://ber-birthday-event-reminder.vercel.app`**.
+  2. **Cập nhật các liên kết trong template**:
+     - Nút CTA chính: `${appUrl}/dashboard`
+     - Liên kết "Lịch": `${appUrl}/calendar` (bổ sung `target="_blank" rel="noopener noreferrer"`)
+     - Nút "Xem trên Lịch & Viết nhật ký": `${appUrl}/calendar`
+     - Liên kết footer: `${appUrl}/settings`, `${appUrl}/events`, `${unsubscribeUrl}`.
+  3. **Cập nhật cả 2 Route Handlers**:
+     - `src/app/api/test-email/route.ts`: Fallback về `https://ber-birthday-event-reminder.vercel.app`.
+     - `src/app/api/cron/check-reminders/route.ts`: Fallback về `https://ber-birthday-event-reminder.vercel.app`.
+  4. **Cập nhật Supabase Edge Function**:
+     - `supabase/functions/send-reminders/index.ts`: Đổi fallback từ `https://ber-reminder.vercel.app` thành `https://ber-birthday-event-reminder.vercel.app`.
+  5. **Bổ sung Unit Test**:
+     - Thêm assertion kiểm tra trong `src/tests/reminder-flow.test.ts` đảm bảo kể cả khi truyền `localhost:3000`, HTML email đầu ra vẫn tự động bảo vệ người dùng bằng cách trỏ về domain Production thật và không chứa bất kỳ chuỗi `localhost:3000` nào.
+- **Danh sách file đã chỉnh sửa**:
+  - `src/lib/email/template-builder.ts`
+  - `src/app/api/test-email/route.ts`
+  - `src/app/api/cron/check-reminders/route.ts`
+  - `supabase/functions/send-reminders/email-template.ts`
+  - `supabase/functions/send-reminders/index.ts`
+  - `src/tests/reminder-flow.test.ts`
+  - `MEMORIES.md`
+- **Trạng thái kiểm thử**:
+  - Unit tests: **17/17 tests PASS**.
+  - Next.js build: **`npm run build` PASS 100% (Compiled successfully, all 18 routes generated)**.
+
+
 
 
 

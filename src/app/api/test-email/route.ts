@@ -57,7 +57,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const rawAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+    const appUrl =
+      rawAppUrl && !rawAppUrl.includes("localhost") && !rawAppUrl.includes("127.0.0.1")
+        ? rawAppUrl.replace(/\/+$/, "")
+        : "https://ber-birthday-event-reminder.vercel.app";
 
     // 1. Lấy thông tin user_settings (quy tắc 29/2)
     let leapDayRule: "feb28" | "mar01" = "feb28";

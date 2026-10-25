@@ -15,13 +15,43 @@ export interface ReminderItem {
   giftIdea?: string | null;
 }
 
+export const CANONICAL_APP_URL = "https://ber-birthday-event-reminder.vercel.app";
+
+/**
+ * Đảm bảo liên kết trong email gửi đến người dùng luôn trỏ chính xác về Web App Real (Production).
+ * Nếu truyền vào localhost hoặc domain cũ không tồn tại, hàm sẽ tự động chuẩn hóa về URL Production.
+ */
+export function resolveProductionAppUrl(inputUrl?: string): string {
+  if (!inputUrl || typeof inputUrl !== "string") {
+    return CANONICAL_APP_URL;
+  }
+  const clean = inputUrl.trim().replace(/\/+$/, "");
+  if (
+    !clean ||
+    clean.includes("localhost") ||
+    clean.includes("127.0.0.1") ||
+    clean.includes("ber-reminder.vercel.app")
+  ) {
+    return CANONICAL_APP_URL;
+  }
+  return clean;
+}
+
 export function generateReminderEmailHtml(params: {
   userName: string;
   items: ReminderItem[];
-  appUrl: string;
-  unsubscribeUrl: string;
+  appUrl?: string;
+  unsubscribeUrl?: string;
 }): string {
-  const { userName, items, appUrl, unsubscribeUrl } = params;
+  const { userName, items } = params;
+  const appUrl = resolveProductionAppUrl(params.appUrl);
+  const unsubscribeUrl =
+    params.unsubscribeUrl &&
+    !params.unsubscribeUrl.includes("localhost") &&
+    !params.unsubscribeUrl.includes("127.0.0.1") &&
+    !params.unsubscribeUrl.includes("ber-reminder.vercel.app")
+      ? params.unsubscribeUrl
+      : `${appUrl}/settings`;
 
   // Tiêu đề & lời dẫn
   const hasToday = items.some((i) => i.daysRemaining === 0);
@@ -315,7 +345,7 @@ export function generateReminderEmailHtml(params: {
 
               <!-- Gợi ý viết nhật ký nhỏ gọn -->
               <div style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 10px; padding: 10px 14px; text-align: center; font-size: 12.5px; color: #64748b; margin-top: 12px;">
-                💡 <strong>Mẹo:</strong> Bạn có thể mở <a href="${appUrl}/calendar" style="color: #6366f1; font-weight: 700; text-decoration: underline;">Lịch</a> để lưu lại những dòng <strong>Nhật ký kỷ niệm</strong> đáng nhớ sau sự kiện!
+                💡 <strong>Mẹo:</strong> Bạn có thể mở <a href="${appUrl}/calendar" target="_blank" rel="noopener noreferrer" style="color: #6366f1; font-weight: 700; text-decoration: underline;">Lịch</a> để lưu lại những dòng <strong>Nhật ký kỷ niệm</strong> đáng nhớ sau sự kiện!
               </div>
             </td>
           </tr>
@@ -327,9 +357,9 @@ export function generateReminderEmailHtml(params: {
                 Bạn nhận được thông báo này vì đã bật chế độ nhắc sự kiện tại <strong style="color: #64748b;">Nhắc Sinh Nhật & Sự Kiện (BER)</strong>.
               </p>
               <p style="margin: 0;">
-                <a href="${appUrl}/settings" style="color: #6366f1; text-decoration: none; font-weight: 600;">Cài đặt thông báo</a> &nbsp;•&nbsp; 
-                <a href="${appUrl}/events" style="color: #6366f1; text-decoration: none; font-weight: 600;">Quản lý sự kiện</a> &nbsp;•&nbsp; 
-                <a href="${unsubscribeUrl}" style="color: #94a3b8; text-decoration: underline;">Hủy nhận email</a>
+                <a href="${appUrl}/settings" target="_blank" rel="noopener noreferrer" style="color: #6366f1; text-decoration: none; font-weight: 600;">Cài đặt thông báo</a> &nbsp;•&nbsp; 
+                <a href="${appUrl}/events" target="_blank" rel="noopener noreferrer" style="color: #6366f1; text-decoration: none; font-weight: 600;">Quản lý sự kiện</a> &nbsp;•&nbsp; 
+                <a href="${unsubscribeUrl}" target="_blank" rel="noopener noreferrer" style="color: #94a3b8; text-decoration: underline;">Hủy nhận email</a>
               </p>
             </td>
           </tr>

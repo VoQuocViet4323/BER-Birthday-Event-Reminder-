@@ -26,7 +26,11 @@ Deno.serve(async (req) => {
     const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     const resendApiKey = Deno.env.get("RESEND_API_KEY") ?? "";
     const emailFrom = Deno.env.get("EMAIL_FROM") || "Nhắc Sinh Nhật <onboarding@resend.dev>";
-    const appUrl = Deno.env.get("NEXT_PUBLIC_APP_URL") || "https://ber-reminder.vercel.app";
+    const rawAppUrl = Deno.env.get("NEXT_PUBLIC_APP_URL");
+    const appUrl =
+      rawAppUrl && !rawAppUrl.includes("localhost") && !rawAppUrl.includes("127.0.0.1") && !rawAppUrl.includes("ber-reminder.vercel.app")
+        ? rawAppUrl.replace(/\/+$/, "")
+        : "https://ber-birthday-event-reminder.vercel.app";
 
     if (!supabaseUrl || !supabaseServiceRoleKey) {
       throw new Error("Missing Supabase configuration environment variables");

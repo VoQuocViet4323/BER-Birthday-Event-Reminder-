@@ -145,6 +145,12 @@ describe("Real Reminder Engine & Notification Flow Verification", () => {
       expect(html).toContain("Son môi");
       expect(html).not.toContain("undefined");
       expect(html).not.toContain("NaN");
+
+      // Đảm bảo các nút bấm và liên kết luôn trỏ về web app real thay vì localhost
+      expect(html).toContain("https://ber-birthday-event-reminder.vercel.app/dashboard");
+      expect(html).toContain("https://ber-birthday-event-reminder.vercel.app/calendar");
+      expect(html).toContain("https://ber-birthday-event-reminder.vercel.app/settings");
+      expect(html).not.toContain("localhost:3000");
     });
   });
 

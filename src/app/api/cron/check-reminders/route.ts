@@ -173,7 +173,11 @@ async function handleCheckReminders(request: Request) {
     }
 
     // 6. Tạo nội dung email đẹp mắt
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const rawAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+    const appUrl =
+      rawAppUrl && !rawAppUrl.includes("localhost") && !rawAppUrl.includes("127.0.0.1")
+        ? rawAppUrl.replace(/\/+$/, "")
+        : "https://ber-birthday-event-reminder.vercel.app";
     const itemsToSend: ReminderItem[] = dueEvents.map((ev) => ({
       id: ev.id,
       name: ev.name,
