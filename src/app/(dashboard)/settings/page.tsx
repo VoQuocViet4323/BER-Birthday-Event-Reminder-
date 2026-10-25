@@ -82,7 +82,7 @@ export default function SettingsPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
-  // Tạo mẫu HTML xem trước sinh động chuẩn xác như email thực tế nhận được
+  // Tạo mẫu HTML xem trước ở chế độ CHỈ XEM (Vô hiệu hóa mọi tương tác, click, link)
   const emailPreviewHtml = useMemo(() => {
     const sampleItems: ReminderItem[] = [
       {
@@ -111,12 +111,33 @@ export default function SettingsPage() {
       },
     ];
 
-    return generateReminderEmailHtml({
+    const rawHtml = generateReminderEmailHtml({
       userName: profile?.display_name || "Bạn",
       items: sampleItems,
       appUrl: "https://ber-birthday-event-reminder.vercel.app",
       unsubscribeUrl: "https://ber-birthday-event-reminder.vercel.app/settings",
     });
+
+    // Chế độ CHỈ XEM (View-Only): Khóa toàn bộ liên kết, con trỏ chuột, ngăn chặn click hoặc chuyển trang
+    const readOnlyStyles = `
+      <style>
+        *, *::before, *::after {
+          cursor: default !important;
+          user-select: none !important;
+          -webkit-user-select: none !important;
+          -webkit-user-drag: none !important;
+        }
+        a, button, input, [role="button"], [onclick] {
+          pointer-events: none !important;
+          cursor: default !important;
+          text-decoration: none !important;
+        }
+      </style>
+    `;
+
+    return rawHtml
+      .replace("</head>", `${readOnlyStyles}</head>`)
+      .replace(/<a\s+href="[^"]*"/gi, '<a href="javascript:void(0)" tabindex="-1" onclick="return false;"');
   }, [profile?.display_name]);
 
   // Xóa tài khoản vĩnh viễn khỏi Database
@@ -896,8 +917,13 @@ export default function SettingsPage() {
                       ✉️
                     </div>
                     <div>
-                      <h3 className="font-bold text-sm text-foreground">Xem trước mẫu email thông báo</h3>
-                      <p className="text-[11px] text-muted-foreground">Mẫu giao diện thực tế sẽ gửi tới hòm thư của bạn</p>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold text-sm text-foreground">Xem trước mẫu email thông báo</h3>
+                        <span className="px-2 py-0.5 rounded-full bg-secondary text-muted-foreground text-[10px] font-semibold border border-border">
+                          Chỉ xem
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">Mẫu email tĩnh xem trước • Không thể tương tác</p>
                     </div>
                   </div>
                   <button
@@ -910,39 +936,29 @@ export default function SettingsPage() {
                   </button>
                 </div>
 
-                {/* Khung mô phỏng hiển thị Email (Iframe cách ly hoàn toàn CSS, hiển thị đúng 100% như trên điện thoại) */}
+                {/* Khung mô phỏng hiển thị Email (Loại bỏ sandbox để triệt tiêu lỗi console, vô hiệu hóa tương tác) */}
                 <div className="flex-1 overflow-hidden p-2 sm:p-4 bg-slate-100 dark:bg-slate-950/70 flex items-center justify-center">
-                  <div className="w-full h-[460px] sm:h-[520px] rounded-2xl overflow-hidden border border-border/80 shadow-md bg-white">
+                  <div className="w-full h-[460px] sm:h-[520px] rounded-2xl overflow-hidden border border-border/80 shadow-md bg-white select-none">
                     <iframe
-                      title="Xem trước mẫu email nhắc sự kiện BER"
+                      title="Xem trước mẫu email nhắc sự kiện BER (Chỉ xem)"
                       srcDoc={emailPreviewHtml}
-                      className="w-full h-full border-0"
-                      sandbox="allow-same-origin allow-popups"
+                      className="w-full h-full border-0 select-none"
                     />
                   </div>
                 </div>
 
-                {/* Footer với nút Đóng và Thử gửi email */}
-                <div className="p-4 border-t border-border bg-card flex items-center justify-between gap-3">
+                {/* Footer chế độ chỉ xem */}
+                <div className="p-3.5 sm:p-4 border-t border-border bg-card flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Eye className="w-4 h-4 text-primary" />
+                    <span>Chế độ chỉ xem • Không tương tác</span>
+                  </div>
                   <button
                     type="button"
                     onClick={() => setShowEmailPreview(false)}
-                    className="py-2.5 px-4 rounded-xl border border-border hover:bg-secondary font-semibold text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                    className="py-2 px-5 rounded-xl border border-border hover:bg-secondary font-semibold text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
                   >
                     Đóng xem trước
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={isTestingEmail}
-                    onClick={() => {
-                      setShowEmailPreview(false);
-                      handleSendTestEmail();
-                    }}
-                    className="flex items-center gap-1.5 py-2.5 px-4 rounded-xl gradient-brand text-white font-bold text-xs shadow-soft hover:shadow-soft-hover transition-all cursor-pointer"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                    <span>Gửi email thử này ngay</span>
                   </button>
                 </div>
               </motion.div>

@@ -1927,6 +1927,47 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
   - Unit tests: **17/17 tests PASS**.
   - Next.js build: **`npm run build` PASS 100% (Compiled successfully, all 18 routes generated)**.
 
+---
+
+### 📅 [2026-10-25 16:39:00] - Khắc Phục Lỗi Console (Blocked Script about:srcdoc) & Khóa Chế Độ Chỉ Xem (Read-Only) Trong Modal Xem Trước Email
+
+- **Yêu cầu của người dùng**:
+  1. Fix lỗi console đỏ: `Blocked script execution in 'about:srcdoc' because the document's frame is sandboxed and the 'allow-scripts' permission is not set.`
+  2. Đưa khung xem trước mẫu email về chế độ **chỉ xem thuần túy (Read-only)**, không cho phép bấm, tương tác hay click nhảy link.
+- **Nguyên nhân phát hiện**:
+  1. Thẻ `<iframe>` trước đó có thuộc tính `sandbox="allow-same-origin allow-popups"`. Khi Chrome DevTools hoặc extension trình duyệt cố gắng gắn kết script vào iframe, cơ chế sandbox không có `allow-scripts` lập tức chặn lại và bắn ra 3 dòng lỗi đỏ trong Console.
+  2. Mẫu email có chứa các liên kết thẻ `<a href="...">` có thể click được, khiến trải nghiệm xem trước chưa đạt tính chất tĩnh "chỉ xem".
+- **Giải pháp đã thực hiện**:
+  1. **Triệt tiêu lỗi console trong [page.tsx (settings)](file:///e:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/settings/page.tsx)**:
+     - Gỡ bỏ hoàn toàn thuộc tính `sandbox` khỏi thẻ `<iframe>`. Do mẫu email chỉ chứa HTML/CSS tĩnh nên không cần sandbox và chấm dứt 100% cảnh báo `Blocked script execution`.
+  2. **Khóa 100% tương tác (Read-Only Mode)**:
+     - Tiêm quy tắc CSS cưỡng chế vào `<head>` của email xem trước:
+       ```css
+       *, *::before, *::after {
+         cursor: default !important;
+         user-select: none !important;
+         -webkit-user-select: none !important;
+         -webkit-user-drag: none !important;
+       }
+       a, button, input, [role="button"], [onclick] {
+         pointer-events: none !important;
+         cursor: default !important;
+         text-decoration: none !important;
+       }
+       ```
+     - Chuyển toàn bộ thẻ `<a href="...">` sang `href="javascript:void(0)" tabindex="-1" onclick="return false;"`.
+     - Người dùng vẫn có thể cuộn trang mượt mà để quan sát toàn bộ mẫu email nhưng con trỏ chuột luôn ở trạng thái tĩnh `default` và không thể bấm hay kích hoạt bất kỳ liên kết/nút bấm nào.
+  3. **Tối giản Footer & Header Modal**:
+     - Thêm huy hiệu `Chỉ xem` trên thanh tiêu đề.
+     - Lược bỏ nút gửi thử trùng lặp trong modal, thay bằng nhãn chú thích `Chế độ chỉ xem • Không tương tác` và nút `Đóng xem trước`.
+- **Danh sách file đã chỉnh sửa**:
+  - `src/app/(dashboard)/settings/page.tsx`
+  - `MEMORIES.md`
+- **Trạng thái kiểm thử**:
+  - Unit tests: **17/17 tests PASS**.
+  - Next.js build: **`npm run build` PASS 100% (Compiled successfully, all 18 routes generated)**.
+
+
 
 
 
