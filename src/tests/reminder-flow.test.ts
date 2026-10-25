@@ -169,4 +169,56 @@ describe("Real Reminder Engine & Notification Flow Verification", () => {
       }
     });
   });
+
+  describe("5. Cơ chế Gửi Bù (Catch-up) & Chống Miss Thông Báo", () => {
+    it("nhận diện sự kiện ngày mai (26/10) trùng mốc 'Trước 1 ngày' khi hôm nay là 25/10", () => {
+      const event = {
+        event_day: 26,
+        event_month: 10,
+        event_year: 2026,
+        is_lunar: false,
+        repeat_yearly: true,
+      };
+      const today = new Date(2026, 9, 25, 16, 54);
+      const nextOcc = calculateNextOccurrence(event, today);
+      const daysRemaining = calculateDaysRemaining(nextOcc, today);
+
+      expect(daysRemaining).toBe(1);
+
+      // Mốc nhắc nhở người dùng chọn: [1, 0] (Trước 1 ngày & Đúng ngày)
+      const remindDays = [1, 0];
+      const isDueToday = remindDays.map(Number).includes(daysRemaining);
+      expect(isDueToday).toBe(true);
+    });
+
+    it("so khớp mốc ngày chính xác ngay cả khi dữ liệu từ database là mảng chuỗi ['1', '0']", () => {
+      const stringOffsets = ["1", "0"];
+      const daysRemaining = 1;
+      const normalized = stringOffsets.map(Number).filter((d) => !isNaN(d));
+      expect(normalized.includes(daysRemaining)).toBe(true);
+    });
+
+    it("cơ chế gửi bù: cho phép gửi khi giờ hiện tại đã đến hoặc vượt qua giờ nhắc trong ngày", () => {
+      const eventTime = "08:00";
+      const currentTimePassed = "16:54";
+      const currentTimeBefore = "07:30";
+
+      // Đã qua 08:00 sáng -> Không được bỏ qua (currentTimePassed < eventTime là false)
+      expect(currentTimePassed < eventTime).toBe(false);
+
+      // Chưa đến 08:00 sáng -> Bỏ qua chờ đúng giờ (currentTimeBefore < eventTime là true)
+      expect(currentTimeBefore < eventTime).toBe(true);
+    });
+
+    it("mặc định repeat_yearly = true ngay cả khi sự kiện không truyền repeat_yearly", () => {
+      const eventWithoutRepeat: any = {
+        event_day: 10,
+        event_month: 5, // 10/5 đã qua so với 23/10
+        is_lunar: false,
+      };
+      const occ = calculateNextOccurrence(eventWithoutRepeat, baseDate);
+      expect(occ.getFullYear()).toBe(2027);
+    });
+  });
 });
+

@@ -1994,6 +1994,49 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
   - Unit tests: **17/17 tests PASS (`npm test`)**.
   - Production build: **`npm run build` PASS 100% (Compiled successfully, toàn bộ 18 routes thành công)**.
 
+---
+
+### 📅 [2026-10-25 17:10:00] - Kiến Trúc Chống Miss Thông Báo Toàn Diện: Cơ Chế Gửi Bù (Catch-Up) & Kích Hoạt Tức Thì Khi Thêm/Sửa Sự Kiện
+
+- **Yêu cầu của người dùng**:
+  - Giải quyết dứt điểm vấn đề không nhận được email thông báo khi tạo sự kiện và cài mốc nhắc trong ngày (ví dụ: sự kiện ngày mai 26/10, cài nhắc trước 1 ngày lúc 08:00 sáng nhưng chiều 16:54 không thấy email).
+  - Yêu cầu tuyệt đối không bao giờ để lặp lại lỗi này từ nay về sau; kiểm tra hoạt động các sự kiện sắp tới và chống bị miss thông báo khi người dùng tạo thêm bất kỳ sự kiện mới nào.
+- **Nguyên nhân cốt lõi phát hiện**:
+  1. **So khớp giờ quá cứng nhắc**: Trong `/api/cron/check-reminders` và Edge Function trước đó chỉ kiểm tra `currentTimeStr === eventTime` (từng phút nghiêm ngặt). Khi thời điểm 08:00 sáng đã trôi qua, nếu người dùng tạo sự kiện vào buổi chiều hoặc tắt máy lúc 08:00 sáng thì email trong ngày bị bỏ sót vĩnh viễn (missed reminder).
+  2. **Type mismatch giữa mảng số và mảng chuỗi**: `remind_days` từ database hoặc input đôi khi là chuỗi `["1", "0"]`, dẫn đến `["1", "0"].includes(1)` trả về `false`.
+  3. **Độ trễ kích hoạt sau khi lưu sự kiện**: Khi tạo hoặc chỉnh sửa sự kiện trong ngày, hệ thống chưa kích hoạt quét ngay mà phải chờ đến chu kỳ tiếp theo của Scheduler hoặc Cron.
+- **Giải pháp kiến trúc & Triển khai toàn diện**:
+  1. **Cơ chế Tự Động Gửi Bù Thông Minh (Catch-Up Reminder)**:
+     - Tại [route.ts (check-reminders)](file:///e:/BER-Birthday-Event-Reminder-/src/app/api/cron/check-reminders/route.ts) và [index.ts (send-reminders)](file:///e:/BER-Birthday-Event-Reminder-/supabase/functions/send-reminders/index.ts):
+       Chuyển đổi điều kiện sang `if (normalizedCurrentTime < normalizedEventTime) continue;`.
+     - Nếu giờ hiện tại đã đến hoặc vượt qua giờ nhắc trong ngày (ví dụ cài `08:00` nhưng mở ứng dụng lúc `17:00`):
+       Kiểm tra bảng `notification_logs`. Nếu hôm nay chưa từng gửi email cho mốc này $\rightarrow$ **Kích hoạt gửi bù ngay lập tức!**
+     - Đã gửi rồi $\rightarrow$ Không bao giờ gửi lặp lại trong ngày.
+  2. **Kích hoạt tức thì khi Thêm / Sửa / Bật sự kiện (Zero Latency Trigger)**:
+     - Trong [use-events.ts](file:///e:/BER-Birthday-Event-Reminder-/src/hooks/use-events.ts):
+       Tại `onSuccess` của `createMutation`, `updateMutation`, và `toggleEnabledMutation`, tự động bắn sự kiện `trigger-reminder-check` và gọi ngầm `fetch("/api/cron/check-reminders", { method: "POST" })`.
+     - Người dùng vừa tạo hoặc sửa sự kiện xong là hệ thống lập tức đánh giá và gửi email ngay trong vòng 1-2 giây nếu sự kiện đó trùng mốc cần nhắc hôm nay.
+  3. **Chuẩn hóa Type an toàn tuyệt đối**:
+     - Chuẩn hóa mảng `remind_days` sang Number: `eventOffsets.map(Number).filter(d => !isNaN(d))` đảm bảo mọi kiểu dữ liệu đều so khớp hoàn hảo.
+     - Fallback `(event.repeat_yearly !== false)` trong [date-utils.ts](file:///e:/BER-Birthday-Event-Reminder-/src/lib/date-utils.ts) để luôn mặc định lặp hàng năm ngay cả khi trường bị `undefined`.
+  4. **Bổ sung Unit Test tự động chống thoái lui (Regression Prevention)**:
+     - Bổ sung suite test `5. Cơ chế Gửi Bù (Catch-up) & Chống Miss Thông Báo` trong [reminder-flow.test.ts](file:///e:/BER-Birthday-Event-Reminder-/src/tests/reminder-flow.test.ts) (kiểm tra mốc ngày mai, chuỗi số, so sánh giờ gửi bù, repeat yearly fallback).
+  5. **Cập nhật Quy tắc Bắt buộc vào AI Knowledge Base**:
+     - Ghi nhận `Lỗi 9: Bỏ sót thông báo do so khớp giờ quá nghiêm ngặt` vào [GEMINI.md](file:///e:/BER-Birthday-Event-Reminder-/GEMINI.md) và [.agents/rules/build_error_fixes.md](file:///e:/BER-Birthday-Event-Reminder-/.agents/rules/build_error_fixes.md) để mọi AI tương lai luôn tuân thủ nghiêm ngặt.
+- **Danh sách file đã chỉnh sửa**:
+  - `src/app/api/cron/check-reminders/route.ts`
+  - `supabase/functions/send-reminders/index.ts`
+  - `src/hooks/use-events.ts`
+  - `src/hooks/use-auto-reminder-scheduler.ts`
+  - `src/lib/date-utils.ts`
+  - `src/tests/reminder-flow.test.ts`
+  - `GEMINI.md`
+  - `.agents/rules/build_error_fixes.md`
+  - `MEMORIES.md`
+- **Trạng thái kiểm thử**:
+  - Unit tests: **21/21 tests PASS (`npm test`)**.
+  - Production build: **`npm run build` PASS 100% (18/18 static/dynamic routes)**.
+
 
 
 

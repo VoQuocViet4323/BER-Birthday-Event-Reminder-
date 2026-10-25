@@ -304,6 +304,11 @@ export function useEvents() {
         title: "Đã thêm sự kiện thành công! 🎉",
         variant: "success",
       });
+      // Kích hoạt ngay lập tức quét nhắc nhở cho sự kiện vừa tạo nếu trùng ngày hôm nay
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("trigger-reminder-check"));
+      }
+      fetch("/api/cron/check-reminders", { method: "POST" }).catch(() => {});
     },
   });
 
@@ -438,6 +443,11 @@ export function useEvents() {
         title: "Đã cập nhật sự kiện",
         variant: "success",
       });
+      // Kích hoạt ngay lập tức quét nhắc nhở nếu mốc nhắc đã đến hoặc trùng hôm nay
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("trigger-reminder-check"));
+      }
+      fetch("/api/cron/check-reminders", { method: "POST" }).catch(() => {});
     },
   });
 
@@ -531,6 +541,12 @@ export function useEvents() {
         title: enabled ? "Đã bật nhắc nhở sự kiện" : "Đã tắt nhắc nhở sự kiện",
         duration: 3000,
       });
+      if (enabled) {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("trigger-reminder-check"));
+        }
+        fetch("/api/cron/check-reminders", { method: "POST" }).catch(() => {});
+      }
     },
   });
 

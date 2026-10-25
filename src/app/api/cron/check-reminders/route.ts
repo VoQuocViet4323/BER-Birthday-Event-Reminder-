@@ -90,10 +90,12 @@ async function handleCheckReminders(request: Request) {
       const daysRemaining = calculateDaysRemaining(nextOcc, now);
 
       // Kiểm tra xem hôm nay có phải là một trong các mốc nhắc trước không
-      const eventOffsets =
+      const rawOffsets =
         Array.isArray(ev.remind_days) && ev.remind_days.length > 0
           ? ev.remind_days
           : defaultOffsets;
+
+      const eventOffsets = (rawOffsets || []).map((d: any) => Number(d)).filter((d: number) => !isNaN(d));
 
       if (!eventOffsets.includes(daysRemaining)) {
         continue;

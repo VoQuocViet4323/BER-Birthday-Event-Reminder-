@@ -25,3 +25,10 @@ Khi AI làm việc với dự án này, nếu gặp bất kỳ lỗi nào trong 
    - Khi tính toán Âm lịch theo thuật toán Hồ Ngọc Đức trong `src/lib/lunar/amlich.ts`, giữ nguyên công thức:
      - `a11 >= monthStart`: `lunarYear = yy`
      - `a11 < monthStart`: `lunarYear = yy + 1`
+
+6. **Cơ Chế Gửi Bù Nhắc Nhở & Chống Miss Thông Báo (Catch-Up Reminders)**:
+   - Trong `/api/cron/check-reminders` và Edge Function `send-reminders`:
+     - Tuyệt đối KHÔNG so khớp giờ cứng `currentTimeStr === eventTime`.
+     - Luôn dùng `if (currentTime < eventTime) continue;` và kết hợp kiểm tra `notification_logs` để tự động gửi bù ngay lập tức nếu mốc giờ nhắc đã đến hoặc đã qua trong ngày nhưng chưa từng gửi.
+     - Chuẩn hóa mốc ngày sang Number: `eventOffsets.map(Number)`.
+     - Khi người dùng Thêm/Sửa/Bật sự kiện trong `use-events.ts`, luôn kích hoạt ngầm `fetch("/api/cron/check-reminders", { method: "POST" })` và `trigger-reminder-check` tức thì.

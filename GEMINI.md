@@ -151,6 +151,31 @@
 
 ---
 
+### 🔴 Lỗi 9: Bỏ sót thông báo (Miss reminder) do so khớp giờ quá nghiêm ngặt hoặc thêm sự kiện sau giờ nhắc
+- **Mã lỗi / Triệu chứng**:
+  Người dùng cài nhắc sự kiện (ví dụ: ngày mai 26/10 diễn ra sự kiện, cài nhắc trước 1 ngày là ngày 25/10 lúc 08:00 sáng). Nhưng khi người dùng mở web hoặc tạo sự kiện vào buổi chiều (16:54), hệ thống không gửi email nào.
+- **Nguyên nhân**:
+  1. So khớp giờ nghiêm ngặt theo phút (`currentTimeStr === eventTime`). Khi mốc 08:00 sáng đã trôi qua, biểu thức này luôn trả về `false`.
+  2. Nếu người dùng tắt máy lúc 08:00 sáng, hoặc tạo sự kiện vào buổi chiều, thông báo trong ngày sẽ bị vĩnh viễn bỏ sót (miss).
+  3. Khi mốc ngày `remind_days` là mảng chuỗi số (ví dụ `["1", "0"]`), hàm `includes(1)` sẽ trả về `false` do type mismatch giữa string và number.
+- **Cách fix triệt để (Bắt buộc tuân thủ)**:
+  1. **Cơ chế Gửi bù (Catch-up Reminder)**:
+     - Trong `/api/cron/check-reminders` và Edge Function, dùng điều kiện:
+       ```typescript
+       // Nếu chưa đến giờ nhắc trong ngày -> bỏ qua chờ đến đúng giờ
+       if (normalizedCurrentTime < normalizedEventTime) continue;
+       // Nếu đã đến hoặc qua giờ nhắc (ví dụ cài 08:00 nhưng mở web lúc 16:54):
+       // Kiểm tra notification_logs xem hôm nay đã gửi cho mốc này chưa. Nếu chưa -> Gửi bù ngay!
+       ```
+  2. **Chuẩn hóa mốc ngày `remind_days` sang Number**:
+     - `const eventOffsets = (rawOffsets || []).map((d: any) => Number(d)).filter((d: number) => !isNaN(d));`
+  3. **Kích hoạt tức thì khi Thêm/Sửa/Bật sự kiện**:
+     - Trong `useEvents.ts`, tại `onSuccess` của `createMutation`, `updateMutation`, và `toggleEnabledMutation`: Luôn gọi ngầm `fetch("/api/cron/check-reminders", { method: "POST" })` và dispatch `window.dispatchEvent(new CustomEvent("trigger-reminder-check"))` để gửi ngay tức thì mà không cần chờ cron.
+  4. **Fallback cho `repeat_yearly`**:
+     - Dùng `(event.repeat_yearly !== false)` thay vì `event.repeat_yearly` để mặc định lặp hàng năm ngay cả khi trường bị `undefined`.
+
+---
+
 ## 3. Quy Trình Kiểm Tra Chuẩn (Verification Workflow)
 Mỗi khi chỉnh sửa code hoặc thêm tính năng mới, AI cần tự chạy 2 lệnh sau để đảm bảo chất lượng:
 1. `npm test` $\rightarrow$ Đảm bảo toàn bộ 8+ unit test ngày tháng, âm lịch, 29/2 đều pass.

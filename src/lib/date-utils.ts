@@ -42,7 +42,7 @@ export function calculateNextOccurrence(
     let occDate = new Date(solar.year, solar.month - 1, solar.day);
 
     // Nếu ngày dương lịch này đã trôi qua hôm nay, tìm ngày âm lịch trong năm âm lịch tiếp theo
-    if (occDate < todayZero && event.repeat_yearly) {
+    if (occDate < todayZero && (event.repeat_yearly !== false)) {
       solar = convertLunar2Solar(event.event_day, event.event_month, currentYear + 1);
       occDate = new Date(solar.year, solar.month - 1, solar.day);
     }
@@ -68,7 +68,7 @@ export function calculateNextOccurrence(
   let occDate = new Date(targetYear, targetMonth, targetDay);
 
   // Nếu ngày sự kiện trong năm nay đã qua, dời sang năm sau (nếu lặp hàng năm)
-  if (occDate < todayZero && event.repeat_yearly) {
+  if (occDate < todayZero && (event.repeat_yearly !== false)) {
     targetYear += 1;
     targetMonth = event.event_month - 1;
     targetDay = event.event_day;

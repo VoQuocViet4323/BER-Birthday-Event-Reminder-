@@ -125,9 +125,10 @@ Deno.serve(async (req) => {
       }[] = [];
 
       for (const ev of events) {
-        const remindDaysList = (ev.remind_days && ev.remind_days.length > 0)
+        const rawDaysList = (ev.remind_days && ev.remind_days.length > 0)
           ? ev.remind_days
           : setting.default_remind_days;
+        const remindDaysList = (rawDaysList || []).map((d: any) => Number(d)).filter((d: number) => !isNaN(d));
 
         const nextOcc = getNextOccurrence(ev as EventRecord, nowUtc, setting.leap_day_rule);
         const daysDiff = getDaysDifference(nextOcc, nowUtc);

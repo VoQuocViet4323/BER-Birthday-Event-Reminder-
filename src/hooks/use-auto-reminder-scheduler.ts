@@ -57,7 +57,14 @@ export function useAutoReminderScheduler() {
     }
 
     // Quét ngay lần đầu tiên sau khi trang nạp
-    const initialTimer = setTimeout(checkReminders, 2000);
+    const initialTimer = setTimeout(checkReminders, 1500);
+
+    // Lắng nghe sự kiện kích hoạt thủ công khi thêm/sửa sự kiện
+    const handleManualTrigger = () => {
+      lastCheckedMinuteRef.current = "";
+      checkReminders();
+    };
+    window.addEventListener("trigger-reminder-check", handleManualTrigger);
 
     // Lặp lại mỗi 30 giây để đảm bảo không bỏ lỡ khoảnh khắc chuyển phút
     const interval = setInterval(checkReminders, 30000);
@@ -65,6 +72,7 @@ export function useAutoReminderScheduler() {
     return () => {
       clearTimeout(initialTimer);
       clearInterval(interval);
+      window.removeEventListener("trigger-reminder-check", handleManualTrigger);
     };
   }, [toast]);
 }
