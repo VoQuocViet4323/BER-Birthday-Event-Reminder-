@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUserSettings } from "@/hooks/use-user-settings";
 import { useToast } from "@/components/ui/toast";
 import { createClient } from "@/lib/supabase/client";
+import { generateReminderEmailHtml, ReminderItem } from "@/lib/email/template-builder";
 import {
   Mail,
   User,
@@ -38,6 +39,12 @@ export default function SettingsPage() {
   const [remindTime, setRemindTime] = useState(settings?.remind_time || "08:00");
   const [timezone, setTimezone] = useState(profile?.timezone || "Asia/Ho_Chi_Minh");
   const [leapDayRule, setLeapDayRule] = useState<"feb28" | "mar01">(settings?.leap_day_rule || "feb28");
+
+  // Client-side mounted state for portals
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Primary email editing states
   const [isEditingPrimaryEmail, setIsEditingPrimaryEmail] = useState(false);
@@ -74,6 +81,43 @@ export default function SettingsPage() {
   const [showEmailPreview, setShowEmailPreview] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+
+  // Tạo mẫu HTML xem trước sinh động chuẩn xác như email thực tế nhận được
+  const emailPreviewHtml = useMemo(() => {
+    const sampleItems: ReminderItem[] = [
+      {
+        id: "sample-birthday",
+        name: "Mẹ yêu (Sinh nhật)",
+        eventType: "birthday",
+        eventDateFormatted: "26 tháng 10",
+        daysRemaining: 0,
+        upcomingAge: 58,
+        groupName: "Gia đình",
+        isLunar: false,
+        note: "Mẹ thích hoa lan hồ điệp tím và trà sen",
+        giftIdea: "Khăn lụa tơ tằm & bánh kem",
+      },
+      {
+        id: "sample-friend",
+        name: "Minh Khuê",
+        eventType: "birthday",
+        eventDateFormatted: "28 tháng 10",
+        daysRemaining: 2,
+        upcomingAge: 25,
+        groupName: "Bạn bè",
+        isLunar: false,
+        note: "Hẹn ăn tối liên hoan lúc 19:00",
+        giftIdea: "Sách & son môi",
+      },
+    ];
+
+    return generateReminderEmailHtml({
+      userName: profile?.display_name || "Bạn",
+      items: sampleItems,
+      appUrl: "https://ber-birthday-event-reminder.vercel.app",
+      unsubscribeUrl: "https://ber-birthday-event-reminder.vercel.app/settings",
+    });
+  }, [profile?.display_name]);
 
   // Xóa tài khoản vĩnh viễn khỏi Database
   const handleDeleteAccount = async () => {
@@ -821,122 +865,157 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Modal Xem trước Email */}
-      <AnimatePresence>
-        {showEmailPreview && typeof document !== "undefined" && createPortal(
-          <div
-            onClick={(e) => {
-              if (e.target === e.currentTarget) setShowEmailPreview(false);
-            }}
-            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md text-foreground animate-in fade-in duration-200"
-          >
+      {/* Modal Xem trước Email thực tế chuẩn Gmail / Mobile */}
+      {mounted && createPortal(
+        <AnimatePresence>
+          {showEmailPreview && (
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-lg bg-card rounded-3xl border border-border shadow-2xl p-6 overflow-hidden max-h-[85vh] flex flex-col"
-              onClick={(e) => e.stopPropagation()}
+              key="email-preview-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={(e) => {
+                if (e.target === e.currentTarget) setShowEmailPreview(false);
+              }}
+              className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-5 bg-black/80 backdrop-blur-[4px] text-foreground"
             >
-              <div className="flex items-center justify-between pb-3 border-b border-border">
-                <h3 className="font-bold text-sm">Xem trước mẫu email gửi tới bạn</h3>
-                <button
-                  onClick={() => setShowEmailPreview(false)}
-                  className="p-1 rounded-md text-muted-foreground hover:text-foreground"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto my-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border text-xs space-y-4">
-                <div className="p-4 rounded-2xl gradient-brand text-white text-center">
-                  <span className="text-2xl">🎂✨</span>
-                  <h4 className="font-extrabold text-base mt-1">Nhắc Nhở Sự Kiện Quan Trọng</h4>
-                  <p className="text-[11px] opacity-90">Hôm nay có sự kiện đặc biệt!</p>
+              <motion.div
+                key="email-preview-card"
+                initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 15 }}
+                transition={{ type: "spring", damping: 28, stiffness: 320 }}
+                className="w-full max-w-xl bg-card rounded-3xl border border-border shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Header thanh điều hướng Modal */}
+                <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-card/95">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-2xl gradient-brand text-white flex items-center justify-center font-bold text-base shadow-xs">
+                      ✉️
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-sm text-foreground">Xem trước mẫu email thông báo</h3>
+                      <p className="text-[11px] text-muted-foreground">Mẫu giao diện thực tế sẽ gửi tới hòm thư của bạn</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowEmailPreview(false)}
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
+                    aria-label="Đóng"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
 
-                <div className="p-4 rounded-2xl bg-white dark:bg-slate-800 border space-y-1 shadow-xs">
-                  <span className="text-[10px] font-bold text-purple-600 uppercase">🎂 Sinh nhật</span>
-                  <h5 className="font-bold text-sm text-foreground">Mẹ yêu (Tròn 58 tuổi)</h5>
-                  <p className="text-muted-foreground text-[11px]">📅 25 tháng 10 • Nhóm: Gia đình</p>
-                  <div className="mt-2 p-2 bg-slate-50 dark:bg-slate-900/60 rounded-xl text-[11px] text-muted-foreground">
-                    📝 <strong>Ghi chú:</strong> Mẹ thích hoa lan hồ điệp tím
+                {/* Khung mô phỏng hiển thị Email (Iframe cách ly hoàn toàn CSS, hiển thị đúng 100% như trên điện thoại) */}
+                <div className="flex-1 overflow-hidden p-2 sm:p-4 bg-slate-100 dark:bg-slate-950/70 flex items-center justify-center">
+                  <div className="w-full h-[460px] sm:h-[520px] rounded-2xl overflow-hidden border border-border/80 shadow-md bg-white">
+                    <iframe
+                      title="Xem trước mẫu email nhắc sự kiện BER"
+                      srcDoc={emailPreviewHtml}
+                      className="w-full h-full border-0"
+                      sandbox="allow-same-origin allow-popups"
+                    />
                   </div>
                 </div>
 
-                <div className="text-center pt-2">
-                  <span className="inline-block px-5 py-2 rounded-full gradient-brand text-white font-bold text-xs shadow-xs">
-                    Mở Ứng Dụng Xem Chi Tiết →
-                  </span>
-                </div>
-              </div>
+                {/* Footer với nút Đóng và Thử gửi email */}
+                <div className="p-4 border-t border-border bg-card flex items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowEmailPreview(false)}
+                    className="py-2.5 px-4 rounded-xl border border-border hover:bg-secondary font-semibold text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                  >
+                    Đóng xem trước
+                  </button>
 
-              <button
-                onClick={() => setShowEmailPreview(false)}
-                className="w-full py-2.5 rounded-xl border border-border hover:bg-secondary font-bold text-xs"
-              >
-                Đóng xem trước
-              </button>
+                  <button
+                    type="button"
+                    disabled={isTestingEmail}
+                    onClick={() => {
+                      setShowEmailPreview(false);
+                      handleSendTestEmail();
+                    }}
+                    className="flex items-center gap-1.5 py-2.5 px-4 rounded-xl gradient-brand text-white font-bold text-xs shadow-soft hover:shadow-soft-hover transition-all cursor-pointer"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Gửi email thử này ngay</span>
+                  </button>
+                </div>
+              </motion.div>
             </motion.div>
-          </div>,
-          document.body
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
 
       {/* Modal Xác nhận Xóa tài khoản */}
-      <AnimatePresence>
-        {showDeleteConfirm && typeof document !== "undefined" && createPortal(
-          <div
-            onClick={(e) => {
-              if (e.target === e.currentTarget) setShowDeleteConfirm(false);
-            }}
-            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200"
-          >
+      {mounted && createPortal(
+        <AnimatePresence>
+          {showDeleteConfirm && (
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-sm bg-card rounded-3xl border border-rose-500/30 shadow-2xl p-6 text-center space-y-4"
-              onClick={(e) => e.stopPropagation()}
+              key="delete-confirm-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={(e) => {
+                if (e.target === e.currentTarget) setShowDeleteConfirm(false);
+              }}
+              className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-[4px]"
             >
-              <div className="w-12 h-12 rounded-2xl bg-rose-500/10 text-rose-500 mx-auto flex items-center justify-center">
-                <AlertTriangle className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="font-bold text-base text-foreground">Xác nhận xóa tài khoản?</h3>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Hành động này sẽ xóa toàn bộ sự kiện và cài đặt của bạn. Không thể hoàn tác sau khi thực hiện.
-                </p>
-              </div>
-              <div className="flex items-center gap-2 pt-2">
-                <button
-                  type="button"
-                  disabled={isDeletingAccount}
-                  onClick={() => setShowDeleteConfirm(false)}
-                  className="flex-1 py-2.5 rounded-xl border border-border text-xs font-semibold hover:bg-secondary disabled:opacity-50"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="button"
-                  disabled={isDeletingAccount}
-                  onClick={handleDeleteAccount}
-                  className="flex-1 py-2.5 rounded-xl bg-rose-600 text-white text-xs font-bold hover:bg-rose-700 shadow-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
-                >
-                  {isDeletingAccount ? (
-                    <>
-                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      <span>Đang xóa...</span>
-                    </>
-                  ) : (
-                    <span>Xác nhận xóa</span>
-                  )}
-                </button>
-              </div>
+              <motion.div
+                key="delete-confirm-card"
+                initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 15 }}
+                transition={{ type: "spring", damping: 28, stiffness: 320 }}
+                className="w-full max-w-sm bg-card rounded-3xl border border-rose-500/30 shadow-2xl p-6 text-center space-y-4"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="w-12 h-12 rounded-2xl bg-rose-500/10 text-rose-500 mx-auto flex items-center justify-center">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-foreground">Xác nhận xóa tài khoản?</h3>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Hành động này sẽ xóa toàn bộ sự kiện và cài đặt của bạn. Không thể hoàn tác sau khi thực hiện.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 pt-2">
+                  <button
+                    type="button"
+                    disabled={isDeletingAccount}
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="flex-1 py-2.5 rounded-xl border border-border text-xs font-semibold hover:bg-secondary disabled:opacity-50 cursor-pointer"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isDeletingAccount}
+                    onClick={handleDeleteAccount}
+                    className="flex-1 py-2.5 rounded-xl bg-rose-600 text-white text-xs font-bold hover:bg-rose-700 shadow-sm flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                  >
+                    {isDeletingAccount ? (
+                      <>
+                        <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        <span>Đang xóa...</span>
+                      </>
+                    ) : (
+                      <span>Xác nhận xóa</span>
+                    )}
+                  </button>
+                </div>
+              </motion.div>
             </motion.div>
-          </div>,
-          document.body
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 }

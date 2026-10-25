@@ -1862,6 +1862,35 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
   - Unit tests: **17/17 tests PASS**.
   - Next.js build: **`npm run build` PASS 100% (Compiled successfully, all 18 routes generated)**.
 
+---
+
+### 📅 [2026-10-25 16:16:00] - Khắc Phục Nút "Xem Trước Mẫu" Không Hiển Thị Trên Trang Cài Đặt
+
+- **Yêu cầu của người dùng**:
+  - Sửa lỗi khi bấm vào nút "👁 Xem trước mẫu" ở mục Email nhận thông báo (trang Cài đặt) thì không hiển thị nội dung gì.
+- **Nguyên nhân phát hiện**:
+  1. **Lỗi Reconciler giữa Framer Motion `<AnimatePresence>` và `createPortal`**:
+     - Cấu trúc cũ: `<AnimatePresence>{showEmailPreview && typeof document !== "undefined" && createPortal(...)}</AnimatePresence>`.
+     - Trong Framer Motion, `<AnimatePresence>` yêu cầu phần tử con trực tiếp phải là một motion component có `key`, không thể bọc trực tiếp một React Portal (`Symbol(react.portal)`). Khi `showEmailPreview` đổi thành `true`, Framer Motion không mount được portal hoặc nuốt mất render khiến modal không xuất hiện.
+  2. **Thiếu cờ `mounted` state**: Trang không kiểm soát hydration client-side trước khi gọi `createPortal` đến `document.body`.
+- **Giải pháp đã thực hiện**:
+  1. **Chuẩn hóa cấu trúc Portal + AnimatePresence**:
+     - Chuyển `createPortal` ra bên ngoài bọc `<AnimatePresence>`:
+       `{mounted && createPortal(<AnimatePresence>{showEmailPreview && (<motion.div key="email-preview-backdrop" ...>...</motion.div>)}</AnimatePresence>, document.body)}`.
+     - Thêm cờ `mounted` (với `useEffect(() => setMounted(true), [])`) chuẩn Next.js Client Component.
+     - Áp dụng tương tự cho cả Modal xác nhận xóa tài khoản (`showDeleteConfirm`).
+  2. **Nâng cấp giao diện xem trước mẫu email thực tế**:
+     - Tích hợp hàm `generateReminderEmailHtml` từ `src/lib/email/template-builder.ts` để sinh mã HTML email thật 100%.
+     - Nhúng khung `<iframe>` cách ly style hoàn chỉnh, hiển thị mẫu email chuẩn Gmail / Mobile với đầy đủ banner gradient, huy hiệu đếm ngược, thông tin ngày tháng, nút "🚀 Mở Ứng Dụng BER", nút "Xem trên Lịch", ghi chú và gợi ý quà.
+     - Bổ sung nút "Gửi email thử này ngay" trực tiếp từ trong modal xem trước để tiện thao tác.
+- **Danh sách file đã chỉnh sửa**:
+  - `src/app/(dashboard)/settings/page.tsx`
+  - `MEMORIES.md`
+- **Trạng thái kiểm thử**:
+  - Unit tests: **17/17 tests PASS**.
+  - Next.js build: **`npm run build` PASS 100% (Compiled successfully, all 18 routes generated)**.
+
+
 
 
 
