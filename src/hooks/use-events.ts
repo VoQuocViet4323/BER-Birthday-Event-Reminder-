@@ -476,6 +476,8 @@ export function useEvents() {
         const { error } = await query;
         if (error) throw error;
         setLocalCustomGroup(id, null);
+        const local = getLocalEvents();
+        saveLocalEvents(local.filter((e) => e.id !== id));
         return id;
       }
 
@@ -498,26 +500,192 @@ export function useEvents() {
         previousEvents.filter((e) => e.id !== id)
       );
 
-      return { previousEvents };
+      return { previousEvents, target };
     },
-    onSuccess: () => {
-      const deletedItem = lastDeletedRef.current;
+    onError: (err: any, _id, context) => {
+      console.error("Lỗi xóa sự kiện:", err);
+      if (context?.previousEvents) {
+        queryClient.setQueryData(queryKey, context.previousEvents);
+      }
       toast({
-        title: `Đã xóa "${deletedItem?.name || "sự kiện"}"`,
-        duration: 5000,
+        title: "Lỗi xóa sự kiện",
+        description: err?.message || "Không thể xóa sự kiện trên máy chủ.",
+        variant: "error",
+      });
+    },
+    onSuccess: (_data, _id, context) => {
+      const deletedItem = context?.target || lastDeletedRef.current;
+      if (!deletedItem) return;
+
+      toast({
+        title: `Đã xóa "${deletedItem.name || "sự kiện"}"`,
+        duration: 6000,
         action: {
           label: "Hoàn tác",
-          onClick: () => {
-            if (deletedItem) {
-              // Khôi phục lại bản ghi
-              const local = getLocalEvents();
-              saveLocalEvents([deletedItem, ...local]);
-              queryClient.invalidateQueries({ queryKey });
-              toast({
-                title: `Đã khôi phục "${deletedItem.name}"`,
-                variant: "success",
-              });
+          onClick: async () => {
+            // 1. Phục hồi lạc quan ngay lập tức trên UI
+            queryClient.setQueryData<EventWithMeta[]>(queryKey, (old = []) => {
+              if (old.some((e) => e.id === deletedItem.id)) return old;
+              return [enrichEvent(deletedItem), ...old];
+            });
+
+            const isConfigured =
+              process.env.NEXT_PUBLIC_SUPABASE_URL &&
+              !process.env.NEXT_PUBLIC_SUPABASE_URL.includes("dummy-project");
+
+            // 2. Nếu có cấu hình Supabase, phục hồi lại dữ liệu vào database
+            if (isConfigured) {
+              try {
+                const user = await getAuthUser();
+                if (user) {
+                  const {
+                    nextOccurrence: _1,
+                    daysRemaining: _2,
+                    upcomingAge: _3,
+                    displayDate: _4,
+                    ...pureEvent
+                  } = deletedItem as any;
+
+                  const isUuid =
+                    typeof deletedItem.id === "string" &&
+                    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+                      deletedItem.id
+                    );
+
+                  let restorePayload: any = {
+                    name: pureEvent.name,
+                    event_type: pureEvent.event_type || "birthday",
+                    event_day: pureEvent.event_day,
+                    event_month: pureEvent.event_month,
+                    event_year: pureEvent.event_year || null,
+                    is_lunar: Boolean(pureEvent.is_lunar),
+                    group_name: pureEvent.group_name || "Gia đình",
+                    note: pureEvent.note || null,
+                    gift_idea: pureEvent.gift_idea || null,
+                    avatar_url: pureEvent.avatar_url || null,
+                    repeat_yearly: pureEvent.repeat_yearly !== false,
+                    remind_days: pureEvent.remind_days
+                      ? (pureEvent.remind_days as any[])
+                          .map(Number)
+                          .filter((n) => !isNaN(n))
+                      : null,
+                    remind_time: pureEvent.remind_time || "08:00",
+                    custom_type: pureEvent.custom_type || null,
+                    custom_group: pureEvent.custom_group || null,
+                    enabled: pureEvent.enabled !== false,
+                    user_id: user.id,
+                  };
+
+                  if (isUuid) {
+                    restorePayload.id = deletedItem.id;
+                  }
+
+                  let { data, error } = await (supabase as any)
+                    .from("events")
+                    .insert(restorePayload)
+                    .select()
+                    .single();
+
+                  if (isSchemaColumnError(error)) {
+                    if (
+                      error?.message?.includes("custom_group") ||
+                      error?.code === "42703"
+                    ) {
+                      delete restorePayload.custom_group;
+                    }
+                    if (error?.message?.includes("custom_type")) {
+                      delete restorePayload.custom_type;
+                    }
+                    if (error?.message?.includes("remind_time")) {
+                      delete restorePayload.remind_time;
+                    }
+
+                    const retryRes = await (supabase as any)
+                      .from("events")
+                      .insert(restorePayload)
+                      .select()
+                      .single();
+                    data = retryRes.data;
+                    error = retryRes.error;
+                  }
+
+                  if (error) {
+                    console.error("Lỗi hoàn tác sự kiện trên Supabase:", error);
+                    toast({
+                      title: "Lỗi hoàn tác",
+                      description:
+                        error?.message ||
+                        "Không thể khôi phục sự kiện lên cơ sở dữ liệu.",
+                      variant: "error",
+                    });
+                    queryClient.invalidateQueries({ queryKey });
+                    return;
+                  }
+
+                  const restoredId = data?.id || deletedItem.id;
+                  if (deletedItem.custom_group) {
+                    setLocalCustomGroup(restoredId, deletedItem.custom_group);
+                  }
+
+                  // Cập nhật fallback localStorage
+                  const local = getLocalEvents();
+                  const restoredEvent: EventRow = {
+                    ...deletedItem,
+                    id: restoredId,
+                  };
+                  saveLocalEvents([
+                    restoredEvent,
+                    ...local.filter((e) => e.id !== restoredId),
+                  ]);
+
+                  // Đồng bộ lại toàn bộ cache từ DB
+                  await queryClient.invalidateQueries({ queryKey });
+
+                  // Kích hoạt ngay lập tức quét nhắc nhở cho sự kiện vừa khôi phục
+                  if (typeof window !== "undefined") {
+                    window.dispatchEvent(
+                      new CustomEvent("trigger-reminder-check")
+                    );
+                  }
+                  fetch("/api/cron/check-reminders", { method: "POST" }).catch(
+                    () => {}
+                  );
+
+                  toast({
+                    title: `Đã khôi phục "${deletedItem.name}"`,
+                    description: "Sự kiện đã được phục hồi thành công.",
+                    variant: "success",
+                  });
+                  return;
+                }
+              } catch (err: any) {
+                console.error("Lỗi xử lý hoàn tác sự kiện:", err);
+                toast({
+                  title: "Lỗi hoàn tác",
+                  description:
+                    err?.message || "Đã xảy ra lỗi khi khôi phục sự kiện.",
+                  variant: "error",
+                });
+                queryClient.invalidateQueries({ queryKey });
+                return;
+              }
             }
+
+            // Fallback khi không dùng Supabase (Offline / Local storage)
+            const local = getLocalEvents();
+            if (!local.some((e) => e.id === deletedItem.id)) {
+              saveLocalEvents([deletedItem, ...local]);
+            }
+            if (deletedItem.custom_group) {
+              setLocalCustomGroup(deletedItem.id, deletedItem.custom_group);
+            }
+            queryClient.invalidateQueries({ queryKey });
+
+            toast({
+              title: `Đã khôi phục "${deletedItem.name}"`,
+              description: "Sự kiện đã được phục hồi thành công.",
+              variant: "success",
+            });
           },
         },
       });

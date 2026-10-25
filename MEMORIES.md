@@ -2257,6 +2257,40 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
   - `npx tsc --noEmit`: **0 errors** (Type check hoàn toàn sạch sẽ)
   - Dev Server: Running mượt mà, phản hồi HTTP 200 tại `/events`.
 
+---
+
+### 📅 [2026-10-25 21:52:00] - Khắc Phục Lỗi Nút "Hoàn Tác" Không Hoạt Động Khi Xóa Sự Kiện
+
+- **Hiện tượng & Yêu cầu của người dùng**:
+  - Khi người dùng lỡ xóa 1 sự kiện, thông báo toast hiện lên có nút "Hoàn tác", nhưng khi bấm nút "Hoàn tác" thì không có phản hồi và sự kiện không được phục hồi.
+- **Nguyên nhân cốt lõi phát hiện (Technical Root Cause)**:
+  1. Trong [src/hooks/use-events.ts](file:///d:/BER-Birthday-Event-Reminder-/src/hooks/use-events.ts), hàm `onClick` của nút "Hoàn tác" trong toast chỉ lưu `deletedItem` vào `localStorage` (`saveLocalEvents`), hoàn toàn KHÔNG thực hiện câu lệnh ghi lại dữ liệu (`insert`) vào bảng `events` trên Supabase Cloud Database!
+  2. Ngay sau khi lưu vào `localStorage`, hàm gọi ngay `queryClient.invalidateQueries({ queryKey })`.
+  3. `invalidateQueries` kích hoạt TanStack Query gửi request lên Supabase để lấy danh sách sự kiện mới nhất. Do trước đó lệnh xóa `mutationFn` đã xóa bản ghi trên Supabase, kết quả trả về từ database không hề có sự kiện vừa xóa. Kết quả này lập tức ghi đè cache UI, khiến sự kiện biến mất vĩnh viễn dù người dùng đã bấm "Hoàn tác".
+  4. Ngoài ra, `deletedItem` khi lưu trong React Query cache chứa cả các trường tính toán phục vụ giao diện (`nextOccurrence`, `daysRemaining`, `upcomingAge`, `displayDate`). Nếu cố truyền trực tiếp vào Supabase mà không bóc tách, Postgres sẽ ném lỗi schema `PGRST204` vì các cột này không tồn tại trong DB.
+  5. Khi xóa bị lỗi trên server, `deleteMutation` trước đó thiếu `onError` để rollback UI lạc quan.
+- **Nội dung đã triển khai**:
+  1. **Tái cấu trúc luồng Hoàn tác (Undo Flow) trong [use-events.ts](file:///d:/BER-Birthday-Event-Reminder-/src/hooks/use-events.ts)**:
+     - **Bổ sung `onError`**: Tự động khôi phục lại dữ liệu cache UI ban đầu nếu quá trình xóa trên server gặp sự cố.
+     - **Bắt chính xác sự kiện qua `context.target`**: Đảm bảo mỗi thông báo toast gắn chặt với đúng sự kiện bị xóa của lượt thao tác đó, tránh xung đột khi xóa nhiều sự kiện liên tiếp.
+     - **Phục hồi lạc quan tức thì (Optimistic Restore)**: Khi bấm "Hoàn tác", UI khôi phục sự kiện xuất hiện ngay lập tức trong 0ms thông qua `queryClient.setQueryData`.
+     - **Tái ghi vào Supabase Cloud**:
+       - Bóc tách toàn bộ metadata (`nextOccurrence`, `daysRemaining`, `upcomingAge`, `displayDate`).
+       - Chuẩn hóa kiểu dữ liệu (`remind_days` thành mảng số nguyên, kiểm tra UUID hợp lệ).
+       - Tự động gọi `supabase.from("events").insert(restorePayload)`.
+       - Tích hợp cơ chế tự động thử lại khi schema database thiếu các cột mở rộng (`custom_group`, `custom_type`, `remind_time`).
+     - **Đồng bộ hóa & Kích hoạt thông báo bù (Catch-up Reminders)**:
+       - Cập nhật cả `localStorage` fallback và `localCustomGroups`.
+       - Đồng bộ lại toàn diện cache thông qua `await queryClient.invalidateQueries({ queryKey })`.
+       - Phát sự kiện `trigger-reminder-check` và gọi `/api/cron/check-reminders` để không bỏ sót lịch nhắc nhở của sự kiện vừa khôi phục.
+       - Hiển thị toast thông báo thành công: `Đã khôi phục "<Tên sự kiện>"`.
+- **Danh sách file đã chỉnh sửa**:
+  - [src/hooks/use-events.ts](file:///d:/BER-Birthday-Event-Reminder-/src/hooks/use-events.ts)
+  - [MEMORIES.md](file:///d:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npm test`: **26/26 tests PASS**
+  - `npx tsc --noEmit`: **0 errors** (Kiểm tra kiểu dữ liệu TypeScript sạch sẽ 100%)
+
 
 
 
