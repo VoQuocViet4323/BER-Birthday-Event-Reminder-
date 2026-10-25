@@ -3,9 +3,7 @@ import type { Config } from "tailwindcss";
 const config: Config = {
   darkMode: ["class"],
   content: [
-    "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
+    "./src/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
     container: {
@@ -96,6 +94,8 @@ const config: Config = {
         "soft-hover": "0 20px 40px -15px rgba(139, 92, 246, 0.16)",
         glow: "0 0 25px -5px rgba(236, 72, 153, 0.35)",
         card: "0 2px 10px rgba(0, 0, 0, 0.04), 0 10px 30px -5px rgba(0, 0, 0, 0.05)",
+        xs: "0 1px 2px 0 rgba(0, 0, 0, 0.05)",
+        "2xs": "0 1px 1px 0 rgba(0, 0, 0, 0.03)",
       },
       keyframes: {
         "shimmer-slide": {

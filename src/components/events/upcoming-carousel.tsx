@@ -75,7 +75,7 @@ export function UpcomingCarousel({ events, onSelectEvent }: UpcomingCarouselProp
 
                   <span
                     className={cn(
-                      "text-[11px] font-bold px-2.5 py-1 rounded-full border shrink-0",
+                      "text-[11px] font-bold px-2.5 py-1 rounded-full border shrink-0 shadow-xs transition-colors",
                       remainingInfo.badgeClass
                     )}
                   >
@@ -103,7 +103,7 @@ export function UpcomingCarousel({ events, onSelectEvent }: UpcomingCarouselProp
                   <Calendar className="w-3 h-3 text-primary/70" />
                   {ev.displayDate}
                 </span>
-                <span className="px-2 py-0.5 rounded-md bg-secondary font-semibold">
+                <span className="px-2 py-0.5 rounded-md bg-secondary text-secondary-foreground font-semibold border border-border/50">
                   {(ev as any).custom_group || ev.group_name}
                 </span>
               </div>

@@ -6,6 +6,7 @@ import {
   calculateUpcomingAge,
 } from "../lib/date-utils";
 import { convertSolar2Lunar, convertLunar2Solar } from "../lib/lunar/amlich";
+import { formatDaysRemainingText } from "../lib/utils";
 
 describe("Date Utilities & Edge Cases", () => {
   describe("Năm nhuận và sinh nhật ngày 29/02", () => {
@@ -122,6 +123,50 @@ describe("Date Utilities & Edge Cases", () => {
       expect(calculateUpcomingAge(birthYear, 2025)).toBe(30);
       expect(calculateUpcomingAge(birthYear, 2026)).toBe(31);
       expect(calculateUpcomingAge(null, 2026)).toBeNull();
+    });
+  });
+
+  describe("Format số ngày còn lại (formatDaysRemainingText)", () => {
+    it("trả về thông tin đúng cho ngày hôm nay (days = 0)", () => {
+      const res = formatDaysRemainingText(0);
+      expect(res.text).toBe("Hôm nay! 🎉");
+      expect(res.isToday).toBe(true);
+      expect(res.isUrgent).toBe(true);
+      expect(res.badgeClass).toContain("dark:text-rose-400");
+    });
+
+    it("trả về thông tin đúng cho ngày mai (days = 1)", () => {
+      const res = formatDaysRemainingText(1);
+      expect(res.text).toBe("Ngày mai ⏳");
+      expect(res.isToday).toBe(false);
+      expect(res.isUrgent).toBe(true);
+      expect(res.badgeClass).toContain("dark:text-amber-400");
+    });
+
+    it("trả về thông tin đúng cho mốc 2-3 ngày", () => {
+      const res = formatDaysRemainingText(3);
+      expect(res.text).toBe("Còn 3 ngày");
+      expect(res.isUrgent).toBe(true);
+      expect(res.badgeClass).toContain("dark:text-amber-300");
+    });
+
+    it("trả về thông tin đúng cho mốc 4-7 ngày", () => {
+      const res = formatDaysRemainingText(7);
+      expect(res.text).toBe("Còn 7 ngày");
+      expect(res.isUrgent).toBe(false);
+      expect(res.badgeClass).toContain("dark:text-purple-300");
+    });
+
+    it("trả về thông tin đúng cho mốc > 7 ngày (Minh Khuê 31 ngày, Concert 41 ngày)", () => {
+      const res31 = formatDaysRemainingText(31);
+      expect(res31.text).toBe("Còn 31 ngày");
+      expect(res31.badgeClass).toContain("dark:bg-slate-800");
+      expect(res31.badgeClass).toContain("dark:text-slate-300");
+      expect(res31.badgeClass).toContain("bg-slate-100");
+
+      const res41 = formatDaysRemainingText(41);
+      expect(res41.text).toBe("Còn 41 ngày");
+      expect(res41.badgeClass).toContain("dark:bg-slate-800");
     });
   });
 });

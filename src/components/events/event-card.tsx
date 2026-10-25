@@ -34,10 +34,10 @@ export function EventCard({
 
   // Group styling badges
   const groupStyles: Record<string, string> = {
-    "Gia đình": "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border-rose-200/60",
-    "Bạn bè": "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border-amber-200/60",
-    "Đồng nghiệp": "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border-indigo-200/60",
-    Khác: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200/60",
+    "Gia đình": "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border-rose-200/60 dark:border-rose-800/40",
+    "Bạn bè": "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border-amber-200/60 dark:border-amber-800/40",
+    "Đồng nghiệp": "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border-indigo-200/60 dark:border-indigo-800/40",
+    Khác: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200/60 dark:border-emerald-800/40",
   };
 
   const typeLabels: Record<string, string> = {
@@ -108,7 +108,7 @@ export function EventCard({
                     : (typeLabels[event.event_type] || "Sự kiện")}
                 </span>
                 {event.is_lunar && (
-                  <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200/50">
+                  <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200/50 dark:border-indigo-800/40">
                     <Moon className="w-2.5 h-2.5" /> Âm lịch
                   </span>
                 )}
@@ -146,7 +146,7 @@ export function EventCard({
           <div className="flex flex-col items-end gap-2 shrink-0">
             <span
               className={cn(
-                "text-xs font-bold px-2.5 py-1 rounded-full border shadow-2xs",
+                "text-xs font-bold px-2.5 py-1 rounded-full border shadow-xs transition-colors",
                 remainingInfo.badgeClass
               )}
             >
@@ -183,7 +183,7 @@ export function EventCard({
                   e.stopPropagation();
                   onDelete(event.id);
                 }}
-                className="p-1.5 rounded-lg hover:bg-rose-50 text-muted-foreground hover:text-rose-600 transition-colors"
+                className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 text-muted-foreground hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
                 title="Xóa sự kiện"
               >
                 <Trash2 className="w-4 h-4" />

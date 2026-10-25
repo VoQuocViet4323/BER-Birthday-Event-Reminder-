@@ -2057,6 +2057,42 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
   - Unit tests: **21/21 tests PASS**.
   - Production build: **`npm run build` PASS 100% (18/18 routes)**.
 
+---
+
+### 📅 [2026-10-25 19:15:00] - Khắc Phục Lỗi UI Badge Đếm Ngày Bị Trắng & Quét Lỗi Tương Tự Trong Dark Mode
+
+- **Yêu cầu của người dùng**:
+  - Fix UI đếm ngày còn lại đang bị trắng (trong ảnh chụp người dùng gửi, thẻ Minh Khuê "Còn 31 ngày" và Concert ATVNCG "Còn 41 ngày" bị trắng toát cả nền lẫn chữ trên giao diện Dark Mode), kiểm tra và fix các lỗi tương tự.
+- **Nguyên nhân cốt lõi phát hiện**:
+  1. **Thiếu đường dẫn quét trong `tailwind.config.ts`**: Cấu hình `content` trước đây chỉ quét `./src/pages/`, `./src/components/`, `./src/app/`, nhưng hàm `formatDaysRemainingText` nằm trong `src/lib/utils.ts`. Do đó Tailwind CSS đã KHÔNG biên dịch các class tiện ích chỉ xuất hiện trong `src/lib/` như `.dark .dark\:bg-slate-800`, `.dark .dark\:text-slate-400`, `text-slate-600`.
+  2. **Hiệu ứng kế thừa màu trong Dark Mode**: Vì `dark:bg-slate-800` không được sinh ra trong CSS bundle, badge bị rớt về class `bg-slate-100` (màu trắng nhạt `#f1f5f9` vốn có sẵn do trang settings sử dụng). Đồng thời vì không có class text hợp lệ, chữ bên trong kế thừa màu trắng `--card-foreground: 0 0% 98%` từ thẻ Dark Card $\rightarrow$ Dẫn đến tình trạng chữ trắng trên nền trắng (chìm màu, không đọc được).
+  3. **Lỗi tương tự ở các badge khác**:
+     - `EventCard`: Badge nhóm (`groupStyles`) và badge Âm lịch thiếu class `dark:border-...`. Nút xóa sự kiện khi hover có `hover:bg-rose-50` bị chói sáng trong Dark Mode.
+     - `UpcomingCarousel`: Badge đếm ngày dùng `remainingInfo.badgeClass` cũng gặp tình trạng tương tự với sự kiện > 7 ngày; badge tên nhóm ở chân thẻ thiếu viền tương phản.
+     - `boxShadow`: Các component sử dụng `shadow-xs` và `shadow-2xs` nhưng `tailwind.config.ts` chưa định nghĩa 2 kích thước shadow này.
+- **Nội dung đã triển khai**:
+  1. **Cấu hình `tailwind.config.ts`**:
+     - Mở rộng `content` thành `./src/**/*.{js,ts,jsx,tsx,mdx}` để Tailwind quét toàn bộ file trong `src/` (bao gồm `lib`, `hooks`, `types`,...).
+     - Bổ sung `xs` và `2xs` vào `theme.extend.boxShadow`.
+  2. **Tối ưu hóa `formatDaysRemainingText` trong `src/lib/utils.ts`**:
+     - Cập nhật nhánh > 7 ngày thành: `bg-slate-100 text-slate-700 dark:bg-slate-800/90 dark:text-slate-300 border-slate-200 dark:border-slate-700/80` (đảm bảo độ tương phản cao, nền sẫm sang trọng và chữ bạc sáng rõ nét trong Dark Mode).
+     - Bổ sung viền `dark:border-...` cho tất cả các mốc 0 ngày (`dark:border-rose-800/40`), 1 ngày (`dark:border-amber-800/40`), 2-3 ngày (`dark:border-amber-800/30`), 4-7 ngày (`dark:border-purple-800/30`).
+  3. **Đồng bộ hóa các thành phần tương tự**:
+     - [event-card.tsx](file:///d:/BER-Birthday-Event-Reminder-/src/components/events/event-card.tsx): Thêm `dark:border-...` cho `groupStyles` (Gia đình, Bạn bè, Đồng nghiệp, Khác), thêm `dark:border-indigo-800/40` cho badge Âm lịch, thêm `dark:hover:bg-rose-950/40 dark:hover:text-rose-400` cho nút xóa.
+     - [upcoming-carousel.tsx](file:///d:/BER-Birthday-Event-Reminder-/src/components/events/upcoming-carousel.tsx): Cập nhật shadow-xs và viền tương phản cho badge nhóm footer.
+  4. **Kiểm thử tự động**:
+     - Thêm 5 unit tests mới trong `src/tests/date-utils.test.ts` kiểm tra toàn bộ các nhánh ngày của `formatDaysRemainingText` (0 ngày, 1 ngày, 3 ngày, 7 ngày, 31 ngày, 41 ngày) cùng các class dark mode.
+- **Danh sách file đã chỉnh sửa/tạo mới**:
+  - `tailwind.config.ts`
+  - `src/lib/utils.ts`
+  - `src/components/events/event-card.tsx`
+  - `src/components/events/upcoming-carousel.tsx`
+  - `src/tests/date-utils.test.ts`
+  - `MEMORIES.md`
+- **Trạng thái kiểm thử**:
+  - Unit tests: **26/26 tests PASS (`npm test`)**.
+  - Production build: **`npm run build` PASS 100% (18/18 static/dynamic routes)** với code exit 0.
+
 
 
 
