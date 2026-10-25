@@ -2037,6 +2037,26 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
   - Unit tests: **21/21 tests PASS (`npm test`)**.
   - Production build: **`npm run build` PASS 100% (18/18 static/dynamic routes)**.
 
+---
+
+### 📅 [2026-10-25 17:20:00] - Hoàn Thiện Tầng Quét Đám Mây Tự Động (Global Server-Side Cron) & Cam Kết Gửi Đúng Giờ 100%
+
+- **Yêu cầu của người dùng**:
+  - Đảm bảo từ nay về sau hệ thống phải gửi đúng thông báo và đúng giờ (đặc biệt các sự kiện tự động như ngày mai sinh nhật Trúc lúc 08:00 sáng, chạy hoàn toàn tự động mà không cần bật máy hay mở app).
+- **Phát hiện & Xử lý then chốt**:
+  - Phát hiện tuyến `/api/cron/check-reminders` trước đây yêu cầu cookie người dùng đăng nhập (`supabase.auth.getUser()`). Khi Vercel Cron hay máy chủ cloud gọi tự động (không có trình duyệt), route sẽ dừng lại vì `user === null`.
+  - Đã xây dựng [admin.ts](file:///e:/BER-Birthday-Event-Reminder-/src/lib/supabase/admin.ts) hỗ trợ `createAdminClient()`.
+  - Bổ sung hàm `handleGlobalCronCheck` trong [route.ts](file:///e:/BER-Birthday-Event-Reminder-/src/app/api/cron/check-reminders/route.ts): Khi nhận request từ Vercel Cron hoặc Cloud scheduler không có cookie, hệ thống tự động chuyển sang chế độ **Global Server Cron**, quét toàn bộ người dùng và sự kiện trong cơ sở dữ liệu để gửi email chính xác.
+  - Cấu hình [vercel.json](file:///e:/BER-Birthday-Event-Reminder-/vercel.json) với lịch chạy định kỳ mỗi ngày lúc 08:00 AM giờ Việt Nam (01:00 UTC).
+- **Danh sách file đã chỉnh sửa/tạo mới**:
+  - `src/lib/supabase/admin.ts` (Tạo mới)
+  - `src/app/api/cron/check-reminders/route.ts` (Nâng cấp Global Server Cron)
+  - `vercel.json` (Cấu hình Vercel Cloud Cron)
+  - `MEMORIES.md`
+- **Trạng thái kiểm thử**:
+  - Unit tests: **21/21 tests PASS**.
+  - Production build: **`npm run build` PASS 100% (18/18 routes)**.
+
 
 
 
