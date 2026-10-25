@@ -148,15 +148,23 @@ export function useEvents() {
           if (!error && data) {
             const today = new Date();
             const localMap = getLocalCustomGroups();
-            return data.map((ev: any) =>
-              enrichEvent(
+            return data.map((ev: any) => {
+              if (ev.custom_group !== undefined && ev.custom_group !== null) {
+                setLocalCustomGroup(ev.id, ev.custom_group);
+              }
+              const effectiveCustomGroup =
+                ev.custom_group !== undefined && ev.custom_group !== null
+                  ? ev.custom_group
+                  : (localMap[ev.id] || null);
+
+              return enrichEvent(
                 {
                   ...ev,
-                  custom_group: ev.custom_group || localMap[ev.id] || null,
+                  custom_group: effectiveCustomGroup,
                 },
                 today
-              )
-            );
+              );
+            });
           }
         }
       }
@@ -203,9 +211,6 @@ export function useEvents() {
         if (user) {
           const { id: _ignore, ...eventPayload } = newEvent;
           let insertPayload: any = { ...eventPayload, user_id: user.id };
-          if (!schemaSupportsCustomType) delete insertPayload.custom_type;
-          if (!schemaSupportsCustomGroup) delete insertPayload.custom_group;
-          if (!schemaSupportsRemindTime) delete insertPayload.remind_time;
           
           let { data, error } = await (supabase as any)
             .from("events")
@@ -214,12 +219,15 @@ export function useEvents() {
             .single();
 
           if (isSchemaColumnError(error)) {
-            schemaSupportsCustomType = false;
-            schemaSupportsCustomGroup = false;
-            schemaSupportsRemindTime = false;
-            delete insertPayload.custom_type;
-            delete insertPayload.custom_group;
-            delete insertPayload.remind_time;
+            if (error?.message?.includes("custom_group") || error?.code === "42703") {
+              delete insertPayload.custom_group;
+            }
+            if (error?.message?.includes("custom_type")) {
+              delete insertPayload.custom_type;
+            }
+            if (error?.message?.includes("remind_time")) {
+              delete insertPayload.remind_time;
+            }
 
             const retryRes = await (supabase as any)
               .from("events")
@@ -347,10 +355,6 @@ export function useEvents() {
           enabled: values.enabled,
         };
 
-        if (!schemaSupportsCustomType) delete updatePayload.custom_type;
-        if (!schemaSupportsCustomGroup) delete updatePayload.custom_group;
-        if (!schemaSupportsRemindTime) delete updatePayload.remind_time;
-
         let query = (supabase as any).from("events").update(updatePayload).eq("id", id);
         if (user) query = query.eq("user_id", user.id);
 
@@ -359,17 +363,19 @@ export function useEvents() {
           .single();
 
         if (isSchemaColumnError(error)) {
-          schemaSupportsCustomType = false;
-          schemaSupportsCustomGroup = false;
-          schemaSupportsRemindTime = false;
-          delete updatePayload.custom_type;
-          delete updatePayload.custom_group;
-          delete updatePayload.remind_time;
+          if (error?.message?.includes("custom_group") || error?.code === "42703") {
+            delete updatePayload.custom_group;
+          }
+          if (error?.message?.includes("custom_type")) {
+            delete updatePayload.custom_type;
+          }
+          if (error?.message?.includes("remind_time")) {
+            delete updatePayload.remind_time;
+          }
 
-          const retryRes = await (supabase as any)
-            .from("events")
-            .update(updatePayload)
-            .eq("id", id)
+          let retryQuery = (supabase as any).from("events").update(updatePayload).eq("id", id);
+          if (user) retryQuery = retryQuery.eq("user_id", user.id);
+          const retryRes = await retryQuery
             .select()
             .single();
           data = retryRes.data;

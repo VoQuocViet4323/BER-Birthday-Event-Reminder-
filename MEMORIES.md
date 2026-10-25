@@ -2225,7 +2225,37 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npm test`: **26/26 tests PASS**
   - `npx tsc --noEmit`: **0 errors** (Type check hoàn toàn sạch sẽ)
-  - Dev Server: Running mượt mà, phản hồi HTTP 200 tại `/calendar`.
+---
+
+### 📅 [2026-10-25 21:35:00] - Chẩn Đoán & Khắc Phục Lỗi Không Đồng Bộ Nhóm Tùy Chỉnh (custom_group) Giữa Mobile và Desktop
+
+- **Hiện tượng & Yêu cầu của người dùng**:
+  - Khi chỉnh sửa tên nhóm tùy chỉnh (chọn nhóm "Khác" $\rightarrow$ nhập tên nhóm ví dụ "Concert test" trên mobile), trên Desktop vẫn hiển thị "Concert". Mặc dù đã F5 lại trang trên desktop nhưng dữ liệu vẫn không đồng bộ với mobile.
+- **Nguyên nhân cốt lõi phát hiện (Technical Root Cause)**:
+  1. **Chưa chạy migration 015 trên Supabase Cloud**:
+     - Kiểm tra trực tiếp trên Supabase PostgreSQL qua script: `code: '42703', message: 'column events.custom_group does not exist'`.
+     - Do migration [20261025_015_add_event_custom_group.sql](file:///d:/BER-Birthday-Event-Reminder-/supabase/migrations/20261025_015_add_event_custom_group.sql) (`ALTER TABLE public.events ADD COLUMN IF NOT EXISTS custom_group TEXT;`) chưa được dán chạy vào Supabase SQL Editor, bảng `events` trên cloud thực tế chưa có cột `custom_group`.
+  2. **Cơ chế fallback ngắt cụm gây cô lập dữ liệu (Data Isolation)**:
+     - Khi mobile gửi request update `{ custom_group: "Concert test" }`, Supabase trả về lỗi `42703`.
+     - Code trong `use-events.ts` trước đó bắt lỗi này và lùi về lưu `custom_group` vào `localStorage` của chính chiếc điện thoại đó (`setLocalCustomGroup`).
+     - Khi Desktop mở web, Desktop kéo dữ liệu từ Supabase Cloud (vốn chưa có cột `custom_group`), rồi fallback về `localStorage` của riêng Desktop (vốn đang lưu giá trị cũ "Concert").
+     - Hậu quả: Hai thiết bị chỉ nhìn thấy `localStorage` của chính nó và hoàn toàn bị cô lập, không thể đồng bộ qua lại.
+- **Nội dung đã triển khai**:
+  1. **Tối ưu hóa tầng ứng dụng ([use-events.ts](file:///d:/BER-Birthday-Event-Reminder-/src/hooks/use-events.ts))**:
+     - Bỏ biến cờ chốt cứng `schemaSupportsCustomGroup = false`. Mỗi khi Thêm hoặc Sửa sự kiện, ứng dụng luôn chủ động gửi `custom_group` lên Supabase Cloud.
+     - Trong `queryFn`: Khi Supabase trả về dữ liệu có `custom_group`, hệ thống tự động cập nhật ngược vào `localStorage` của thiết bị đó để đảm bảo khi 1 thiết bị sửa trên cloud thì mọi thiết bị khác sau khi reload đều tự động cập nhật đồng bộ 100%.
+  2. **Hướng dẫn người dùng chạy câu lệnh SQL 1 chạm**:
+     - Cung cấp câu lệnh SQL để thêm cột `custom_group` vào bảng `events` trên Supabase Cloud:
+       ```sql
+       ALTER TABLE public.events ADD COLUMN IF NOT EXISTS custom_group TEXT;
+       ```
+- **Danh sách file đã chỉnh sửa**:
+  - `src/hooks/use-events.ts`
+  - `MEMORIES.md`
+- **Trạng thái kiểm thử**:
+  - `npm test`: **26/26 tests PASS**
+  - `npx tsc --noEmit`: **0 errors** (Type check hoàn toàn sạch sẽ)
+  - Dev Server: Running mượt mà, phản hồi HTTP 200 tại `/events`.
 
 
 
