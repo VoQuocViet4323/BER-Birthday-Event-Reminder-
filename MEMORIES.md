@@ -2704,6 +2704,58 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
   - `npx tsc --noEmit`: **0 errors** (Type check tuyệt đối an toàn)
   - Dev Server: Hoạt động ổn định tại `http://localhost:3000` (HTTP 200 OK)
 
+---
+
+### 📅 [2026-10-26 11:06:00] - Khắc Phục Triệt Để Lỗi UX: Cuộn Trang Bị Tự Động Bật Modal Chi Tiết Sự Kiện
+
+- **Yêu cầu của người dùng**:
+  - *"fix lại lỗi khi tôi đang lăn cuộn xuống để xem nhưng khi chạm vào 1 sự kiện nào đó thì bị tự động bật thông tin sự kiện lên để xem, fix UX cho tôi"* (kèm ảnh danh sách sự kiện trên mobile).
+- **Phân tích nguyên nhân kỹ thuật**:
+  1. Trong [`src/components/events/event-card.tsx`](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-card.tsx), hàm `handlePointerDown` trước đó gọi ngay `row.setPointerCapture(e.pointerId)` từ lúc vừa chạm tay, làm gián đoạn native scroll của trình duyệt mobile.
+  2. Code trước đó chỉ đo trục hoành `deltaX` mà không hề đo trục tung `deltaY`. Khi người dùng vuốt dọc màn hình để cuộn trang xuống, trục hoành hầu như không di chuyển (`deltaX ≈ 0 < 6px`). Khi nhấc ngón tay lên, code nhầm tưởng đó là một cú "tap tĩnh" và tự động gọi `onEdit(event)` mở modal chi tiết sự kiện!
+  3. Handler `onPointerCancel` bị trỏ nhầm sang `handlePointerUp`, khiến cho khi trình duyệt tiếp quản để cuộn dọc (`pan-y`), sự kiện cancel lại kích hoạt `handlePointerUp` và bật modal lên.
+- **Giải pháp xử lý UX toàn diện**:
+  1. **Nhận diện và phân luồng cử chỉ (Gesture Direction Locking)**:
+     - Lưu tọa độ ban đầu `(startX, startY)` và thời điểm bắt đầu `startTime`.
+     - Không gọi `setPointerCapture` ở `pointerdown` để giữ cử chỉ cuộn trang mượt mà 60-120fps.
+     - Khi ngón tay dịch chuyển:
+       - Nếu $|\Delta Y| > |\Delta X|$ hoặc $|\Delta Y| > 7\text{px}$: Xác định ngay là **CUỘN TRANG DỌC (Scroll)** $\rightarrow$ Đặt cờ `isScrolling = true` và khóa hoàn toàn việc mở modal.
+       - Nếu $\Delta X < -8\text{px}$ và ưu thế ngang: Xác định là **VUỐT XÓA (Swipe-to-delete)** $\rightarrow$ Mới gọi `setPointerCapture` và áp dụng hiệu ứng trượt `--x`.
+  2. **Bảo vệ cú chạm mở xem chi tiết (Tap Protection)**:
+     - Chỉ khi tổng quãng đường di chuyển của ngón tay cực nhỏ: $\sqrt{\Delta X^2 + \Delta Y^2} < 7\text{px}$, thời gian chạm ngắn $< 400\text{ms}$ VÀ không có trạng thái cuộn trang (`!isScrolling`), thì mới gọi `onEdit(event)`.
+  3. **Tách biệt `handlePointerCancel`**:
+     - Khi trình duyệt tiếp quản native scroll, `pointercancel` chỉ đơn thuần hồi vị thẻ về $0\text{px}$, hủy bỏ toàn bộ cờ kéo mà tuyệt đối không mở modal.
+- **Danh sách file chỉnh sửa**:
+  - [src/components/events/event-card.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-card.tsx)
+  - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npm test`: **26/26 tests PASS**
+  - `npx tsc --noEmit`: **0 errors** (Type check tuyệt đối an toàn)
+  - Dev Server: Hoạt động ổn định tại `http://localhost:3000` (HTTP 200 OK)
+
+---
+
+### 📅 [2026-10-26 11:10:00] - Hoàn Thiện Sự Kiện Click Chuẩn Cho Thẻ Sự Kiện: Chạm Mở Nhạy 100% & Triệt Tiêu Khi Cuộn/Vuốt
+
+- **Yêu cầu của người dùng**:
+  - *"ủa sao giờ bấm vào xem nhưng không được nữa vậy"*
+- **Nguyên nhân**:
+  - Ở lần sửa trước, việc bắt `totalDistance < 7px && duration < 400ms` trong `pointerup` vô tình quá khắt khe với màn hình cảm ứng di động (khi ngón tay người dùng chạm vào và nhấc lên, bề mặt tiếp xúc thường có độ xê dịch tự nhiên 8–15px hoặc người dùng nhấn giữ lâu hơn 400ms), trong khi trên thẻ `div` chưa được gắn handler `onClick` chuẩn của trình duyệt.
+- **Giải pháp dứt điểm**:
+  1. **Ủy thác cho cơ chế `onClick` chuẩn của trình duyệt HTML**:
+     - Gắn `onClick={handleClick}` trực tiếp vào thẻ sự kiện `.u071-row`.
+     - Trình duyệt di động (iOS Safari & Android Chrome) theo chuẩn W3C vốn dĩ tự động triệt tiêu sự kiện `click` khi đang cuộn dọc (scroll), do đó khi bạn lăn cuộn màn hình sẽ không bao giờ bị kích hoạt click.
+     - Ngược lại, khi bạn bấm hoặc chạm vào thẻ (dù bấm nhanh hay chậm), trình duyệt sẽ kích hoạt `click` tự nhiên 100%, cực kỳ nhạy và êm ái.
+  2. **Chặn click khi vuốt xóa ngang (Swipe-to-delete)**:
+     - Dùng cờ `suppressClickRef`: Chỉ khi người dùng thực sự kéo sang trái quá $-12\text{px}$ để xóa thẻ, hệ thống mới khóa `suppressClickRef = true` để không bị nhảy vào modal sau khi thả tay vuốt.
+- **Danh sách file chỉnh sửa**:
+  - [src/components/events/event-card.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-card.tsx)
+  - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npm test`: **26/26 tests PASS**
+  - `npx tsc --noEmit`: **0 errors** (Type check tuyệt đối an toàn)
+  - Dev Server: Hoạt động ổn định tại `http://localhost:3000` (HTTP 200 OK)
+
 
 
 

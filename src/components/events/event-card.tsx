@@ -36,10 +36,15 @@ export function EventCard({
   const rowRef = useRef<HTMLDivElement>(null);
   const bgRef = useRef<HTMLDivElement>(null);
 
-  // Tham chiếu trạng thái kéo
-  const isDraggingRef = useRef(false);
+  // Tham chiếu trạng thái cử chỉ
   const startXRef = useRef(0);
+  const startYRef = useRef(0);
   const deltaXRef = useRef(0);
+
+  const isPointerDownRef = useRef(false);
+  const isSwipingRef = useRef(false);
+  const suppressClickRef = useRef(false);
+  const pointerIdRef = useRef<number | null>(null);
 
   const remainingInfo = formatDaysRemainingText(event.daysRemaining);
 
@@ -99,64 +104,137 @@ export function EventCard({
     });
   };
 
-  // Xử lý sự kiện kéo vuốt trên row (Pointer events chuẩn #071)
+  // Xử lý sự kiện bắt đầu chạm / click
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest("button, a") || e.button !== 0) return;
 
-    const row = rowRef.current;
-    if (!row) return;
+    isPointerDownRef.current = true;
+    isSwipingRef.current = false;
+    suppressClickRef.current = false;
 
-    isDraggingRef.current = true;
     startXRef.current = e.clientX;
+    startYRef.current = e.clientY;
     deltaXRef.current = 0;
-
-    row.setPointerCapture(e.pointerId);
-    row.classList.add("drag");
+    pointerIdRef.current = e.pointerId;
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!isDraggingRef.current) return;
+    if (!isPointerDownRef.current) return;
 
-    const row = rowRef.current;
-    const bg = bgRef.current;
-    if (!row || !bg) return;
+    const diffX = e.clientX - startXRef.current;
+    const diffY = e.clientY - startYRef.current;
+    const absX = Math.abs(diffX);
+    const absY = Math.abs(diffY);
 
-    const dx = Math.min(0, e.clientX - startXRef.current);
-    deltaXRef.current = dx;
+    // Nếu chưa vào chế độ vuốt ngang
+    if (!isSwipingRef.current) {
+      // Nếu di chuyển dọc ưu thế -> Đây là cuộn trang (Native Scroll), bỏ qua vuốt ngang
+      if (absY > absX && absY > 6) {
+        return;
+      }
 
-    // Lực kháng cự khi kéo quá -100px theo chuẩn #071
-    const finalX = dx < -100 ? -100 + (dx + 100) * 0.6 : dx;
-    row.style.setProperty("--x", `${finalX}px`);
+      // Nếu kéo sang trái vượt ngưỡng 12px và ưu thế ngang -> Bắt đầu VUỐT XÓA (Swipe-to-delete)
+      if (diffX < -12 && absX > absY * 1.2) {
+        isSwipingRef.current = true;
+        suppressClickRef.current = true; // Chặn click khi buông tay
 
-    // Icon thùng rác phóng to từ 0.6 đến 1.25 theo quãng đường kéo
-    const k = Math.min(1.25, 0.6 + -dx / 160).toFixed(2);
-    bg.style.setProperty("--k", k);
+        const row = rowRef.current;
+        if (row) {
+          try {
+            row.setPointerCapture(e.pointerId);
+          } catch {}
+          row.classList.add("drag");
+        }
+      } else {
+        return;
+      }
+    }
+
+    // Đang trong trạng thái vuốt xóa ngang (Prompt #071)
+    if (isSwipingRef.current) {
+      const row = rowRef.current;
+      const bg = bgRef.current;
+      if (!row || !bg) return;
+
+      deltaXRef.current = diffX;
+      const dx = Math.min(0, diffX);
+      const finalX = dx < -100 ? -100 + (dx + 100) * 0.6 : dx;
+      row.style.setProperty("--x", `${finalX}px`);
+
+      const k = Math.min(1.25, 0.6 + -dx / 160).toFixed(2);
+      bg.style.setProperty("--k", k);
+    }
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!isDraggingRef.current) return;
-    isDraggingRef.current = false;
+    if (!isPointerDownRef.current) return;
+    const wasSwiping = isSwipingRef.current;
+
+    isPointerDownRef.current = false;
+    isSwipingRef.current = false;
 
     const row = rowRef.current;
     const bg = bgRef.current;
-    if (!row || !bg) return;
-
-    row.classList.remove("drag");
-    const dx = deltaXRef.current;
-
-    // Nếu vuốt quá ngưỡng -100px -> kích hoạt xóa với Undo
-    if (dx < -100) {
-      triggerDeleteWithUndo();
-    } else {
-      // Hồi vị tự nhiên về 0px với spring curve
-      row.style.setProperty("--x", "0px");
-      bg.style.setProperty("--k", "0.6");
-
-      // Nếu chỉ chạm nhẹ (tap) mà không kéo -> mở modal sửa
-      if (Math.abs(dx) < 6) {
-        onEdit(event);
-      }
+    if (row) {
+      row.classList.remove("drag");
+      try {
+        if (pointerIdRef.current !== null && row.hasPointerCapture(pointerIdRef.current)) {
+          row.releasePointerCapture(pointerIdRef.current);
+        }
+      } catch {}
     }
+
+    // Nếu vừa thực hiện thao tác vuốt xóa
+    if (wasSwiping) {
+      const dx = deltaXRef.current;
+      if (dx < -100) {
+        triggerDeleteWithUndo();
+      } else {
+        if (row) row.style.setProperty("--x", "0px");
+        if (bg) bg.style.setProperty("--k", "0.6");
+      }
+      // Khóa click trong 200ms để không bị nhảy vào modal sau khi thả vuốt
+      setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 200);
+    } else {
+      suppressClickRef.current = false;
+      if (row) row.style.setProperty("--x", "0px");
+      if (bg) bg.style.setProperty("--k", "0.6");
+    }
+  };
+
+  // Xử lý khi cử chỉ bị hủy bởi hệ thống (ví dụ: trình duyệt tiếp quản scroll dọc pan-y)
+  const handlePointerCancel = () => {
+    isPointerDownRef.current = false;
+    isSwipingRef.current = false;
+    suppressClickRef.current = false;
+
+    const row = rowRef.current;
+    const bg = bgRef.current;
+    if (row) {
+      row.classList.remove("drag");
+      row.style.setProperty("--x", "0px");
+      try {
+        if (pointerIdRef.current !== null && row.hasPointerCapture(pointerIdRef.current)) {
+          row.releasePointerCapture(pointerIdRef.current);
+        }
+      } catch {}
+    }
+    if (bg) {
+      bg.style.setProperty("--k", "0.6");
+    }
+  };
+
+  // Xử lý mở xem chi tiết sự kiện qua click chuẩn của HTML (tương thích 100% PC & Mobile)
+  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Không mở nếu bấm vào các nút hành động con
+    if ((e.target as HTMLElement).closest("button, a")) return;
+
+    // Không mở nếu vừa thực hiện thao tác vuốt xóa
+    if (suppressClickRef.current) return;
+
+    onEdit(event);
   };
 
   // Hỗ trợ xóa bằng phím Delete / Backspace
@@ -342,8 +420,9 @@ export function EventCard({
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
+          onPointerCancel={handlePointerCancel}
           onKeyDown={handleKeyDown}
+          onClick={handleClick}
         >
           <div className="flex items-start justify-between gap-3">
             {/* Avatar & Thông tin cơ bản */}
