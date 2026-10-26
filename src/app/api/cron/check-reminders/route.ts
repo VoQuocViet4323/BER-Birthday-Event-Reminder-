@@ -131,10 +131,8 @@ async function handleCheckReminders(request: Request) {
         continue;
       }
 
-      // 4. Khóa độc quyền (Atomic Claim Lock) bằng notification_logs
-      // Nhờ ràng buộc UNIQUE (event_id, remind_offset, occurrence_date, channel),
-      // chỉ có DUY NHẤT 1 request insert thành công. Mọi request song song khác sẽ bị chặn đứng 100%.
-      const occurrenceDateStr = nextOcc.toISOString().split("T")[0];
+      // Chuẩn hóa ngày diễn ra sự kiện dạng "YYYY-MM-DD" không phụ thuộc timezone
+      const occurrenceDateStr = formatOccurrenceDate(nextOcc);
       const locked = await claimReminderLock(
         supabase,
         user.id,
@@ -321,7 +319,7 @@ async function handleGlobalCronCheck(admin: any, currentTimeStr: string, now: Da
 
         if (normalizeTime(currentTimeStr) < normalizeTime(eventTime)) continue;
 
-        const occurrenceDateStr = nextOcc.toISOString().split("T")[0];
+        const occurrenceDateStr = formatOccurrenceDate(nextOcc);
         const locked = await claimReminderLock(
           admin,
           userId,
@@ -406,9 +404,21 @@ async function handleGlobalCronCheck(admin: any, currentTimeStr: string, now: Da
 }
 
 /**
- * Khóa độc quyền (Atomic Claim Lock) chống gửi trùng lặp tuyệt đối.
- * Tận dụng ràng buộc UNIQUE (event_id, remind_offset, occurrence_date, channel).
- * Chỉ 1 request duy nhất insert thành công. Mọi request song song khác sẽ bị chặn đứng 100%.
+ * Định dạng ngày sự kiện độc lập tuyệt đối với múi giờ client/server
+ * Tránh lỗi lệch 1 ngày khi dùng .toISOString() ở múi giờ GMT+7
+ */
+function formatOccurrenceDate(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+/**
+ * Khóa độc quyền đa tầng (Triple Lock Idempotency) chống gửi trùng lặp tuyệt đối:
+ * Lớp 1: Kiểm tra xem trong 18 giờ qua đã có email 'sent' cho sự kiện & mốc nhắc này chưa.
+ * Lớp 2: Kiểm tra bản ghi với occurrence_date chính xác (dọn dẹp pending stuck > 3 phút).
+ * Lớp 3: Ràng buộc cơ sở dữ liệu UNIQUE (event_id, remind_offset, occurrence_date, channel).
  */
 async function claimReminderLock(
   client: any,
@@ -418,22 +428,49 @@ async function claimReminderLock(
   occurrenceDateStr: string
 ): Promise<boolean> {
   try {
-    // 1. Kiểm tra nhanh xem đã có log trong ngày chưa
-    const { data: existingLog } = await client
+    // LỚP 1: Chống gửi lặp trong vòng 18 giờ qua (ngăn chặn tuyệt đối double email trong cùng 1 ngày)
+    const eighteenHoursAgo = new Date(Date.now() - 18 * 60 * 60 * 1000).toISOString();
+    const { data: recentSent } = await client
       .from("notification_logs")
       .select("id, status")
       .eq("event_id", eventId)
       .eq("remind_offset", remindOffset)
-      .eq("occurrence_date", occurrenceDateStr)
       .eq("channel", "email")
-      .maybeSingle();
+      .eq("status", "sent")
+      .gte("sent_at", eighteenHoursAgo)
+      .limit(1);
 
-    if (existingLog) {
-      // Đã gửi ('sent') hoặc đang có luồng khác giữ lock ('pending') -> tuyệt đối không gửi lại
+    if (recentSent && recentSent.length > 0) {
+      // Đã gửi email thành công trong 18 giờ qua -> TUYỆT ĐỐI KHÔNG GỬI LẠI!
       return false;
     }
 
-    // 2. Atomic Lock: Insert một bản ghi 'pending'
+    // LỚP 2: Kiểm tra bản ghi cùng mốc occurrence_date
+    const { data: existingLogs } = await client
+      .from("notification_logs")
+      .select("id, status, sent_at")
+      .eq("event_id", eventId)
+      .eq("remind_offset", remindOffset)
+      .eq("occurrence_date", occurrenceDateStr)
+      .eq("channel", "email")
+      .order("sent_at", { ascending: false })
+      .limit(1);
+
+    if (existingLogs && existingLogs.length > 0) {
+      const log = existingLogs[0];
+      if (log.status === "sent") {
+        return false;
+      }
+      // Nếu là 'pending' nhưng vừa mới tạo trong vòng 3 phút -> đang có luồng khác gửi
+      const logTime = new Date(log.sent_at || Date.now()).getTime();
+      if (Date.now() - logTime < 3 * 60 * 1000) {
+        return false;
+      }
+      // Nếu là 'pending' đã quá 3 phút (stuck timeout) -> xóa để claim lại
+      await client.from("notification_logs").delete().eq("id", log.id);
+    }
+
+    // LỚP 3: Atomic Insert với status = 'pending'
     const { error: lockErr } = await client.from("notification_logs").insert({
       user_id: userId,
       event_id: eventId,

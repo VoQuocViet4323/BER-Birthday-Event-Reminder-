@@ -143,24 +143,51 @@ Deno.serve(async (req) => {
             }
           }
 
-          const occDateStr = nextOcc.toISOString().split("T")[0];
+          // Định dạng ngày sự kiện độc lập múi giờ (YYYY-MM-DD)
+          const occYear = nextOcc.getUTCFullYear();
+          const occMonth = String(nextOcc.getUTCMonth() + 1).padStart(2, "0");
+          const occDay = String(nextOcc.getUTCDate()).padStart(2, "0");
+          const occDateStr = `${occYear}-${occMonth}-${occDay}`;
 
-          // 4. Khóa độc quyền (Atomic Claim Lock) trong notification_logs
+          // 4. Khóa độc quyền đa tầng (Triple Lock Idempotency)
           let isLocked = false;
           if (!isTest) {
-            // Kiểm tra xem đã có log sent/pending chưa
-            const { data: existingLog } = await supabase
+            // Lớp 1: Kiểm tra xem 18 giờ qua đã gửi email thành công cho sự kiện này chưa
+            const eighteenHoursAgo = new Date(Date.now() - 18 * 60 * 60 * 1000).toISOString();
+            const { data: recentSent } = await supabase
               .from("notification_logs")
               .select("id, status")
               .eq("event_id", ev.id)
               .eq("remind_offset", daysDiff)
+              .eq("channel", "email")
+              .eq("status", "sent")
+              .gte("sent_at", eighteenHoursAgo)
+              .limit(1);
+
+            if (recentSent && recentSent.length > 0) {
+              continue; // Đã gửi trong 18 giờ qua -> Tuyệt đối không gửi lại!
+            }
+
+            // Lớp 2: Kiểm tra xem đã có log sent/pending cho cùng occurrenceDateStr chưa
+            const { data: existingLog } = await supabase
+              .from("notification_logs")
+              .select("id, status, sent_at")
+              .eq("event_id", ev.id)
+              .eq("remind_offset", daysDiff)
               .eq("occurrence_date", occDateStr)
               .eq("channel", "email")
-              .maybeSingle();
+              .order("sent_at", { ascending: false })
+              .limit(1);
 
-            if (existingLog) continue;
+            if (existingLog && existingLog.length > 0) {
+              const log = existingLog[0];
+              if (log.status === "sent") continue;
+              const logTime = new Date(log.sent_at || Date.now()).getTime();
+              if (Date.now() - logTime < 3 * 60 * 1000) continue; // Luồng khác đang xử lý
+              await supabase.from("notification_logs").delete().eq("id", log.id);
+            }
 
-            // Thử xí chỗ độc quyền 'pending'
+            // Lớp 3: Thử xí chỗ độc quyền 'pending'
             const { error: lockErr } = await supabase
               .from("notification_logs")
               .insert({

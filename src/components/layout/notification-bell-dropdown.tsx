@@ -1,8 +1,10 @@
-// Lucian UX/UI Prompt #074 · MIT License (c) 2026 Seokwoooo · https://lucianlabs.dev/uxui-prompt/#074
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
+import { motion, AnimatePresence } from "framer-motion";
+import { Bell, CheckCheck, Inbox, X, Calendar, Mail, Clock, ShieldCheck, AlertCircle } from "lucide-react";
 import { useNotifications, AppNotification } from "@/hooks/use-notifications";
 
 interface NotificationBellDropdownProps {
@@ -21,38 +23,53 @@ export function NotificationBellDropdown({ onCountChange }: NotificationBellDrop
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"all" | "unread">("all");
   const [clearingIds, setClearingIds] = useState<Set<string>>(new Set());
+  const [selectedNotification, setSelectedNotification] = useState<AppNotification | null>(null);
+  const [mounted, setMounted] = useState(false);
 
   const rootRef = useRef<HTMLDivElement>(null);
   const bellRef = useRef<HTMLButtonElement>(null);
-  const badgeRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Khóa cuộn trang và chặn tương tác phía sau khi mở Bảng thông báo hoặc Modal chi tiết
+  useEffect(() => {
+    if (isOpen || selectedNotification) {
+      const originalOverflow = document.body.style.overflow;
+      const originalTouchAction = document.body.style.touchAction;
+      document.body.style.overflow = "hidden";
+      document.body.style.touchAction = "none";
+      return () => {
+        document.body.style.overflow = originalOverflow;
+        document.body.style.touchAction = originalTouchAction;
+      };
+    }
+  }, [isOpen, selectedNotification]);
 
   // Báo số lượng unread ra component cha nếu cần
   useEffect(() => {
     onCountChange?.(unreadCount);
   }, [unreadCount, onCountChange]);
 
-  // Đóng dropdown khi click ra ngoài hoặc bấm Escape
+  // Đóng bảng thông báo hoặc modal khi bấm Escape
   useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-      }
-    }
-
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape" && isOpen) {
-        setIsOpen(false);
-        bellRef.current?.focus();
+      if (e.key === "Escape") {
+        if (selectedNotification) {
+          setSelectedNotification(null);
+        } else if (isOpen) {
+          setIsOpen(false);
+          bellRef.current?.focus();
+        }
       }
     }
 
-    document.addEventListener("mousedown", handleClickOutside);
     document.addEventListener("keydown", handleKeyDown);
     return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isOpen]);
+  }, [isOpen, selectedNotification]);
 
   // Hiệu ứng "Đánh dấu tất cả đã đọc" xoá từng chấm một so le theo chuẩn Prompt #074
   const handleMarkAllRead = () => {
@@ -62,13 +79,13 @@ export function NotificationBellDropdown({ onCountChange }: NotificationBellDrop
     unreadList.forEach((item, index) => {
       setTimeout(() => {
         setClearingIds((prev) => new Set(prev).add(item.id));
-      }, index * 110);
+      }, index * 90);
     });
 
     setTimeout(() => {
       markAllAsRead();
       setClearingIds(new Set());
-    }, unreadList.length * 110 + 200);
+    }, unreadList.length * 90 + 150);
   };
 
   const filteredNotifications = notifications.filter((n) => {
@@ -77,533 +94,419 @@ export function NotificationBellDropdown({ onCountChange }: NotificationBellDrop
   });
 
   return (
-    <div
-      ref={rootRef}
-      className={`u074 ${isOpen ? "" : "is-closed"}`}
-    >
-      <style jsx>{`
-        .u074 {
-          --ux-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
-          --ux-spring: cubic-bezier(0.34, 1.45, 0.64, 1);
-
-          /* Token Light Mode */
-          --ux-page: hsl(var(--background));
-          --ux-surface: hsl(var(--card));
-          --ux-surface-2: hsl(var(--secondary));
-          --ux-surface-3: hsl(var(--muted));
-          --ux-ink: hsl(var(--foreground));
-          --ux-ink-2: hsl(var(--muted-foreground));
-          --ux-ink-3: hsl(var(--muted-foreground) / 0.7);
-          --ux-line: hsl(var(--border) / 0.85);
-          --ux-line-2: hsl(var(--border));
-          --ux-accent: hsl(var(--primary));
-          --ux-shadow-strong: rgba(40, 30, 80, 0.22);
-
-          position: relative;
-          display: inline-flex;
-          align-items: center;
-          font-family: inherit;
-        }
-
-        :global(.dark) .u074 {
-          /* Token Dark Mode */
-          --ux-page: hsl(var(--background));
-          --ux-surface: hsl(var(--card));
-          --ux-surface-2: hsl(var(--secondary) / 0.8);
-          --ux-surface-3: hsl(var(--muted));
-          --ux-ink: hsl(var(--foreground));
-          --ux-ink-2: hsl(var(--muted-foreground));
-          --ux-ink-3: hsl(var(--muted-foreground) / 0.7);
-          --ux-line: hsl(var(--border));
-          --ux-line-2: hsl(var(--border) / 0.9);
-          --ux-accent: hsl(var(--primary));
-          --ux-shadow-strong: rgba(0, 0, 0, 0.65);
-        }
-
-        /* Nút Chuông Thông Báo */
-        .u074-bell {
-          position: relative;
-          width: 40px;
-          height: 40px;
-          border: 0;
-          padding: 0;
-          border-radius: 12px;
-          display: grid;
-          place-items: center;
-          background: var(--ux-surface-2);
-          color: var(--ux-ink);
-          box-shadow: 0 0 0 1px var(--ux-line);
-          transition: transform 0.3s var(--ux-spring), background-color 0.2s;
-          cursor: pointer;
-        }
-
-        .u074-bell:hover {
-          background: hsl(var(--secondary) / 0.9);
-          color: var(--ux-accent);
-        }
-
-        .u074-bell:active {
-          transform: scale(0.92);
-        }
-
-        .u074-bell:focus-visible {
-          outline: 2px solid var(--ux-accent);
-          outline-offset: 2px;
-        }
-
-        .u074-bell svg {
-          width: 20px;
-          height: 20px;
-          fill: none;
-          stroke: currentColor;
-          stroke-width: 2;
-          stroke-linecap: round;
-          stroke-linejoin: round;
-          transform-origin: 50% 15%;
-        }
-
-        /* Hiệu ứng rung chuông khi có thông báo mới (Prompt #074) */
-        .u074-bell.ring svg {
-          animation: u074-ring 0.9s var(--ux-ease);
-        }
-
-        @keyframes u074-ring {
-          10% { transform: rotate(18deg); }
-          25% { transform: rotate(-16deg); }
-          40% { transform: rotate(12deg); }
-          55% { transform: rotate(-8deg); }
-          70% { transform: rotate(4deg); }
-        }
-
-        /* Huy hiệu số lượng màu đỏ nổi bật */
-        .u074-badge {
-          position: absolute;
-          right: -4px;
-          top: -4px;
-          min-width: 18px;
-          height: 18px;
-          padding: 0 4.5px;
-          border-radius: 9px;
-          background: #ff5a6e;
-          color: #ffffff;
-          font-size: 10px;
-          font-weight: 850;
-          line-height: 18px;
-          text-align: center;
-          box-shadow: 0 0 0 2px var(--ux-surface);
-          font-variant-numeric: tabular-nums;
-          transition: transform 0.4s var(--ux-spring);
-        }
-
-        .u074-badge.zero {
-          transform: scale(0);
-        }
-
-        /* Menu Dropdown bung mở từ vị trí nút chuông */
-        .u074-pan {
-          display: flex;
-          flex-direction: column;
-          border-radius: 24px;
-          background: var(--ux-surface);
-          box-shadow: 0 0 0 1px var(--ux-line), 0 30px 60px -20px var(--ux-shadow-strong);
-          transition: transform 0.45s var(--ux-spring), opacity 0.25s;
-          z-index: 100;
-          box-sizing: border-box;
-          overflow: hidden;
-        }
-
-        /* Mobile màn hình hẹp: căn giữa cân đối, trỏ mũi tên chuẩn vào nút chuông */
-        @media (max-width: 640px) {
-          .u074-pan {
-            position: fixed;
-            top: 60px;
-            left: 14px;
-            right: 14px;
-            width: auto;
-            max-width: calc(100vw - 28px);
-            max-height: calc(100vh - 130px);
-            transform-origin: calc(100% - 88px) -10px;
-          }
-
-          .u074-pan::before {
-            content: "";
-            position: absolute;
-            right: 88px;
-            top: -6px;
-            width: 12px;
-            height: 12px;
-            border-radius: 2px;
-            background: var(--ux-surface);
-            transform: rotate(45deg);
-            box-shadow: -1px -1px 0 0 var(--ux-line);
-            z-index: 1;
-          }
-        }
-
-        /* Desktop: định vị dưới nút chuông góc phải */
-        @media (min-width: 641px) {
-          .u074-pan {
-            position: absolute;
-            right: -6px;
-            top: calc(100% + 12px);
-            width: 360px;
-            max-height: 520px;
-            transform-origin: calc(100% - 22px) -10px;
-          }
-
-          .u074-pan::before {
-            content: "";
-            position: absolute;
-            right: 20px;
-            top: -6px;
-            width: 12px;
-            height: 12px;
-            border-radius: 2px;
-            background: var(--ux-surface);
-            transform: rotate(45deg);
-            box-shadow: -1px -1px 0 0 var(--ux-line);
-            z-index: 1;
-          }
-        }
-
-        .u074.is-closed .u074-pan {
-          transform: scale(0.4);
-          opacity: 0;
-          pointer-events: none;
-          transition: transform 0.3s var(--ux-ease), opacity 0.2s;
-        }
-
-        /* Thanh Tab và nút hành động trong Dropdown */
-        .u074-ph {
-          position: relative;
-          z-index: 2;
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          padding: 14px 14px 10px;
-          border-bottom: 1px solid var(--ux-line);
-          background: var(--ux-surface);
-        }
-
-        .u074-tab {
-          height: 30px;
-          padding: 0 11px;
-          border: 0;
-          border-radius: 999px;
-          background: none;
-          font-size: 12px;
-          font-weight: 750;
-          color: var(--ux-ink-3);
-          transition: background-color 0.2s, color 0.2s;
-          cursor: pointer;
-        }
-
-        .u074-tab[aria-selected="true"] {
-          background: var(--ux-ink);
-          color: var(--ux-page);
-        }
-
-        .u074-all {
-          margin-left: auto;
-          border: 0;
-          padding: 4px 6px;
-          background: none;
-          font-size: 11.5px;
-          font-weight: 750;
-          color: var(--ux-accent);
-          cursor: pointer;
-          transition: opacity 0.2s;
-        }
-
-        .u074-all:disabled {
-          color: var(--ux-ink-3);
-          opacity: 0.5;
-          cursor: default;
-        }
-
-        /* Danh sách thông báo */
-        .u074-list {
-          position: relative;
-          margin: 0;
-          padding: 8px;
-          list-style: none;
-          max-height: 320px;
-          overflow-y: auto;
-        }
-
-        .u074-row {
-          position: relative;
-          display: flex;
-          align-items: flex-start;
-          gap: 12px;
-          width: 100%;
-          padding: 10px 24px 10px 10px;
-          border: 0;
-          border-radius: 16px;
-          background: none;
-          text-align: left;
-          transition: background-color 0.2s;
-          cursor: pointer;
-        }
-
-        .u074-row:hover {
-          background: var(--ux-surface-2);
-        }
-
-        .u074-av {
-          position: relative;
-          width: 40px;
-          height: 40px;
-          flex: none;
-          border-radius: 50%;
-          background: var(--ux-surface-2);
-          display: block;
-        }
-
-        .u074-av-img {
-          width: 100%;
-          height: 100%;
-          border-radius: 50%;
-          object-fit: cover;
-          display: block;
-          box-shadow: 0 0 0 1px var(--ux-line);
-          background: var(--ux-surface-3);
-        }
-
-        .u074-av em {
-          position: absolute;
-          right: -2px;
-          bottom: -2px;
-          width: 18px;
-          height: 18px;
-          border-radius: 50%;
-          display: grid;
-          place-items: center;
-          background: var(--ux-surface);
-          font-style: normal;
-          font-size: 10px;
-          box-shadow: 0 0 0 1.5px var(--ux-surface), 0 2px 5px rgba(0, 0, 0, 0.15);
-        }
-
-        .u074-tx {
-          flex: 1;
-          min-width: 0;
-          font-size: 12.5px;
-          line-height: 1.4;
-          color: var(--ux-ink-2);
-        }
-
-        .u074-tx b {
-          display: block;
-          color: var(--ux-ink);
-          font-weight: 750;
-          font-size: 13px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
-        .u074-tx span {
-          display: block;
-          margin-top: 1px;
-          font-size: 11.5px;
-          color: var(--ux-ink-2);
-          overflow: hidden;
-          display: -webkit-box;
-          -webkit-line-clamp: 2;
-          -webkit-box-orient: vertical;
-        }
-
-        .u074-tx small {
-          display: block;
-          margin-top: 3px;
-          font-size: 10.5px;
-          font-weight: 650;
-          color: var(--ux-ink-3);
-        }
-
-        /* Chấm xanh unread biến mất xoay tròn khi đọc */
-        .u074-dot {
-          position: absolute;
-          right: 10px;
-          top: 16px;
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          background: var(--ux-accent);
-          transition: transform 0.35s var(--ux-spring), opacity 0.25s;
-        }
-
-        .u074-row.read .u074-dot {
-          transform: scale(0);
-          opacity: 0;
-        }
-
-        .u074-row.read .u074-tx b {
-          font-weight: 600;
-          color: var(--ux-ink-2);
-        }
-
-        /* Chân dropdown */
-        .u074-foot {
-          padding: 10px 14px;
-          border-top: 1px solid var(--ux-line);
-          background: var(--ux-surface);
-          text-align: center;
-        }
-
-        .u074-foot a {
-          font-size: 11.5px;
-          font-weight: 750;
-          color: var(--ux-accent);
-          text-decoration: none;
-          transition: opacity 0.2s;
-        }
-
-        .u074-foot a:hover {
-          opacity: 0.8;
-          text-decoration: underline;
-        }
-
-        .u074-empty {
-          padding: 32px 16px;
-          text-align: center;
-          font-size: 12.5px;
-          font-weight: 600;
-          color: var(--ux-ink-3);
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-          .u074,
-          .u074 :global(*),
-          .u074 :global(*::before) {
-            animation-duration: 0.001ms !important;
-            transition-duration: 0.001ms !important;
-          }
-        }
-      `}</style>
-
+    <div ref={rootRef} className="relative inline-flex items-center">
       {/* Nút Chuông Thông Báo */}
       <button
         ref={bellRef}
         type="button"
-        className={`u074-bell ${shouldRing ? "ring" : ""}`}
-        onClick={() => setIsOpen((prev) => !prev)}
+        className="relative w-9 h-9 sm:w-10 sm:h-10 rounded-2xl flex items-center justify-center bg-secondary/80 hover:bg-secondary text-foreground hover:text-primary transition-all active:scale-95 border border-border/70 focus-visible:outline-2 focus-visible:outline-primary cursor-pointer shadow-xs"
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsOpen((prev) => !prev);
+        }}
         aria-expanded={isOpen}
         aria-label={`Thông báo, ${unreadCount} thông báo mới`}
         title="Xem thông báo hệ thống"
       >
-        <svg viewBox="0 0 22 22" aria-hidden="true">
-          <path d="M5.5 15V10a5.5 5.5 0 0 1 11 0v5l1.5 1.5h-14zM9 18.5a2 2 0 0 0 4 0" />
-        </svg>
+        <motion.div
+          animate={
+            shouldRing
+              ? {
+                  rotate: [0, 18, -16, 12, -8, 4, 0],
+                  transition: { duration: 0.9, ease: [0.2, 0.8, 0.2, 1] },
+                }
+              : {}
+          }
+        >
+          <Bell className="w-4 h-4 sm:w-5 sm:h-5 text-foreground/80 hover:text-primary transition-colors" />
+        </motion.div>
 
         {/* Huy hiệu số lượng */}
-        <span
-          ref={badgeRef}
-          className={`u074-badge ${unreadCount === 0 ? "zero" : ""}`}
-          aria-hidden="true"
-        >
-          {unreadCount > 9 ? "9+" : unreadCount}
-        </span>
+        {unreadCount > 0 && (
+          <motion.span
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-extrabold flex items-center justify-center shadow-sm border-2 border-background tabular-nums"
+            aria-hidden="true"
+          >
+            {unreadCount > 9 ? "9+" : unreadCount}
+          </motion.span>
+        )}
       </button>
 
-      {/* Dropdown Panel bung mở chuẩn Prompt #074 */}
-      <div className="u074-pan" role="region" aria-label="Danh sách thông báo">
-        {/* Header Tabs */}
-        <div className="u074-ph" role="tablist">
-          <button
-            type="button"
-            className="u074-tab"
-            role="tab"
-            aria-selected={activeTab === "all"}
-            onClick={() => setActiveTab("all")}
-          >
-            Tất cả
-          </button>
-          <button
-            type="button"
-            className="u074-tab"
-            role="tab"
-            aria-selected={activeTab === "unread"}
-            onClick={() => setActiveTab("unread")}
-          >
-            Chưa đọc ({unreadCount})
-          </button>
-          <button
-            type="button"
-            className="u074-all"
-            disabled={unreadCount === 0}
-            onClick={handleMarkAllRead}
-          >
-            Đọc tất cả
-          </button>
-        </div>
+      {/* Dropdown Panel + Backdrop làm mờ toàn màn hình và khóa cuộn đằng sau */}
+      {mounted && typeof document !== "undefined" && createPortal(
+        <AnimatePresence>
+          {isOpen && (
+            <div className="fixed inset-0 z-[100] select-none" role="dialog" aria-modal="true">
+              {/* Lớp phủ Backdrop làm mờ toàn bộ nền phía sau và chặn mọi tương tác click/lăn cuộn */}
+              <motion.div
+                key="dropdown-backdrop"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsOpen(false);
+                }}
+                className="fixed inset-0 bg-black/60 backdrop-blur-md cursor-pointer"
+                style={{
+                  backdropFilter: "blur(16px)",
+                  WebkitBackdropFilter: "blur(16px)",
+                }}
+                aria-label="Đóng bảng thông báo"
+              />
 
-        {/* Danh sách thông báo */}
-        <ul className="u074-list" aria-live="polite">
-          {filteredNotifications.length === 0 ? (
-            <li className="u074-empty">
-              {activeTab === "unread"
-                ? "Không còn thông báo chưa đọc nào 🎉"
-                : "Chưa có thông báo nào được ghi nhận"}
-            </li>
-          ) : (
-            filteredNotifications.map((n) => {
-              const isRead = n.isRead || clearingIds.has(n.id);
-
-              return (
-                <li key={n.id}>
+              {/* Bảng Dropdown nổi bật trên nền mờ */}
+              <motion.div
+                key="dropdown-panel"
+                initial={{ opacity: 0, scale: 0.96, y: -8 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.96, y: -8 }}
+                transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                onClick={(e) => e.stopPropagation()}
+                className="fixed top-16 right-3 sm:right-6 w-[calc(100vw-24px)] sm:w-[420px] h-[68vh] sm:h-[620px] max-h-[85vh] rounded-3xl bg-card border border-border/80 shadow-2xl z-[101] flex flex-col overflow-hidden"
+                role="region"
+                aria-label="Danh sách thông báo"
+              >
+              {/* Header Tabs */}
+              <div className="flex items-center gap-2 p-3 pb-2.5 border-b border-border/70 bg-card/95 shrink-0">
+                <div className="flex items-center gap-1.5 p-0.5 rounded-full bg-secondary/80">
                   <button
                     type="button"
-                    className={`u074-row ${isRead ? "read" : ""}`}
-                    onClick={() => markAsRead(n.id)}
+                    className={`h-7 px-3 rounded-full text-xs font-bold transition-all ${
+                      activeTab === "all"
+                        ? "bg-foreground text-background shadow-xs"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                    role="tab"
+                    aria-selected={activeTab === "all"}
+                    onClick={() => setActiveTab("all")}
                   >
-                    <span className="u074-av" aria-hidden="true">
+                    Tất cả
+                  </button>
+                  <button
+                    type="button"
+                    className={`h-7 px-3 rounded-full text-xs font-bold transition-all ${
+                      activeTab === "unread"
+                        ? "bg-foreground text-background shadow-xs"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                    role="tab"
+                    aria-selected={activeTab === "unread"}
+                    onClick={() => setActiveTab("unread")}
+                  >
+                    Chưa đọc ({unreadCount})
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  className="ml-auto text-xs font-bold text-primary hover:opacity-80 disabled:opacity-40 disabled:hover:opacity-40 transition-opacity flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed"
+                  disabled={unreadCount === 0}
+                  onClick={handleMarkAllRead}
+                >
+                  <CheckCheck className="w-3.5 h-3.5" />
+                  <span>Đọc tất cả</span>
+                </button>
+
+                {/* Nút đóng bảng thông báo */}
+                <button
+                  type="button"
+                  onClick={() => setIsOpen(false)}
+                  className="w-7 h-7 rounded-full bg-secondary/80 hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors shrink-0 ml-1 cursor-pointer"
+                  title="Đóng bảng thông báo"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Danh sách thông báo - kéo dài tự động chiếm trọn chiều cao 68vh */}
+              <ul className="m-0 p-2.5 list-none flex-1 min-h-0 overflow-y-auto space-y-1 divide-y divide-border/30">
+                {filteredNotifications.length === 0 ? (
+                  <li className="py-20 px-4 text-center flex flex-col items-center justify-center h-full">
+                    <div className="w-12 h-12 rounded-2xl bg-secondary flex items-center justify-center mx-auto mb-3 text-muted-foreground">
+                      <Inbox className="w-6 h-6 opacity-60" />
+                    </div>
+                    <p className="text-xs font-semibold text-muted-foreground">
+                      {activeTab === "unread"
+                        ? "Không còn thông báo chưa đọc nào 🎉"
+                        : "Chưa có thông báo nào được ghi nhận"}
+                    </p>
+                  </li>
+                ) : (
+                  filteredNotifications.map((n) => {
+                    const isRead = n.isRead || clearingIds.has(n.id);
+
+                    return (
+                      <li key={n.id} className="pt-1 first:pt-0">
+                        <button
+                          type="button"
+                          className={`relative w-full flex items-start gap-3 p-2.5 rounded-2xl text-left transition-colors cursor-pointer group ${
+                            isRead
+                              ? "hover:bg-secondary/50 opacity-80"
+                              : "bg-primary/5 hover:bg-primary/10"
+                          }`}
+                          onClick={() => {
+                            markAsRead(n.id);
+                            setSelectedNotification(n);
+                            setIsOpen(false);
+                          }}
+                        >
+                          {/* Avatar */}
+                          <div className="relative w-9 h-9 shrink-0 rounded-full bg-secondary overflow-visible">
+                            <img
+                              src={
+                                n.avatarUrl ||
+                                `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
+                                  n.eventName || "BER"
+                                )}`
+                              }
+                              alt={n.eventName || "Avatar"}
+                              className="w-full h-full rounded-full object-cover border border-border/60 bg-secondary/80"
+                              loading="lazy"
+                              onError={(e) => {
+                                const target = e.currentTarget;
+                                target.onerror = null;
+                                target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
+                                  n.eventName || "User"
+                                )}`
+                              }}
+                            />
+                            <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-card border border-border text-[9px] flex items-center justify-center shadow-xs">
+                              {n.emoji}
+                            </span>
+                          </div>
+
+                          {/* Content text */}
+                          <div className="flex-1 min-w-0 pr-3">
+                            <p
+                              className={`text-xs truncate ${
+                                isRead
+                                  ? "font-semibold text-muted-foreground"
+                                  : "font-extrabold text-foreground"
+                              }`}
+                            >
+                              {n.title}
+                            </p>
+                            <p className="text-[11.5px] text-muted-foreground line-clamp-2 mt-0.5 leading-snug">
+                              {n.message}
+                            </p>
+                            <p className="text-[10px] font-semibold text-muted-foreground/70 mt-1">
+                              {n.timeAgo}
+                            </p>
+                          </div>
+
+                          {/* Chấm tròn chưa đọc */}
+                          {!isRead && (
+                            <span
+                              className="w-2 h-2 rounded-full bg-primary shrink-0 self-center shadow-xs"
+                              aria-hidden="true"
+                            />
+                          )}
+                        </button>
+                      </li>
+                    );
+                  })
+                )}
+              </ul>
+
+              {/* Chân trang liên kết đến lịch sử đầy đủ */}
+              <div className="p-3 border-t border-border/70 bg-card text-center shrink-0">
+                <Link
+                  href="/history"
+                  onClick={() => setIsOpen(false)}
+                  className="text-xs font-bold text-primary hover:underline inline-flex items-center gap-1 transition-opacity"
+                >
+                  <span>Xem toàn bộ lịch sử thông báo</span>
+                  <span>→</span>
+                </Link>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>,
+      document.body
+    )}
+
+      {/* MODAL CHI TIẾT THÔNG BÁO VỚI LỚP PHỦ LÀM MỜ VÀ KHÓA CUỘN PHÍA SAU */}
+      {mounted && typeof document !== "undefined" && createPortal(
+        <AnimatePresence>
+          {selectedNotification && (
+            <motion.div
+              key="detail-modal-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedNotification(null);
+              }}
+              className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md text-foreground select-none overflow-y-auto cursor-pointer"
+              style={{
+                backdropFilter: "blur(16px)",
+                WebkitBackdropFilter: "blur(16px)",
+              }}
+              aria-modal="true"
+              role="dialog"
+            >
+              <motion.div
+                key="detail-modal-card"
+                initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 15 }}
+                transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                onClick={(e) => e.stopPropagation()}
+                className="w-full max-w-lg bg-card rounded-3xl border border-border shadow-2xl p-6 sm:p-7 relative overflow-hidden space-y-5 my-auto cursor-default"
+              >
+                {/* Header Modal */}
+                <div className="flex items-start justify-between gap-4 pb-4 border-b border-border/70">
+                  <div className="flex items-center gap-3.5">
+                    <div className="relative w-12 h-12 rounded-2xl bg-secondary shrink-0 overflow-visible">
                       <img
                         src={
-                          n.avatarUrl ||
+                          selectedNotification.avatarUrl ||
                           `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
-                            n.eventName || "BER"
+                            selectedNotification.eventName || "BER"
                           )}`
                         }
-                        alt={n.eventName || "Avatar"}
-                        className="u074-av-img"
-                        loading="lazy"
-                        onError={(e) => {
-                          const target = e.currentTarget;
-                          target.onerror = null;
-                          target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
-                            n.eventName || "User"
-                          )}`;
-                        }}
+                        alt={selectedNotification.eventName || "Avatar"}
+                        className="w-full h-full rounded-2xl object-cover border border-border/80 shadow-soft"
                       />
-                      <em>{n.emoji}</em>
-                    </span>
+                      <span className="absolute -bottom-1.5 -right-1.5 w-5 h-5 rounded-full bg-card border border-border text-[11px] flex items-center justify-center shadow-xs">
+                        {selectedNotification.emoji}
+                      </span>
+                    </div>
 
-                    <span className="u074-tx">
-                      <b>{n.title}</b>
-                      <span>{n.message}</span>
-                      <small>{n.timeAgo}</small>
-                    </span>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span
+                          className={`inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
+                            selectedNotification.status === "sent"
+                              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25"
+                              : selectedNotification.status === "failed"
+                              ? "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/25"
+                              : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/25"
+                          }`}
+                        >
+                          {selectedNotification.status === "sent" ? (
+                            <>
+                              <ShieldCheck className="w-3 h-3" />
+                              <span>Đã gửi thành công</span>
+                            </>
+                          ) : selectedNotification.status === "failed" ? (
+                            <>
+                              <AlertCircle className="w-3 h-3" />
+                              <span>Gửi thất bại</span>
+                            </>
+                          ) : (
+                            <>
+                              <Clock className="w-3 h-3" />
+                              <span>Đang tiến hành gửi</span>
+                            </>
+                          )}
+                        </span>
+                        <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1">
+                          <Clock className="w-3 h-3 opacity-70" />
+                          <span>{selectedNotification.timeAgo}</span>
+                        </span>
+                      </div>
 
-                    <span className="u074-dot" aria-hidden="true" />
+                      <h3 className="font-extrabold text-base sm:text-lg text-foreground tracking-tight leading-snug">
+                        {selectedNotification.title}
+                      </h3>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedNotification(null)}
+                    className="w-8 h-8 rounded-full bg-secondary/80 hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors shrink-0 cursor-pointer"
+                    aria-label="Đóng chi tiết"
+                  >
+                    <X className="w-4 h-4" />
                   </button>
-                </li>
-              );
-            })
-          )}
-        </ul>
+                </div>
 
-        {/* Chân trang liên kết đến lịch sử đầy đủ */}
-        <div className="u074-foot">
-          <Link
-            href="/history"
-            onClick={() => setIsOpen(false)}
-          >
-            Xem toàn bộ lịch sử thông báo →
-          </Link>
-        </div>
-      </div>
+                {/* Thông tin Meta: Kênh gửi, Sự kiện, Thời gian chính xác */}
+                <div className="grid grid-cols-2 gap-3 p-3.5 rounded-2xl bg-secondary/40 border border-border/60 text-xs">
+                  <div className="space-y-1">
+                    <p className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1">
+                      <Calendar className="w-3.5 h-3.5 text-primary" />
+                      <span>Sự kiện liên quan:</span>
+                    </p>
+                    <p className="font-bold text-foreground truncate">
+                      {selectedNotification.eventName || "Sự kiện BER"}
+                    </p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <p className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1">
+                      <Mail className="w-3.5 h-3.5 text-primary" />
+                      <span>Kênh phát thông báo:</span>
+                    </p>
+                    <p className="font-bold text-foreground uppercase tracking-wider">
+                      {selectedNotification.channel || "EMAIL"}
+                    </p>
+                  </div>
+
+                  <div className="col-span-2 pt-2 border-t border-border/40 space-y-1">
+                    <p className="text-[11px] font-semibold text-muted-foreground">Thời điểm ghi nhận:</p>
+                    <p className="font-semibold text-foreground text-xs">
+                      {new Date(selectedNotification.timestamp).toLocaleString("vi-VN", {
+                        dateStyle: "full",
+                        timeStyle: "medium",
+                      })}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Nội dung thông báo chi tiết */}
+                <div className="space-y-2">
+                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                    Nội dung chi tiết thông báo
+                  </p>
+                  <div className="p-4 rounded-2xl bg-card border border-border/80 shadow-xs text-xs sm:text-sm text-foreground/90 leading-relaxed">
+                    {selectedNotification.message}
+                  </div>
+                </div>
+
+                {/* Hộp báo lỗi nếu gửi thất bại */}
+                {selectedNotification.error && (
+                  <div className="p-3.5 rounded-2xl bg-destructive/10 border border-destructive/20 text-xs text-destructive space-y-1">
+                    <p className="font-bold flex items-center gap-1.5">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>Chi tiết nguyên nhân:</span>
+                    </p>
+                    <p className="leading-relaxed opacity-90">{selectedNotification.error}</p>
+                  </div>
+                )}
+
+                {/* Footer hành động */}
+                <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-border/70">
+                  <Link
+                    href="/history"
+                    onClick={() => setSelectedNotification(null)}
+                    className="px-4 py-2.5 rounded-xl bg-secondary hover:bg-secondary/80 text-foreground font-bold text-xs transition-colors"
+                  >
+                    Xem toàn bộ lịch sử
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedNotification(null)}
+                    className="px-6 py-2.5 rounded-xl gradient-brand text-white font-bold text-xs shadow-soft hover:shadow-soft-hover hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                  >
+                    Đã hiểu & Đóng
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 }

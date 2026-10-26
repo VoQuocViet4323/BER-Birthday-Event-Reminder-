@@ -2756,6 +2756,186 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
   - `npx tsc --noEmit`: **0 errors** (Type check tuyệt đối an toàn)
   - Dev Server: Hoạt động ổn định tại `http://localhost:3000` (HTTP 200 OK)
 
+---
+
+### 📅 [2026-10-26 13:40:00] - Khắc Phục Lỗi F5 Lộ Text Thông Báo Và Chớp Khung Skeleton Trắng
+
+- **Yêu cầu của người dùng**:
+  - Khi F5 lại trang, xuất hiện một trang giao diện kỳ dị gồm: thanh header lộ chữ *"Đọc tất cả \n Chưa có thông báo nào được ghi nhận \n Xem toàn bộ lịch sử thông báo ->"* kèm các khối khung chữ nhật trắng trống rỗng bo góc bên dưới rồi biến mất sau vài tích tắc.
+- **Nguyên nhân cốt lõi**:
+  1. **Lộ Text Unstyled Dropdown (FOUC)**:
+     - Component [NotificationBellDropdown](file:///e:/BER-Birthday-Event-Reminder-/src/components/layout/notification-bell-dropdown.tsx) trước đó render khối dropdown panel `.u074-pan` trực tiếp vào DOM ngay cả khi `isOpen === false` và dựa vào CSS `.u074.is-closed .u074-pan` để ẩn.
+     - Đồng thời, CSS lại dùng thẻ `<style jsx>` của styled-jsx không được Next.js App Router inject đồng bộ ở initial HTML SSR.
+     - Khi F5, trình duyệt tải HTML thô về trước khi JS/CSS hydrate xong, khối `.u074-pan` không có style `position: absolute; opacity: 0`, biến thành một khối inline text thô đẩy toạc header ra. Khi hydrate xong nó mới biến mất.
+  2. **Chớp Skeleton Trắng Rỗng Trên Dashboard**:
+     - Trong [DashboardPage](file:///e:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/dashboard/page.tsx), khi `isLoading === true`, component trả về các thẻ `div` trống `bg-card border border-border animate-pulse` không có chi tiết mô phỏng.
+     - `useQuery` trong [useEvents](file:///e:/BER-Birthday-Event-Reminder-/src/hooks/use-events.ts) không có `initialData` lấy từ local cache, khiến mỗi lần F5 component đều rơi vào trạng thái `isLoading: true` trong 100-300ms đầu.
+- **Nội dung đã triển khai**:
+  1. **Tái Cấu Trúc NotificationBellDropdown**:
+     - Chuyển toàn bộ sang **Tailwind CSS thuần túy** và **Framer Motion `<AnimatePresence>`**.
+     - Khối dropdown panel **chỉ được render khi `isOpen === true`**. Khi `isOpen === false`, React không render bất kỳ thẻ DOM nào của panel vào HTML $\rightarrow$ Triệt tiêu 100% hiện tượng lộ text khi F5.
+     - Nút chuông được styled bằng Tailwind CSS, có animation rung chuông mượt mà và badge đếm số chuẩn chỉnh.
+  2. **Tối Ưu Trải Nghiệm Mượt Mà Không Giật (Zero-Flicker UX)**:
+     - Bổ sung `initialData` từ `getLocalEvents()` và `staleTime: 30000` vào `useQuery` trong [useEvents.ts](file:///e:/BER-Birthday-Event-Reminder-/src/hooks/use-events.ts): Dữ liệu được nạp ngay lập tức từ cache cục bộ khi F5 mà không cần chờ mạng, `isLoading = false` tức thì.
+     - Nâng cấp Skeleton loader của [DashboardPage](file:///e:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/dashboard/page.tsx) sang giao diện mô phỏng chân thực (có placeholder avatar, text mờ, icon mờ) thay cho các khối hộp rỗng thô kệch.
+- **Danh sách file chỉnh sửa**:
+  - [src/components/layout/notification-bell-dropdown.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/layout/notification-bell-dropdown.tsx)
+  - [src/app/(dashboard)/dashboard/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/dashboard/page.tsx)
+  - [src/hooks/use-events.ts](file:///e:/BER-Birthday-Event-Reminder-/src/hooks/use-events.ts)
+  - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npm test`: **26/26 unit tests PASS**.
+  - `npx tsc --noEmit`: **0 errors** (Type check an toàn tuyệt đối).
+  - Dev Server: Đang chạy sẵn sàng tại `http://localhost:3000`.
+
+---
+
+### 📅 [2026-10-26 13:48:00] - Khắc Phục Lỗi Hydration Mismatch & Bổ Sung Empty State Chuyên Nghiệp Khi Chưa Có Sự Kiện
+
+- **Hiện tượng**:
+  - Khi render với tài khoản Supabase chưa tạo sự kiện nào, bảng điều khiển hiển thị 3 ô số 0 (`0 Tổng người`, `0 Trong tháng`, `0 Sắp tới`) và phía dưới trống trơn một khoảng trắng.
+  - Console từng có cảnh báo đỏ `Hydration failed because the initial UI does not match what was rendered on the server` do `initialData` trả về khác nhau giữa SSR (`[]`) và Client (`[6 items]`).
+- **Nội dung đã triển khai**:
+  1. **Khắc phục triệt để lỗi Hydration**:
+     - Loại bỏ `initialData` không đồng nhất giữa SSR và Client trong [useEvents](file:///e:/BER-Birthday-Event-Reminder-/src/hooks/use-events.ts). Cả SSR và Client khởi đầu với trạng thái loading đồng nhất $\rightarrow$ Hoàn toàn sạch bóng lỗi Hydration mismatch trong Console DevTools.
+  2. **Thiết Kế Empty State Trực Quan Cho Dashboard**:
+     - Khi `events.length === 0`: Thay vì để trống, [DashboardPage](file:///e:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/dashboard/page.tsx) hiển thị thẻ Card bo tròn với biểu tượng sinh nhật 🎂, thông báo *"Chưa có sự kiện nào được ghi nhận"* cùng hướng dẫn thân thiện.
+     - Tích hợp 2 nút hành động trực tiếp:
+       - **`+ Thêm sự kiện đầu tiên`**: Mở ngay form tạo sự kiện.
+       - **`✨ Nạp 6 sự kiện mẫu trải nghiệm`**: Tự động import 6 sự kiện mẫu (Em gái Mai Lan - sinh nhật hôm nay, Tuấn Anh, Kỷ niệm ngày cưới, v.v.) vào tài khoản của người dùng trên cơ sở dữ liệu để kích hoạt ngay lập tức thẻ Hôm Nay, Confetti, gợi ý lời chúc và danh sách sự kiện đầy đủ.
+- **Danh sách file chỉnh sửa**:
+  - [src/hooks/use-events.ts](file:///e:/BER-Birthday-Event-Reminder-/src/hooks/use-events.ts)
+  - [src/app/(dashboard)/dashboard/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/dashboard/page.tsx)
+  - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npm test`: **26/26 unit tests PASS**.
+  - `npx tsc --noEmit`: **0 errors**.
+  - Dev Server: Đang chạy sẵn sàng tại `http://localhost:3000`.
+
+---
+
+### 📅 [2026-10-26 14:02:00] - Khắc Phục Triệt Để Lỗi Double Email & Bổ Sung Modal Chi Tiết Thông Báo (Kèm Khóa Cuộn & Làm Mờ Nền)
+
+- **Yêu cầu của người dùng**:
+  1. Kiểm tra nguyên nhân vì sao bị gửi double email (email bị lặp lại 2 lần) và thông báo trong dropdown bị nhân đôi.
+  2. Khi bấm vào 1 thông báo thì hiển thị chi tiết thông tin thông báo ra một Modal, làm mờ phía sau và **khóa hoàn toàn tương tác/cuộn trang phía sau**.
+- **Nguyên nhân cốt lõi gây Double Email**:
+  - **Lệch ngày do Timezone UTC vs GMT+7**:
+    - Trong Next.js Route `/api/cron/check-reminders`: dùng `nextOcc.toISOString().split("T")[0]`.
+    - Do sự kiện diễn ra lúc 00:00:00 GMT+7 (Việt Nam), khi gọi `.toISOString()` bị lùi về 17:00:00 GMT+0 ngày hôm trước $\rightarrow$ chuỗi biến thành `"2026-10-25"`.
+    - Trong khi đó, Deno Edge Function trên Supabase Cloud chạy múi giờ UTC sinh ra chuỗi `"2026-10-26"`.
+    - Ràng buộc `UNIQUE (event_id, remind_offset, occurrence_date, channel)` không thể chặn được vì 2 chuỗi ngày khác nhau! Cả 2 luồng đều gửi email độc lập $\rightarrow$ Người dùng nhận 2 email và menu hiển thị 2 dòng thông báo.
+- **Nội dung đã triển khai**:
+  1. **Khóa Độc Quyền Đa Tầng (Triple Lock Idempotency)**:
+     - Tạo hàm `formatOccurrenceDate(date)`: Lấy chính xác `YYYY-MM-DD` theo ngày lịch của sự kiện độc lập 100% với múi giờ, loại bỏ hoàn toàn việc lệch 1 ngày.
+     - Bổ sung tầng kiểm tra chống trùng lặp theo thời gian thực: Nếu trong vòng 18 giờ qua đã có email gửi thành công cho sự kiện này với mốc nhắc này $\rightarrow$ Chặn đứng tuyệt đối không gửi lại.
+     - Đồng bộ hóa logic giữa Next.js Route Handler và Supabase Edge Function.
+  2. **Deduplication Hiển Thị Trong useNotifications**:
+     - Lọc khử trùng lặp các thông báo cùng sự kiện trong cùng ngày trước khi đưa lên UI dropdown.
+  3. **Modal Chi Tiết Thông Báo (Notification Detail Modal)**:
+     - Khi bấm vào 1 thông báo trong [NotificationBellDropdown](file:///e:/BER-Birthday-Event-Reminder-/src/components/layout/notification-bell-dropdown.tsx):
+       - Tự động đánh dấu đã đọc (`markAsRead`).
+       - Mở Modal qua `createPortal` với lớp phủ làm mờ nền: `fixed inset-0 z-[100] bg-black/65 backdrop-blur-md`.
+       - **Khóa cuộn trang phía sau**: Áp dụng `document.body.style.overflow = "hidden"` khi modal mở và hoàn trả lại khi đóng, đảm bảo người dùng không thể lăn cuộn hay bấm gì phía sau.
+       - Hiển thị đầy đủ: Avatar + Emoji, Tiêu đề, Badge trạng thái (Đã gửi thành công / Đang gửi / Gửi thất bại), Kênh gửi (Email), Thời gian gửi chi tiết chính xác, Nội dung thông báo, và Báo cáo lỗi chi tiết nếu có.
+- **Danh sách file chỉnh sửa**:
+  - [src/app/api/cron/check-reminders/route.ts](file:///e:/BER-Birthday-Event-Reminder-/src/app/api/cron/check-reminders/route.ts)
+  - [supabase/functions/send-reminders/index.ts](file:///e:/BER-Birthday-Event-Reminder-/supabase/functions/send-reminders/index.ts)
+  - [src/hooks/use-notifications.ts](file:///e:/BER-Birthday-Event-Reminder-/src/hooks/use-notifications.ts)
+  - [src/components/layout/notification-bell-dropdown.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/layout/notification-bell-dropdown.tsx)
+  - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npm test`: **26/26 unit tests PASS**.
+  - `npx tsc --noEmit`: **0 errors**.
+  - Dev Server: Đang chạy sẵn sàng tại `http://localhost:3000`.
+
+---
+
+### 📅 2026-10-26 14:35:00 | Bổ Sung Hiệu Ứng Làm Mờ Nền (Backdrop Blur) & Khóa Cuộn Tuyệt Đối Cho Bảng Thông Báo
+
+- **Yêu cầu của người dùng**:
+  - Khi bấm vào thông báo (quả chuông thông báo cũng như modal chi tiết thông báo), nền phía sau phải được làm mờ (blur), tối lại và khóa hoàn toàn để không thể click hay lăn cuộn được nội dung trang phía sau.
+- **Nguyên nhân trước đó**:
+  - File `notification-bell-dropdown.tsx` bị thiếu chỉ thị `"use client";` ở dòng đầu tiên, dẫn đến việc Next.js Client Bundle chưa hot-reload hoàn toàn các styles và portal mới sang trình duyệt (vẫn giữ CSS cũ của Prompt #074).
+  - Thuộc tính `backdropFilter` chưa có vendor prefix `-webkit-backdrop-filter` inline cho trình duyệt WebKit/Safari/Edge.
+- **Nội dung đã triển khai**:
+  1. Thêm chỉ thị `"use client";` tại dòng 1 của [src/components/layout/notification-bell-dropdown.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/layout/notification-bell-dropdown.tsx).
+  2. Bổ sung `createPortal` đưa toàn bộ lớp phủ Backdrop (`fixed inset-0 z-[100]`) và dropdown panel (`z-[101]`) ra `document.body`.
+  3. Cung cấp cả class Tailwind `backdrop-blur-md` kết hợp inline style:
+     ```tsx
+     style={{
+       backdropFilter: "blur(16px)",
+       WebkitBackdropFilter: "blur(16px)",
+     }}
+     ```
+  4. Khóa cuộn trang đa tầng cả trên chuột máy tính lẫn cảm ứng màn hình điện thoại:
+     ```tsx
+     document.body.style.overflow = "hidden";
+     document.body.style.touchAction = "none";
+     ```
+  5. Khi click ra ngoài vùng mờ hoặc nhấn `Escape`, bảng thông báo và modal tự động đóng mượt mà và trả lại trạng thái ban đầu cho trang.
+- **Trạng thái kiểm thử**:
+  - `npm test`: **26/26 unit tests PASS**.
+  - `npx tsc --noEmit`: **0 errors**.
+  - Dev Server: Biên dịch thành công 100% trong 346ms.
+
+---
+
+### 📅 2026-10-26 14:40:00 | Khắc Phục Lỗi Bấm Vào Quả Chuông Không Hiển Thị (Xung Đột createPortal & AnimatePresence)
+
+- **Yêu cầu của người dùng**:
+  - Khi bấm vào nút chuông thông báo thì không hiển thị ra bất cứ thứ gì.
+- **Nguyên nhân kỹ thuật**:
+  - Đặt `createPortal` làm con trực tiếp của `<AnimatePresence>`:
+    ```tsx
+    <AnimatePresence>
+      {isOpen && mounted && createPortal(...)}
+    </AnimatePresence>
+    ```
+  - Trong thư viện `framer-motion`, component `<AnimatePresence>` duyệt qua các phần tử con và gọi `React.cloneElement(child, { key, ref })` để gán animation lifecycle. Tuy nhiên, `createPortal` trả về một đối tượng React Portal đặc thù chứ không phải một React Element DOM thông thường, khiến `cloneElement` bị lỗi hoặc Framer Motion không thể mount portal ra DOM.
+- **Cách khắc phục triệt để**:
+  1. Đảo ngược vị trí phân cấp: Đặt `createPortal` bọc ra ngoài cùng, và đưa `<AnimatePresence>` vào bên trong Portal:
+     ```tsx
+     {mounted && typeof document !== "undefined" && createPortal(
+       <AnimatePresence>
+         {isOpen && (
+           <div className="fixed inset-0 z-[100] select-none" role="dialog" aria-modal="true">
+             <motion.div key="dropdown-backdrop" ... />
+             <motion.div key="dropdown-panel" ... />
+           </div>
+         )}
+       </AnimatePresence>,
+       document.body
+     )}
+     ```
+  2. Bổ sung `e.stopPropagation()` trên nút chuông bấm mở và trên các vùng backdrop click để tránh rò rỉ sự kiện nổi bọt (event bubbling).
+  3. Áp dụng cấu trúc tương tự cho Modal Chi Tiết Thông Báo (`selectedNotification`).
+- **Trạng thái kiểm thử**:
+  - `npm test`: **26/26 unit tests PASS**.
+  - `npx tsc --noEmit`: **0 errors**.
+  - Dev Server: Hoạt động ổn định tại `http://localhost:3000`.
+
+---
+
+### 📅 2026-10-26 14:47:00 | Kéo Dài Chiều Cao Bảng Thông Báo Xuống Quá Nửa Màn Hình (68vh / 620px)
+
+- **Yêu cầu của người dùng**:
+  - Kéo dài phần bảng thông báo ra hơn nửa màn hình (thay vì ngắn ~45% màn hình như trước) để hiển thị được nhiều thông báo hơn và thoáng mắt hơn.
+- **Nội dung đã triển khai**:
+  - Tại [src/components/layout/notification-bell-dropdown.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/layout/notification-bell-dropdown.tsx):
+    - Đặt chiều cao bảng thông báo thành `h-[68vh] sm:h-[620px] max-h-[85vh]` (chiếm khoảng 68% chiều cao màn hình, vượt qua mốc nửa màn hình).
+    - Mở rộng chiều rộng nhẹ: `w-[calc(100vw-24px)] sm:w-[420px]`.
+    - Danh sách thông báo (`ul`): Chuyển từ `max-h-[340px]` sang `flex-1 min-h-0 overflow-y-auto`, tự động giãn rộng lấp đầy toàn bộ chiều cao thẻ và cuộn mượt mà khi có nhiều thông báo.
+    - Cố định Header tabs và Chân trang (`shrink-0`) để neo chắc chắn ở hai đầu.
+    - Trạng thái trống (`empty state`) tự động căn giữa theo chiều cao mới.
+- **Trạng thái kiểm thử**:
+  - `npm test`: **26/26 unit tests PASS**.
+  - `npx tsc --noEmit`: **0 errors**.
+  - Dev Server: Biên dịch thành công trong 411ms.
+
+
+
+
 
 
 

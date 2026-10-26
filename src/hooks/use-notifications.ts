@@ -146,11 +146,31 @@ export function useNotifications() {
     refetchInterval: 30000, // Tự động làm mới mỗi 30s
   });
 
-  // Chuyển đổi dữ liệu notification_logs thành danh sách chuẩn
+  // Chuyển đổi dữ liệu notification_logs thành danh sách chuẩn và khử trùng lặp hiển thị
   const notifications: AppNotification[] = useMemo(() => {
     const cachedEvents: any[] = queryClient.getQueryData(["events"]) || [];
 
-    return rawLogs.map((log: any) => {
+    // Khử trùng lặp các thông báo cùng sự kiện trong cùng 1 ngày
+    const seenEventKeys = new Set<string>();
+    const deduplicatedLogs: any[] = [];
+
+    for (const log of rawLogs) {
+      const eventInfo =
+        log.events ||
+        cachedEvents.find((e: any) => e.id === log.event_id) ||
+        null;
+      const eventName = eventInfo?.name || log.event_id || "Sự kiện";
+      const logDay = (log.sent_at || "").substring(0, 10);
+      const dedupKey = `${eventName}_${logDay}_${log.status}`;
+
+      if (seenEventKeys.has(dedupKey)) {
+        continue; // Đã có bản ghi cho sự kiện này trong cùng ngày -> bỏ qua bản trùng lặp
+      }
+      seenEventKeys.add(dedupKey);
+      deduplicatedLogs.push(log);
+    }
+
+    return deduplicatedLogs.map((log: any) => {
       const isRead = readIds.has(log.id);
       const eventInfo =
         log.events ||
