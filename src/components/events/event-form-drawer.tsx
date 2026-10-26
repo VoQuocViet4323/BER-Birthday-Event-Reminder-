@@ -370,21 +370,46 @@ export function EventFormDrawer({
             <button
               type="button"
               onClick={() => setShowAdvanced(!showAdvanced)}
-              className="flex items-center justify-between w-full py-2 text-xs font-bold text-muted-foreground hover:text-foreground transition-colors"
+              className={cn(
+                "flex items-center justify-between w-full py-2.5 px-3 rounded-2xl text-xs font-bold transition-all duration-200 group active:scale-[0.99] select-none border",
+                showAdvanced
+                  ? "bg-secondary/70 border-primary/30 text-foreground shadow-xs"
+                  : "bg-secondary/35 hover:bg-secondary/60 border-border/60 hover:border-primary/20 text-muted-foreground hover:text-foreground"
+              )}
             >
-              <span>Tùy chọn nâng cao (Nhóm, Mốc nhắc, Ghi chú, Quà tặng)</span>
-              {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              <span className="flex items-center gap-2">
+                <span
+                  className={cn(
+                    "w-1.5 h-1.5 rounded-full transition-colors",
+                    showAdvanced ? "bg-primary animate-pulse" : "bg-muted-foreground/60 group-hover:bg-primary"
+                  )}
+                />
+                <span>Tùy chọn nâng cao (Nhóm, Mốc nhắc, Ghi chú, Quà tặng)</span>
+              </span>
+              <motion.span
+                animate={{ rotate: showAdvanced ? 180 : 0 }}
+                transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+                className="text-muted-foreground group-hover:text-foreground transition-colors shrink-0 p-0.5"
+              >
+                <ChevronDown className="w-4 h-4" />
+              </motion.span>
             </button>
 
-            <AnimatePresence>
+            <AnimatePresence initial={false}>
               {showAdvanced && (
                 <motion.div
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: "auto", opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
-                  className="space-y-4 pt-3 overflow-hidden"
+                  transition={{
+                    height: { duration: 0.36, ease: [0.16, 1, 0.3, 1] },
+                    opacity: { duration: 0.26, ease: "easeOut" },
+                  }}
+                  className="overflow-hidden"
+                  style={{ willChange: "height, opacity" }}
                 >
-                  {/* Nhóm */}
+                  <div className="space-y-4 pt-3.5 pb-1">
+                    {/* Nhóm */}
                   <div>
                     <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
                       Phân loại nhóm
@@ -486,8 +511,9 @@ export function EventFormDrawer({
                       className="w-full px-3 py-2 rounded-xl bg-secondary/50 border border-border focus:ring-2 focus:ring-primary text-xs"
                     />
                   </div>
-                </motion.div>
-              )}
+                </div>
+              </motion.div>
+            )}
             </AnimatePresence>
           </div>
 

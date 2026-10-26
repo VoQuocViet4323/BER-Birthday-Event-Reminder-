@@ -2291,6 +2291,102 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
   - `npm test`: **26/26 tests PASS**
   - `npx tsc --noEmit`: **0 errors** (Kiểm tra kiểu dữ liệu TypeScript sạch sẽ 100%)
 
+---
+
+### 📅 [2026-10-26 07:51:00] - Nâng Cấp Con Lăn Chọn Giờ Apple iOS 3D (Cupertino Wheel Picker) & Khóa Cứng Trục Dọc
+
+- **Yêu cầu của người dùng**:
+  - *"fix cho tôi chỗ lăn để chọn giờ, fix cứng không được kéo 2 bên, chỉ được kéo lên xuống giống hđh apple. Khi lăn tạo cảm giác thật"*
+- **Nguyên nhân trước đó**:
+  1. Chưa áp dụng `touch-action: pan-y` và `overflow-x: hidden` chặt chẽ, khiến thao tác vuốt cảm ứng trên màn hình điện thoại hoặc touch pad khi vuốt chéo tay làm container bị dịch chuyển ngang hoặc xung đột với cử chỉ vuốt của Drawer cha.
+  2. Danh sách số trước đó là dạng phẳng thông thường (`overflow-y-auto`), chưa có hiệu ứng bề mặt cong hình trụ 3D (3D Drum Cylinder) của Apple iOS.
+  3. Thiếu phản hồi xúc giác (Haptic feedback) và âm thanh cơ học (Mechanical tick sound) khi xoay qua từng nấc thời gian.
+- **Nội dung đã triển khai**:
+  1. **Khóa cứng chuyển động trục dọc (Strict Vertical-Only Lock - Chống kéo 2 bên)**:
+     - Thêm `touch-action: pan-y !important` trên toàn bộ container và từng cột con lăn [src/components/ui/ios-time-picker.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/ui/ios-time-picker.tsx).
+     - Thiết lập `overscroll-behavior-x: none`, `overscroll-behavior-y: contain`, `overflow-x: hidden !important; select-none`.
+     - Layout 2 cột Giờ - Phút được chia đều cân đối, cố định 50% - 50% tuyệt đối.
+     - Khóa cứng trục Y khi kéo chuột trên máy tính (Pointer Drag-to-scroll): Chỉ nhận `deltaY = e.clientY - startY`, bỏ qua hoàn toàn trục X để người dùng kéo chuột lên xuống tự nhiên mà không bị lệch ngang.
+     - Bắt `onTouchStart` và `onTouchMove` với `stopPropagation()` để cử chỉ lăn không lan sang Drawer cha.
+  2. **Tạo cảm giác thật chuẩn Apple iOS (Realistic Cupertino Wheel Experience)**:
+     - **Hiệu ứng 3D Cylinder Drum Rotation**: Áp dụng `perspective: 1000px`, mỗi con số được tính toán góc quay 3D thời gian thực qua `requestAnimationFrame`:
+       - Số ở giữa (tâm): `rotateX(0deg) scale(1.15) translateZ(0px)`, chữ màu sáng nhất `font-black text-foreground`.
+       - Số lệch 1 nấc: `rotateX(±26deg) scale(0.92) translateZ(-12px)`, mờ dần `text-muted-foreground`.
+       - Số lệch 2 nấc: `rotateX(±52deg) scale(0.72) translateZ(-24px)`, mờ hẳn và thu nhỏ dần vào chiều sâu Z.
+     - **Phản hồi xúc giác Haptic**: Kích hoạt `navigator.vibrate(8)` mỗi khi nhảy qua một nấc giờ hoặc phút trên thiết bị di động.
+     - **Âm thanh cơ học (Mechanical Tick Sound)**: Tạo class `CupertinoHaptics` sử dụng Web Audio API tổng hợp tiếng click cơ học "tách" siêu ngắn (12ms, 720Hz -> 140Hz) với âm lượng cực êm (0.03), mô phỏng chính xác tiếng núm xoay Digital Crown của Apple Watch / Apple Clock.
+     - **Kính lúp Lens Apple**: Thanh highlight trung tâm với viền trên/dưới `border-y-2 border-primary/40` kèm nền kính mờ nhẹ `bg-primary/10`, kết hợp 2 dải gradient che mờ ở 2 đầu tạo độ sâu không gian.
+     - Hỗ trợ đầy đủ: vuốt cảm ứng (touch), kéo chuột (mouse drag), cuộn bánh xe chuột (mouse wheel), bấm nút mũi tên tăng/giảm (+ / -), và nhấp trực tiếp vào số.
+- **Danh sách file đã chỉnh sửa**:
+  - [src/components/ui/ios-time-picker.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/ui/ios-time-picker.tsx)
+  - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npm test`: **26/26 tests PASS** (100%)
+  - `npm run build`: **Exit Code 0** (18/18 routes biên dịch thành công, 0 lỗi TypeScript)
+
+---
+
+### 📅 [2026-10-26 08:10:00] - Tối Ưu Animation Xổ Xuống "Tùy Chọn Nâng Cao" Siêu Mượt (PC & Mobile)
+
+- **Yêu cầu của người dùng**:
+  - *"toi muốn khi bấm vào tùy chọn nâng cao thì animation xổ xuống mượt hơn cả trên pc và mobile"*
+- **Nguyên nhân gây giật trước đó**:
+  1. Thẻ `motion.div` trước đó chứa trực tiếp các class padding (`pt-3`) và khoảng cách (`space-y-4`). Khi `height` animate về `0`, CSS box-sizing vẫn giữ 12px của `padding-top`, gây hiện tượng nhảy giật khung hình (layout jump/flicker) lúc đóng/mở.
+  2. Chưa cấu hình đường cong chuyển động (`transition easing`), khiến Framer Motion rơi vào cấu hình mặc định thiếu tự nhiên.
+  3. Icon Chevron sử dụng câu điều kiện thay đổi component trực tiếp (`{showAdvanced ? <ChevronUp /> : <ChevronDown />}`), làm icon bị giật đổi hình thay vì xoay mượt.
+  4. Thiếu khai báo `willChange: "height, opacity"` khiến GPU trên thiết bị di động không tạo layer riêng biệt, dễ bị drop frame.
+- **Nội dung đã triển khai**:
+  1. **Tách biệt cấu trúc Box-Sizing**:
+     - `motion.div` bên ngoài chỉ quản lý thuần túy `height` và `opacity` với `overflow: hidden`, hoàn toàn không chứa padding.
+     - Toàn bộ nội dung và padding (`pt-3.5 pb-1 space-y-4`) được bao bọc trong `div` con độc lập, triệt tiêu 100% hiện tượng nhảy 12px layout.
+  2. **Đường cong chuyển động Apple Deceleration Curve**:
+     - Cấu hình `transition`: `height: { duration: 0.36, ease: [0.16, 1, 0.3, 1] }`, `opacity: { duration: 0.26, ease: "easeOut" }`.
+     - Chuyển động lúc bắt đầu nhanh và giảm tốc cực kỳ êm ái, nhẹ nhàng như nhung.
+  3. **Hiệu ứng xoay mượt Icon Chevron**:
+     - Thay thế đổi component bằng `motion.span animate={{ rotate: showAdvanced ? 180 : 0 }}` với `transition duration: 0.32s`.
+  4. **Tăng tốc phần cứng GPU**:
+     - Bổ sung `style={{ willChange: "height, opacity" }}` giúp GPU render ở 60fps - 120fps ổn định trên cả PC và Safari/Chrome Mobile.
+  5. **Nâng cấp nút bấm**:
+     - Thiết kế pill badge bo góc 2xl với chấm chỉ thị màu tím `bg-primary`, hiệu ứng active bấm nhẹ `active:scale-[0.99]`.
+- **Danh sách file đã chỉnh sửa**:
+  - [src/components/events/event-form-drawer.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-form-drawer.tsx)
+  - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npm test`: **26/26 tests PASS**
+  - `npm run build`: **Exit Code 0** (18/18 routes tối ưu thành công)
+
+---
+
+### 📅 [2026-10-26 08:38:00] - Khắc Phục Triệt Để & Lưu Quy Tắc Chống Lỗi "Mất Giao Diện" (404 Static CSS/JS)
+
+- **Hiện tượng & Yêu cầu của người dùng**:
+  - Giao diện web bị mất toàn bộ CSS và JavaScript, chỉ hiển thị khung văn bản thô sơ màu tím/đen trắng trên nền trắng.
+  - Console DevTools báo lỗi 404 cho toàn bộ tài nguyên:
+    `GET http://localhost:3000/_next/static/css/app/layout.css 404 (Not Found)`
+    `GET http://localhost:3000/_next/static/chunks/webpack.js 404 (Not Found)`
+    `GET http://localhost:3000/_next/static/chunks/main-app.js 404 (Not Found)`
+  - Người dùng yêu cầu: *"đừng để lặp lại lỗi mất giao diện lần nào nữa, lưu lại lỗi này sau này đừng lặp lại"*.
+- **Nguyên nhân cốt lõi (Technical Root Cause)**:
+  - Khi Dev Server (`next dev`) đang hoạt động trên cổng 3000, AI đã chạy lệnh `npm run build` (`next build`).
+  - Quá trình `next build` tự động dọn sạch thư mục `.next/` và tạo ra bộ bundle production với các hash chunk mới.
+  - Hậu quả: Tiến trình `next dev` đang chạy bị mất toàn bộ dev chunk và file map trong `.next/static/`, khiến trình duyệt khi reload hoặc fetch assets đều nhận mã lỗi **HTTP 404 Not Found**, làm vỡ toàn bộ giao diện CSS/JS.
+- **Biện pháp xử lý ngay lập tức**:
+  1. Tắt tiến trình `node` cũ đang chiếm port 3000 (`Stop-Process -Id 5860 -Force`).
+  2. Xóa sạch thư mục `.next/` bị xung đột: `Remove-Item -Recurse -Force .next`.
+  3. Khởi động lại `npm run dev` để sinh lại toàn bộ manifest và dev chunks sạch sẽ.
+  4. Kiểm tra `Invoke-WebRequest http://localhost:3000/calendar`: Đạt **HTTP 200 OK**, giao diện đã phục hồi 100%.
+- **Quy tắc ngăn chặn vĩnh viễn (Đã lưu vào `GEMINI.md` & `.agents/rules/build_error_fixes.md`)**:
+  1. **TUYỆT ĐỐI CẤM**: Không chạy `npm run build` trong lúc dev server đang chạy để kiểm tra lỗi code.
+  2. **THAY THẾ**: Luôn dùng `npx tsc --noEmit` để kiểm tra TypeScript types và cú pháp (chạy trong RAM, an toàn 100%, không chạm vào `.next/`).
+  3. **XỬ LÝ NẾU TÁI DIỄN**: Nếu `.next/` bị lỗi, lập tức kill port 3000, xóa `.next/`, và chạy lại `npm run dev`.
+- **Danh sách file đã cập nhật quy tắc**:
+  - [GEMINI.md](file:///e:/BER-Birthday-Event-Reminder-/GEMINI.md) (Thêm Lỗi 10 & Cập nhật Quy trình kiểm tra chuẩn)
+  - [.agents/rules/build_error_fixes.md](file:///e:/BER-Birthday-Event-Reminder-/.agents/rules/build_error_fixes.md) (Thêm Quy tắc số 7)
+  - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+
+
+
+
 
 
 

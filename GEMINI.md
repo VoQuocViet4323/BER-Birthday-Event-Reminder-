@@ -176,10 +176,33 @@
 
 ---
 
-## 3. Quy Trình Kiểm Tra Chuẩn (Verification Workflow)
-Mỗi khi chỉnh sửa code hoặc thêm tính năng mới, AI cần tự chạy 2 lệnh sau để đảm bảo chất lượng:
-1. `npm test` $\rightarrow$ Đảm bảo toàn bộ 8+ unit test ngày tháng, âm lịch, 29/2 đều pass.
-2. `npm run build` $\rightarrow$ Đảm bảo không còn bất kỳ lỗi compile, type error hay module not found nào.
+### 🔴 Lỗi 10: Vỡ giao diện, 404 static chunks/css do chạy `next build` khi `next dev` đang chạy (Dev/Prod Cache Conflict)
+- **Mã lỗi / Triệu chứng**:
+  ```
+  GET http://localhost:3000/_next/static/css/app/layout.css 404 (Not Found)
+  GET http://localhost:3000/_next/static/chunks/webpack.js 404 (Not Found)
+  GET http://localhost:3000/_next/static/chunks/main-app.js 404 (Not Found)
+  Giao diện web bị mất toàn bộ CSS và JavaScript, chỉ còn chữ thô đen trắng/tím, vỡ vụn khung layout.
+  ```
+- **Nguyên nhân cốt lõi**:
+  - Khi Dev Server (`next dev`) đang chạy trên cổng 3000, nếu AI hoặc developer chạy lệnh `next build` (`npm run build`), Next.js sẽ xóa sạch thư mục `.next/` và ghi đè bằng production bundle.
+  - Tiến trình `next dev` cũ bị mất toàn bộ dev chunk và manifest dẫn đến việc trả về HTTP 404 cho mọi file tĩnh `_next/static/...`.
+- **Cách phòng tránh triệt để (Bắt buộc AI tuân thủ)**:
+  1. **TUYỆT ĐỐI KHÔNG CHẠY `npm run build` TRONG QUÁ TRÌNH PHÁT TRIỂN / SỬA CODE**:
+     - Để kiểm tra lỗi compile, syntax hay TypeScript: **CHỈ DÙNG `npx tsc --noEmit`**. Lệnh này kiểm tra 100% type trong bộ nhớ mà hoàn toàn không đụng chạm đến thư mục `.next/`.
+     - Chỉ chạy `npm run build` khi người dùng yêu cầu build đóng gói deploy production rõ ràng.
+  2. **Cách khắc phục nếu gặp lại**:
+     - Tắt process chiếm port 3000 (`Stop-Process -Id <PID> -Force`).
+     - Xóa thư mục `.next`: `Remove-Item -Recurse -Force .next`.
+     - Khởi động lại dev server: `npm run dev`.
+
+---
+
+## 3. Quy Trình Kiểm Tra Chuẩn (Verification Workflow - Tuyệt Đối An Toàn)
+Mỗi khi chỉnh sửa code hoặc thêm tính năng mới, AI cần tự chạy 2 lệnh sau:
+1. `npm test` $\rightarrow$ Đảm bảo toàn bộ 26+ unit tests ngày tháng, âm lịch, nhắc nhở đều pass.
+2. `npx tsc --noEmit` $\rightarrow$ Đảm bảo 0 lỗi TypeScript, 0 lỗi cú pháp mà KHÔNG xóa đè `.next/` cache của dev server.
+*(Chỉ chạy `npm run build` khi người dùng yêu cầu build production).*
 
 ---
 

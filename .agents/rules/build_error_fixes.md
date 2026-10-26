@@ -32,3 +32,9 @@ Khi AI làm việc với dự án này, nếu gặp bất kỳ lỗi nào trong 
      - Luôn dùng `if (currentTime < eventTime) continue;` và kết hợp kiểm tra `notification_logs` để tự động gửi bù ngay lập tức nếu mốc giờ nhắc đã đến hoặc đã qua trong ngày nhưng chưa từng gửi.
      - Chuẩn hóa mốc ngày sang Number: `eventOffsets.map(Number)`.
      - Khi người dùng Thêm/Sửa/Bật sự kiện trong `use-events.ts`, luôn kích hoạt ngầm `fetch("/api/cron/check-reminders", { method: "POST" })` và `trigger-reminder-check` tức thì.
+
+7. **Tuyệt Đối Không Chạy `next build` Khi Dev Server Đang Chạy (Tránh Vỡ Giao Diện 404)**:
+   - Lệnh `next build` (`npm run build`) ghi đè lên thư mục `.next/`, làm mất sạch dev chunks của `next dev` và khiến trình duyệt bị 404 toàn bộ file CSS/JS ("mất giao diện").
+   - Khi kiểm tra tính đúng đắn của code trong quá trình dev: **LUÔN DÙNG `npx tsc --noEmit`** thay cho `npm run build`.
+   - Nếu bị mất giao diện: Tắt tiến trình `node`, xóa `.next/`, và chạy lại `npm run dev`.
+
