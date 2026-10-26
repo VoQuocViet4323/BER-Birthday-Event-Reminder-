@@ -2446,6 +2446,265 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
   - `npx tsc --noEmit`: **0 errors** (Type check an toàn tuyệt đối)
   - Dev Server: Hoạt động ổn định tại `http://localhost:3000` (HTTP 200 OK)
 
+---
+
+### 📅 [2026-10-26 10:21:00] - Khắc Phục Triệt Để Lỗi UI Thanh Hoàn Tác (Undo Snackbar) & Vị Trí Nổi
+
+- **Yêu cầu của người dùng**:
+  - *"đang bị lỗi UI hoàn tác"* kèm ảnh chụp màn hình thanh Hoàn tác bị đè sát đáy, che khuất thanh bottom navigation và nút (+) hồng, đồng thời hiển thị sai *"0 sự kiện đã xóa"*.
+- **Phân tích nguyên nhân**:
+  1. Component `UndoSnackbarPortal` trước đó được đặt bên trong từng thẻ `EventCard` dẫn đến việc bị mount trùng lặp nhiều lần ra `document.body`.
+  2. Khi `batch.length === 0`, component vẫn render ra DOM và tính toán chuỗi hiển thị thành `"0 sự kiện đã xóa"`, cộng với việc hiệu ứng ẩn chưa triệt để làm thanh bị lộ ra dưới đáy màn hình.
+  3. Tọa độ cố định trên mobile bị chạm đáy, đè lên thanh Mobile Bottom Nav và nút tạo mới `(+)`.
+- **Nội dung đã khắc phục**:
+  1. **Nâng cấp `UndoSnackbarPortal` ([src/components/events/undo-manager.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/undo-manager.tsx))**:
+     - Điều kiện render nghiêm ngặt: `if (!mounted || batch.length === 0) return null;` $\rightarrow$ Tuyệt đối không render hay xuất hiện khi chưa có sự kiện nào bị xóa, chấm dứt hoàn toàn hiện tượng hiển thị *"0 sự kiện đã xóa"*.
+     - Sử dụng Framer Motion `AnimatePresence` với đường cong spring `[0.34, 1.45, 0.64, 1]` của Prompt #071: Chỉ trượt nổi lên khi có sự kiện bị xóa và tự động biến mất khi hoàn tất hoặc bấm Hoàn tác.
+     - Vị trí nổi thông minh: `bottom-24` ($96\text{px}$) trên Mobile $\rightarrow$ Nổi lơ lửng phía trên thanh bottom navigation và nút `(+)` hồng một khoảng cách thoáng đãng; `bottom-7` ($28\text{px}$) trên Desktop.
+     - Đồng bộ tiến trình SVG Ring 5 giây mượt mà qua state `progress`.
+  2. **Tập trung hóa component Portal**:
+     - Di dời `UndoSnackbarPortal` ra khỏi `EventCard` và mount duy nhất một lần tại root layout ([src/app/(dashboard)/layout.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/layout.tsx)).
+- **Danh sách file chỉnh sửa**:
+  - [src/components/events/undo-manager.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/undo-manager.tsx)
+  - [src/components/events/event-card.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-card.tsx)
+  - [src/app/(dashboard)/layout.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/layout.tsx)
+  - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npm test`: **26/26 tests PASS**
+  - `npx tsc --noEmit`: **0 errors** (Type check an toàn tuyệt đối)
+  - Dev Server: Hoạt động ổn định tại `http://localhost:3000` (HTTP 200 OK)
+
+---
+
+### 📅 [2026-10-26 10:14:00] - Triển Khai Hiệu Ứng Vuốt Để Xóa Kèm Hoàn Tác (Swipe-to-delete with Undo) Theo Chuẩn Lucian UX/UI Prompt #071
+
+- **Yêu cầu của người dùng**:
+  - *"làm hiệu ứng vuốt sang để xóa theo prompt mới này"* kèm mã nguồn chuẩn **Lucian UX/UI Prompt #071** (Swipe-to-delete with undo · Alerts & Feedback).
+  - Khi vuốt sang trái: lộ lớp màu đỏ với icon thùng rác phóng to theo độ kéo, vuốt đủ xa thì hàng thu gọn biến mất (`grid-template-rows: 0fr`).
+  - Xuất hiện thanh Snackbar nổi lên với vòng tròn SVG đếm ngược 5 giây kèm nút **"Hoàn tác"** (Undo).
+  - Bấm "Hoàn tác" trong 5 giây thì hàng sự kiện bung mở lại nguyên vẹn vào vị trí cũ và hủy xóa; hết 5 giây thì mới gọi API xóa vĩnh viễn trên cơ sở dữ liệu.
+- **Nội dung đã triển khai**:
+  1. **Tạo Singleton Quản Lý Hoàn Tác ([src/components/events/undo-manager.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/undo-manager.tsx))**:
+     - Mang dòng license bản quyền: `// Lucian UX/UI Prompt #071 · MIT License (c) 2026 Seokwoooo · https://lucianlabs.dev/uxui-prompt/#071`.
+     - Quản lý hàng đợi `batch` các sự kiện chờ xóa với bộ đếm ngược 5 giây (`DURATION = 5000`).
+     - Tự động tạm dừng đếm ngược khi người dùng rê chuột (`pointerenter`) hoặc focus vào thanh thông báo.
+     - **Component `UndoSnackbarPortal`**:
+       - Render qua React Portal vào `document.body` ở vị trí cố định phía dưới màn hình (`bottom: 84px` trên mobile để tránh che thanh tab bar dưới cùng, `bottom: 28px` trên PC).
+       - Hiển thị vòng tròn SVG đếm ngược `--left` và nút bấm **"Hoàn tác"**.
+  2. **Tái Cấu Trúc Thẻ Sự Kiện ([src/components/events/event-card.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-card.tsx))**:
+     - Mang dòng license bản quyền MIT hợp lệ của Prompt #071.
+     - Cấu trúc CSS Grid `.u071-it`: `grid-template-rows: 1fr` $\rightarrow$ khi xóa đổi thành `.u071-it.gone` (`grid-template-rows: 0fr, opacity: 0`).
+     - Lớp nền đỏ `.u071-bg` phía sau với icon thùng rác SVG tự động phóng to từ 0.6 đến 1.25 lần theo công thức lực kéo: `Math.min(1.25, 0.6 + -dx / 160)`.
+     - Lực kháng cự khi kéo vượt mốc: `dx < -100 ? -100 + (dx + 100) * 0.6 : dx`.
+     - Khi thả tay: nếu vuốt quá mốc $-100\text{px}$, hàng trượt `-110%` rồi thu gọn, kích hoạt rung phản hồi nhẹ (`navigator.vibrate(15)`) và đưa vào hàng đợi Hoàn tác; nếu không đủ mốc thì hồi vị tự nhiên về $0\text{px}$ với spring `cubic-bezier(0.34, 1.45, 0.64, 1)`.
+     - Hỗ trợ nút xóa icon thùng rác `.u071-del` xuất hiện khi hover trên Desktop và phím `Delete` / `Backspace`.
+     - Tự động chuyển đổi mượt mà giữa chế độ Light và Dark.
+- **Danh sách file tạo / chỉnh sửa**:
+  - [src/components/events/undo-manager.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/undo-manager.tsx) *(Mới tạo)*
+  - [src/components/events/event-card.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-card.tsx)
+  - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npm test`: **26/26 tests PASS**
+  - `npx tsc --noEmit`: **0 errors** (Type check an toàn tuyệt đối)
+  - Dev Server: Hoạt động ổn định tại `http://localhost:3000` (HTTP 200 OK)
+
+---
+
+### 📅 [2026-10-26 10:04:00] - Triển Khai Hiệu Ứng Dropdown Sự Kiện Tháng Theo Chuẩn Lucian UX/UI Prompt #037
+
+- **Yêu cầu của người dùng**:
+  - Tái cấu trúc hiệu ứng dropdown của sự kiện trong tháng theo mẫu thiết kế chuẩn **Lucian UX/UI Prompt #037** (Account switcher menu · Menus & Tabs).
+  - Áp dụng các giá trị chuyển động (durations, curves, delays), cấu trúc thẻ chip, thanh highlight theo con trỏ (`.u037-hl`), hiệu ứng các thẻ sự kiện bay vào so le (`stagger float in`), và ánh xạ hệ thống biến màu `--ux-*` cho cả Light và Dark mode.
+- **Nội dung đã triển khai**:
+  1. **Tạo component mới ([src/components/events/collapsible-month-group.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/collapsible-month-group.tsx))**:
+     - Giữ nguyên dòng bản quyền MIT License: `// Lucian UX/UI Prompt #037 · MIT License (c) 2026 Seokwoooo · https://lucianlabs.dev/uxui-prompt/#037`.
+     - **Chip Trigger (`.u037-chip`)**:
+       - Bo tròn 22px (`border-radius: 22px`), bóng đổ nổi `box-shadow: 0 0 0 1px var(--ux-line), 0 12px 24px -18px var(--ux-shadow-strong)`.
+       - Huy hiệu tháng `.u037-ws`: Kích thước 38x38px, bo góc 12px, nền gradient riêng biệt cho từng tháng (`MONTH_GRADIENTS`).
+       - Mũi tên Caret `.u037-car`: Đường nét 2.2px, xoay lật 180° mượt mà với spring `cubic-bezier(0.34, 1.45, 0.64, 1)`.
+       - Hiệu ứng tương tác: Nhấn xuống co nhẹ (`transform: scale(0.985)`).
+     - **Menu Dropdown (`.u037-menu`)**:
+       - Hiệu ứng bung mở: `transition: opacity 0.2s var(--ux-ease), transform 0.5s var(--ux-spring), max-height 0.5s var(--ux-spring)`.
+       - Tiêu đề mục `.u037-sec`: In hoa, chữ nhỏ thanh lịch `letter-spacing: 0.06em`.
+     - **Thanh Highlight Bar Theo Con Trỏ (`.u037-hl`)**:
+       - Tự động di chuyển lướt mượt mà theo vị trí con trỏ chuột (`--y`, `--h`) khi hover trên từng thẻ sự kiện trong danh sách trên PC.
+     - **Hiệu Ứng Bay Vào So Le (Stagger Float In)**:
+       - Các thẻ sự kiện (`EventCard`) bay vào lần lượt với độ trễ `transition-delay: calc(var(--i) * 32ms)` và `translateY(10px) -> none`.
+     - **Ánh xạ Token Màu & Dark Mode**:
+       - Ánh xạ toàn bộ `--ux-*` sang các biến HSL hiện có của dự án (`--card`, `--secondary`, `--muted`, `--primary`, `--border`).
+       - Tự động hỗ trợ cả Light Mode và Dark Mode qua `:global(.dark)`.
+     - **Khả Năng Truy Cập & Giảm Chuyển Động (Reduced Motion)**:
+       - Đầy đủ thuộc tính ARIA (`aria-expanded`, `aria-haspopup`, `aria-label`).
+       - Hỗ trợ phím bấm: Enter, Space, Escape.
+       - Tương thích `@media (prefers-reduced-motion: reduce)`.
+  2. **Tích hợp vào danh sách nhóm ([src/components/events/event-list-grouped.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-list-grouped.tsx))**:
+     - Thay thế mã hiển thị cũ bằng `<CollapsibleMonthGroup ... />`, giữ nguyên vẹn 100% dữ liệu, props và các handler (`onEdit`, `onDelete`, `onToggleEnabled`).
+- **Danh sách file tạo / chỉnh sửa**:
+  - [src/components/events/collapsible-month-group.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/collapsible-month-group.tsx) *(Mới tạo)*
+  - [src/components/events/event-list-grouped.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-list-grouped.tsx)
+  - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npm test`: **26/26 tests PASS**
+  - `npx tsc --noEmit`: **0 errors** (Type check an toàn tuyệt đối)
+  - Dev Server: Hoạt động ổn định tại `http://localhost:3000` (HTTP 200 OK)
+
+---
+
+### 📅 [2026-10-26 09:57:00] - Gom Gọn Sự Kiện Theo Từng Tháng Với Nút Xổ Xuống & Animation 60-120fps
+
+- **Yêu cầu của người dùng**:
+  - *"tôi muốn ở đây khi tháng nào có sự kiện thì sẽ làm 1 nút xổ xuống, tức là làm gọn lại, ở đây ví dụ tháng 10 đang có 3 sự kiện thì sẽ gom 3 sự kiện của t10 này lại cho gọn, rồi tạo 1 nút mũi tên xổ xuống, khi bấm vào thì xổ ra các sự kiện trong tháng đó, bấm lại thì thu gọn lại, tạo hiệu ứng anim mượt mà không bị khựng trên pc và mobile"*.
+- **Nội dung đã triển khai ([src/components/events/event-list-grouped.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-list-grouped.tsx))**:
+  1. **Nút Header Tháng Tương Tác (Collapsible Accordion Header)**:
+     - Biến đổi thanh tiêu đề mỗi tháng thành một thanh điều khiển bo tròn hiện đại `rounded-2xl` hỗ trợ click/chạm toàn dải.
+     - Phía trái: Chấm gradient thương hiệu + Tên tháng (ví dụ `Tháng 10`).
+     - Đường kẻ phân cách tinh tế tự động sáng nhẹ khi hover.
+     - Phía phải: Huy hiệu số lượng (`3 sự kiện`) + Hộp nút mũi tên `ChevronDown` bo góc tự động xoay 180° mượt mà khi mở.
+     - Thiết kế thích ứng: Khi đang thu gọn có nền thẻ nổi `bg-card/80 border border-border/80 shadow-xs` tạo cảm giác gọn gàng; khi mở rộng hòa nhập tự nhiên vào danh sách thẻ bên dưới.
+  2. **Hiệu ứng Animation Siêu Mượt (Không khựng lag trên cả PC và Mobile)**:
+     - Sử dụng `AnimatePresence` kết hợp `motion.div` với đường cong giảm tốc của Apple iOS `ease: [0.16, 1, 0.3, 1]`.
+     - Áp dụng thuộc tính phần cứng `willChange: "height, opacity"` và `overflow-hidden`, đảm bảo GPU render trực tiếp ở tốc độ 60fps - 120fps, không gây giật khung hình hay layout thrashing khi bấm liên tục.
+  3. **Tiện ích Điều Khiển Thông Minh (Smart UX Utilities)**:
+     - Thêm nút chuyển đổi nhanh **"Mở tất cả" / "Thu gọn"** trên thanh phụ (Sub-bar) cạnh bộ đếm sự kiện, cho phép xem toàn bộ hoặc thu gọn tất cả chỉ với 1 chạm.
+     - Tự động mở rộng các tháng khi người dùng đang gõ tìm kiếm (`search`), đảm bảo kết quả tìm kiếm luôn hiển thị ngay lập tức mà không cần bấm thủ công.
+- **Danh sách file đã chỉnh sửa**:
+  - [src/components/events/event-list-grouped.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-list-grouped.tsx)
+  - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npm test`: **26/26 tests PASS**
+  - `npx tsc --noEmit`: **0 errors** (Type check an toàn tuyệt đối)
+  - Dev Server: Hoạt động ổn định tại `http://localhost:3000` (HTTP 200 OK)
+
+---
+
+### 📅 [2026-10-26 09:44:00] - Khắc Phục Lỗi Hiển Thị Bộ Lọc "1 Tháng Trước" & Xóa Nhãn "(Đã qua)" Sai Lệch
+
+- **Yêu cầu của người dùng**:
+  - *"hiện tại đang là tháng 10 mà? sao lại đã qua rồi, sửa lại đúng cho tôi"* (kèm ảnh chụp màn hình khi chọn "1 tháng trước" nhưng lại hiển thị tiêu đề `Tháng 10 (Đã qua)` và chứa sự kiện "Hôm nay! 🎉 26/10").
+- **Phân tích nguyên nhân**:
+  1. Logic trước đó tính `daysAgo` từ 0 đến 31 ngày, khiến sự kiện diễn ra hôm nay (`daysAgo === 0`) bị gom nhầm vào bộ lọc "1 tháng trước".
+  2. Mã hiển thị nhóm tháng trước đó gán cứng chuỗi `(Đã qua)` vào tiêu đề tháng (`Tháng 10 (Đã qua)`). Điều này gây mâu thuẫn lớn và hiểu lầm nghiêm trọng vì hiện tại đang là Tháng 10 (tháng đang diễn ra), không thể gọi là "Đã qua", và các sự kiện hôm nay không phải là "1 tháng trước".
+  3. Định nghĩa chuẩn của "1 tháng trước" (đối xứng với "Lọc theo tháng năm tự chọn"): Chính là tháng liền kề trước tháng hiện tại (nếu hiện tại là Tháng 10 thì "1 tháng trước" là Tháng 9; nếu hiện tại là Tháng 1 thì "1 tháng trước" là Tháng 12 năm trước).
+- **Nội dung đã triển khai ([src/components/events/event-list-grouped.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-list-grouped.tsx))**:
+  1. **Chuẩn hóa logic bộ lọc "1 tháng trước" (`past_month`)**:
+     - Tự động xác định tháng trước: `pastMonth = now.getMonth() === 0 ? 12 : now.getMonth()`.
+     - Xác định năm tương ứng: `pastMonthYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()`.
+     - Lọc các sự kiện diễn ra trong tháng trước đó (cả dương lịch lẫn âm lịch chuyển đổi sang dương lịch).
+     - Loại bỏ hoàn toàn sự kiện của tháng hiện tại và sự kiện "Hôm nay" khỏi danh sách "1 tháng trước".
+  2. **Xóa bỏ triệt để nhãn `(Đã qua)`**:
+     - Tiêu đề nhóm hiển thị chuẩn xác: `Tháng ${monthNum} (1 tháng trước)` (ví dụ: `Tháng 9 (1 tháng trước)`), không còn nhãn `(Đã qua)` gây nhầm lẫn.
+     - Cập nhật thông báo `EmptyState` thân thiện khi tháng trước không có sự kiện: *"Không có sự kiện nào trong Tháng ${pastMonth}"*.
+  3. **Đồng bộ hóa bộ lọc Tháng/Năm tự chọn**:
+     - Hỗ trợ đầy đủ cả ngày dương lịch và ngày âm lịch chuyển đổi của năm được chọn.
+- **Danh sách file đã chỉnh sửa**:
+  - [src/components/events/event-list-grouped.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-list-grouped.tsx)
+  - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npm test`: **26/26 tests PASS**
+  - `npx tsc --noEmit`: **0 errors** (Type check an toàn tuyệt đối)
+  - Dev Server: Hoạt động ổn định tại `http://localhost:3000` (HTTP 200 OK)
+
+
+### 📅 [2026-10-26 09:34:00] - Cập Nhật Bộ Lọc Sự Kiện: "1 Tháng Trước" & "Lọc Theo Tháng Năm Tự Chọn"
+
+- **Yêu cầu của người dùng**:
+  - *"sửa ở bộ lọc cho tôi, bỏ 2 bộ lọc cuối Theo ngày trong năm và theo độ tuổi thành : 1 tháng trước, lọc theo tháng năm tự chọn(khi bấm vào thì sẽ hiển thị ra để nhập tháng năm để lọc)"*.
+- **Nội dung đã triển khai ([src/components/events/event-list-grouped.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-list-grouped.tsx))**:
+  1. **Thay thế danh mục bộ lọc**:
+     - Loại bỏ hoàn toàn 2 tùy chọn cũ: *"Theo ngày trong năm"* và *"Theo độ tuổi"*.
+     - Bổ sung 2 tùy chọn mới:
+       1. **`1 tháng trước` (`past_month`)**: Lọc ra các sự kiện đã diễn ra trong vòng 31 ngày vừa qua (tính toán chính xác ngày dương lịch và âm lịch qua hàm `getDaysPassed`). Sắp xếp sự kiện mới diễn ra gần nhất lên đầu.
+       2. **`Lọc theo tháng năm tự chọn` (`custom_month_year`)**: Cho phép người dùng lọc chính xác các sự kiện diễn ra trong một tháng và năm tùy ý.
+  2. **Giao diện Modal / Dialog chọn Tháng & Năm**:
+     - Khi người dùng bấm vào *"Lọc theo tháng năm tự chọn"* trong dropdown menu:
+       - Mở ra một Dialog bo tròn hiện đại `rounded-3xl` với backdrop mờ nhẹ.
+       - **Bộ chọn Năm**: Input số năm với 2 nút chuyển nhanh `[-]` và `[+]`.
+       - **Bộ chọn Tháng**: Lưới 12 nút bấm (Tháng 1 đến Tháng 12) hiển thị trực quan, highlight tháng được chọn.
+       - Nút **"Áp dụng"** chốt bộ lọc và nút **"Hủy"**.
+  3. **Trải nghiệm trạng thái trên thanh điều khiển (Filter Controls Sub-bar)**:
+     - Khi đang áp dụng lọc theo tháng năm: Nút bộ lọc tự động hiển thị `📅 Tháng MM/YYYY`. Người dùng bấm vào nút này có thể mở lại dialog để đổi tháng/năm khác bất kỳ lúc nào.
+     - Xuất hiện nút **"Đặt lại"** (icon `RotateCcw`) giúp người dùng quay trở lại bộ lọc mặc định *"Sắp tới gần nhất"* chỉ với 1 chạm.
+     - Tùy chỉnh thông báo `EmptyState` tương ứng khi không có sự kiện nào trong tháng/năm hoặc trong 1 tháng trước.
+- **Danh sách file đã chỉnh sửa**:
+  - [src/components/events/event-list-grouped.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-list-grouped.tsx)
+  - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npm test`: **26/26 tests PASS**
+  - `npx tsc --noEmit`: **0 errors** (Type check tuyệt đối an toàn)
+  - Dev Server: Hoạt động ổn định tại `http://localhost:3000` (HTTP 200 OK)
+
+---
+
+### 📅 [2026-10-26 10:45:00] - Triển Khai Chuông Thông Báo Dropdown Theo Chuẩn Lucian UX/UI Prompt #074 & Hiển Thị Badge Ở 3 Vị Trí
+
+- **Yêu cầu của người dùng**:
+  - *"tôi muốn ở phần thông báo này khi có thông báo mới (ví dụ thông báo đã gửi email thành công hay thất bại) thì sẽ hiển thị bao nhiêu thông báo ở bên avatar người dùng và bao nhiêu thông báo ở cạnh nút lịch sử thông báo và tôi muốn chuyển nút thông báo ra ngoài đặt ở chỗ cạnh nút theme sáng tối và khi bấm vào icon chuông thông báo thì sẽ dropdown ra với hiệu ứng anim theo prompt tôi gửi sau đây : [Element] Notification bell dropdown (074, Alerts & Feedback)..."*
+- **Nội dung đã triển khai**:
+  1. **Hook Quản Lý Thông Báo ([src/hooks/use-notifications.ts](file:///e:/BER-Birthday-Event-Reminder-/src/hooks/use-notifications.ts))**:
+     - Truy vấn nhật ký thông báo từ bảng `notification_logs` (kèm thông tin sự kiện liên kết), sắp xếp giảm dần theo thời gian gửi `sent_at`.
+     - Tự động fallback dữ liệu mẫu phong phú khi offline hoặc chưa có bản ghi thật.
+     - Lưu trạng thái các ID đã đọc vào `localStorage` (`ber_read_notification_ids`).
+     - Tự động phát hiện khi có thông báo mới để kích hoạt hiệu ứng chuông lắc (`shouldRing`) và badge nảy số.
+     - Đăng ký lắng nghe sự kiện `trigger-reminder-check` để tự động làm mới ngay khi hệ thống vừa gửi email nhắc nhở.
+  2. **Component Chuông Thông Báo Dropdown ([src/components/layout/notification-bell-dropdown.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/layout/notification-bell-dropdown.tsx))**:
+     - Mang dòng license bản quyền MIT: `// Lucian UX/UI Prompt #074 · MIT License (c) 2026 Seokwoooo · https://lucianlabs.dev/uxui-prompt/#074`.
+     - Chuyển đổi mã gốc Lucian Prompt #074 sang React Component, giữ nguyên 100% keyframe physics, curve `cubic-bezier(.34, 1.45, .64, 1)` và scoped classes `.u074`.
+     - Ánh xạ đầy đủ bảng màu `--ux-*` cho cả hai chế độ Light và Dark mode.
+     - Hiệu ứng rung chuông `@keyframes u074-ring` khi có thông báo mới, badge đỏ hiển thị số lượng với animation pop `scale(1) -> scale(1.5) -> scale(1)`.
+     - Bấm vào chuông: Bảng thông báo `.u074-pan` bung mở mượt mà với spring physics, hỗ trợ đóng bằng phím `Escape` hoặc click bên ngoài.
+     - Thanh Tab chuyển đổi giữa **"Tất cả"** và **"Chưa đọc"**.
+     - Nút **"Đánh dấu tất cả đã đọc"**: Xoá từng chấm xanh/tím chưa đọc tuần tự so le theo nhịp `i * 110ms` đúng chuẩn UX/UI của Prompt #074.
+     - Bấm từng mục thông báo: Tắt chấm chưa đọc ngay lập tức, chuyển màu chữ và cập nhật bộ đếm badge.
+     - Chân dropdown có nút chuyển nhanh đến trang toàn màn hình `/history`.
+  3. **Tích Hợp Vào Header Hệ Thống ([src/components/layout/app-header.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/layout/app-header.tsx))**:
+     - **Vị trí nút chuông**: Chuyển ra ngoài thanh điều hướng chính, đặt cạnh nút chuyển chế độ sáng/tối (`<NotificationBellDropdown /> <ThemeToggle />`).
+     - **Vị trí 1 (Badge Chuông)**: Hiển thị trực tiếp trên nút chuông thông báo ngoài header với hiệu ứng nảy số.
+     - **Vị trí 2 (Badge Avatar)**: Hiển thị huy hiệu số đỏ nổi bật ở góc trên bên phải avatar người dùng (`absolute -top-1 -right-1`).
+     - **Vị trí 3 (Badge Lịch sử thông báo)**: Hiển thị viên con nhộng số lượng màu đỏ nổi bật cạnh mục *"Lịch sử thông báo"* bên trong menu dropdown của avatar.
+- **Danh sách file tạo / chỉnh sửa**:
+  - [src/hooks/use-notifications.ts](file:///e:/BER-Birthday-Event-Reminder-/src/hooks/use-notifications.ts) *(Mới tạo)*
+  - [src/components/layout/notification-bell-dropdown.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/layout/notification-bell-dropdown.tsx) *(Mới tạo)*
+  - [src/components/layout/app-header.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/layout/app-header.tsx)
+  - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npm test`: **26/26 tests PASS**
+  - `npx tsc --noEmit`: **0 errors** (Type check an toàn tuyệt đối)
+  - Dev Server: Hoạt động ổn định tại `http://localhost:3000` (HTTP 200 OK)
+
+---
+
+### 📅 [2026-10-26 10:56:00] - Tinh Chỉnh UI Chuông Thông Báo: Căn Chỉnh Vị Trí Dropdown Chuẩn Mobile & Phục Hồi Avatar Sự Kiện
+
+- **Yêu cầu của người dùng**:
+  1. *"tôi không muốn hiện bao nhiêu thông báo ở avatar người dùng nữa vì đã chuyển nút thong báo ra ngoài rồi, và xóa nút lịch sử thông báo đi"*
+  2. *"sửa lại UI khi bấm vào chuông thông báo, và fix lại lỗi mất avatar ở thông báo đi"* (kèm ảnh chụp dropdown bị lệch sang góc trái che logo và avatar là hình tròn phẳng trơn mất ảnh).
+- **Nội dung đã triển khai**:
+  1. **Tối Giản Avatar & Menu Người Dùng ([src/components/layout/app-header.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/layout/app-header.tsx))**:
+     - Xóa hoàn toàn badge số lượng trên avatar người dùng, trả lại khung avatar tinh gọn, thẩm mỹ.
+     - Xóa dòng *"Lịch sử thông báo"* ra khỏi menu dropdown của avatar (vì chuông thông báo ngoài header đã đảm nhiệm chức năng này và có nút dẫn nhanh đến `/history` ở chân bảng).
+     - Dọn dẹp import và hook thừa (`useNotifications`, `Bell`).
+  2. **Căn Chỉnh Vị Trí Dropdown Chuẩn Responsive ([src/components/layout/notification-bell-dropdown.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/layout/notification-bell-dropdown.tsx))**:
+     - **Trên Mobile (`max-width: 640px`)**: Cấu hình `position: fixed; top: 60px; left: 14px; right: 14px; width: auto;`. Bảng thông báo mở cân đối chính giữa màn hình điện thoại, không bao giờ bị lệch sang trái đè lên logo, mũi tên liên kết `::before` (`right: 88px`) trỏ chính xác vào nút chuông.
+     - **Trên Desktop (`min-width: 641px`)**: Căn chuẩn bên phải ngay dưới nút chuông (`position: absolute; right: -6px; top: calc(100% + 12px); width: 360px;`).
+  3. **Khắc Phục Triệt Để Lỗi Mất Avatar Trong Thông Báo**:
+     - **[src/hooks/use-notifications.ts](file:///e:/BER-Birthday-Event-Reminder-/src/hooks/use-notifications.ts)**:
+       - Bổ sung trường `avatarUrl` vào `AppNotification`.
+       - Tự động đối chiếu thông tin sự kiện từ `log.events` hoặc tìm trong `cachedEvents` theo `event_id` để lấy đúng `avatar_url` của người được nhắc.
+       - Tích hợp fallback Dicebear theo tên sự kiện/người nhận: `https://api.dicebear.com/7.x/avataaars/svg?seed=...`.
+     - **[src/components/layout/notification-bell-dropdown.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/layout/notification-bell-dropdown.tsx)**:
+       - Thay thế khối `<span>` hình tròn màu xanh phẳng cũ bằng thẻ `<img>` với class `.u074-av-img` bo tròn 50%, có viền và hiệu ứng bóng đổ sắc nét.
+       - Giữ nguyên huy hiệu emoji trạng thái (✅ / ⚠️ / ⏳) ở góc phải dưới của avatar.
+- **Danh sách file tạo / chỉnh sửa**:
+  - [src/components/layout/app-header.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/layout/app-header.tsx)
+  - [src/hooks/use-notifications.ts](file:///e:/BER-Birthday-Event-Reminder-/src/hooks/use-notifications.ts)
+  - [src/components/layout/notification-bell-dropdown.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/layout/notification-bell-dropdown.tsx)
+  - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npm test`: **26/26 tests PASS**
+  - `npx tsc --noEmit`: **0 errors** (Type check tuyệt đối an toàn)
+  - Dev Server: Hoạt động ổn định tại `http://localhost:3000` (HTTP 200 OK)
+
+
 
 
 

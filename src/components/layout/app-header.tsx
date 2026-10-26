@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
 import { ThemeToggle } from "@/components/common/theme-toggle";
 import { CommandMenu } from "./command-menu";
+import { NotificationBellDropdown } from "./notification-bell-dropdown";
 import { useUserSettings } from "@/hooks/use-user-settings";
 import { createClient } from "@/lib/supabase/client";
-import { LogOut, Settings, Bell, Sparkles, ShieldCheck } from "lucide-react";
+import { LogOut, Settings, Sparkles, ShieldCheck } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface AppHeaderProps {
@@ -98,6 +99,7 @@ export function AppHeader({ onOpenCreateModal }: AppHeaderProps) {
           )}
 
           <CommandMenu onOpenCreateModal={onOpenCreateModal} />
+          <NotificationBellDropdown />
           <ThemeToggle />
 
           {/* User Profile Menu */}
@@ -177,15 +179,6 @@ export function AppHeader({ onOpenCreateModal }: AppHeaderProps) {
                   >
                     <Settings className="w-4 h-4 text-primary" />
                     <span>Cài đặt & Hồ sơ</span>
-                  </Link>
-
-                  <Link
-                    href="/history"
-                    onClick={() => setMenuOpen(false)}
-                    className="flex items-center gap-2 px-3 py-2 rounded-xl text-foreground hover:bg-secondary transition-colors"
-                  >
-                    <Bell className="w-4 h-4 text-primary" />
-                    <span>Lịch sử thông báo</span>
                   </Link>
 
                   <div className="border-t border-border/50 pt-1 mt-1">

@@ -3,10 +3,24 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { EventWithMeta, EventGroup } from "@/types/events";
 import { EventCard } from "./event-card";
+import { CollapsibleMonthGroup } from "./collapsible-month-group";
 import { EmptyState } from "@/components/common/empty-state";
-import { Search, SlidersHorizontal, X, ChevronDown, Check } from "lucide-react";
+import {
+  Search,
+  SlidersHorizontal,
+  X,
+  ChevronDown,
+  ChevronUp,
+  ChevronLeft,
+  ChevronRight,
+  Check,
+  Calendar,
+  Clock,
+  RotateCcw,
+} from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { convertLunar2Solar } from "@/lib/lunar/amlich";
 
 interface EventListGroupedProps {
   events: EventWithMeta[];
@@ -17,6 +31,8 @@ interface EventListGroupedProps {
   initialSearch?: string;
   initialGroup?: string;
 }
+
+export type SortFilterOption = "remaining" | "name" | "past_month" | "custom_month_year";
 
 export function EventListGrouped({
   events,
@@ -29,9 +45,39 @@ export function EventListGrouped({
 }: EventListGroupedProps) {
   const [search, setSearch] = useState(initialSearch);
   const [selectedGroup, setSelectedGroup] = useState<string>(initialGroup);
-  const [sortBy, setSortBy] = useState<"remaining" | "name" | "date" | "age">("remaining");
+  const [sortBy, setSortBy] = useState<SortFilterOption>("remaining");
   const [isSortOpen, setIsSortOpen] = useState(false);
   const sortRef = useRef<HTMLDivElement>(null);
+
+  // State cho bộ lọc tháng/năm tự chọn
+  const now = useMemo(() => new Date(), []);
+  const [customMonth, setCustomMonth] = useState<number>(() => now.getMonth() + 1);
+  const [customYear, setCustomYear] = useState<number>(() => now.getFullYear());
+  const [isCustomModalOpen, setIsCustomModalOpen] = useState(false);
+
+  // Tháng và năm của "1 tháng trước" (tháng liền kề trước tháng hiện tại)
+  const pastMonth = useMemo(() => (now.getMonth() === 0 ? 12 : now.getMonth()), [now]);
+  const pastMonthYear = useMemo(
+    () => (now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()),
+    [now]
+  );
+
+  // State tạm trong popup chọn tháng/năm
+  const [tempMonth, setTempMonth] = useState<number>(() => now.getMonth() + 1);
+  const [tempYear, setTempYear] = useState<number>(() => now.getFullYear());
+
+  // Quản lý trạng thái đóng/mở của từng tháng (mặc định gom gọn lại theo yêu cầu)
+  const [expandedMonths, setExpandedMonths] = useState<Record<number, boolean>>({});
+
+  // Tự động mở rộng khi đang gõ tìm kiếm
+  const isSearching = search.trim().length > 0;
+
+  const toggleMonth = (monthNum: number) => {
+    setExpandedMonths((prev) => ({
+      ...prev,
+      [monthNum]: !prev[monthNum],
+    }));
+  };
 
   const groups: { name: "Tất cả" | EventGroup; dotColor?: string }[] = [
     { name: "Tất cả" },
@@ -41,11 +87,12 @@ export function EventListGrouped({
     { name: "Khác", dotColor: "bg-emerald-500" },
   ];
 
-  const sortOptions: { value: "remaining" | "name" | "date" | "age"; label: string }[] = [
+  // Danh mục 4 bộ lọc chuẩn theo yêu cầu người dùng
+  const sortOptions: { value: SortFilterOption; label: string; icon?: any }[] = [
     { value: "remaining", label: "Sắp tới gần nhất" },
     { value: "name", label: "Tên (A → Z)" },
-    { value: "date", label: "Theo ngày trong năm" },
-    { value: "age", label: "Theo độ tuổi" },
+    { value: "past_month", label: "1 tháng trước" },
+    { value: "custom_month_year", label: "Lọc theo tháng năm tự chọn" },
   ];
 
   // Đóng dropdown sắp xếp khi bấm ra ngoài
@@ -66,10 +113,33 @@ export function EventListGrouped({
     };
   }, [isSortOpen]);
 
-  // Lọc và sắp xếp
+  // Xử lý chọn trong dropdown menu
+  const handleSelectOption = (optValue: SortFilterOption) => {
+    if (optValue === "custom_month_year") {
+      setIsSortOpen(false);
+      // Đồng bộ giá trị tạm với giá trị hiện tại trước khi mở modal
+      setTempMonth(customMonth);
+      setTempYear(customYear);
+      setIsCustomModalOpen(true);
+      return;
+    }
+    setSortBy(optValue);
+    setIsSortOpen(false);
+  };
+
+  // Xác nhận áp dụng bộ lọc tháng/năm tự chọn
+  const handleApplyCustomFilter = () => {
+    setCustomMonth(tempMonth);
+    setCustomYear(tempYear);
+    setSortBy("custom_month_year");
+    setIsCustomModalOpen(false);
+  };
+
+  // Lọc và sắp xếp danh sách sự kiện
   const filteredEvents = useMemo(() => {
     return events
       .filter((ev) => {
+        // 1. Lọc theo từ khóa tìm kiếm
         const matchesSearch =
           ev.name.toLowerCase().includes(search.toLowerCase()) ||
           ev.group_name.toLowerCase().includes(search.toLowerCase()) ||
@@ -78,39 +148,124 @@ export function EventListGrouped({
           ((ev as any).custom_type && (ev as any).custom_type.toLowerCase().includes(search.toLowerCase())) ||
           ((ev as any).custom_group && (ev as any).custom_group.toLowerCase().includes(search.toLowerCase()));
 
+        if (!matchesSearch) return false;
+
+        // 2. Lọc theo nhóm
         const matchesGroup =
           selectedGroup === "Tất cả" || ev.group_name === selectedGroup;
+        if (!matchesGroup) return false;
 
-        return matchesSearch && matchesGroup;
+        // 3. Lọc theo "1 tháng trước" (Tháng liền kề trước tháng hiện tại)
+        if (sortBy === "past_month") {
+          // Nếu có năm sinh và lớn hơn năm lọc thì loại (chưa sinh tại thời điểm đó)
+          if (ev.event_year && ev.event_year > pastMonthYear) {
+            return false;
+          }
+
+          if (ev.event_month === pastMonth) {
+            return true;
+          }
+
+          if (ev.is_lunar) {
+            try {
+              const solar = convertLunar2Solar(ev.event_day, ev.event_month, pastMonthYear);
+              if (solar.month === pastMonth) return true;
+            } catch {
+              // ignore
+            }
+          }
+
+          return false;
+        }
+
+        // 4. Lọc theo "Tháng năm tự chọn"
+        if (sortBy === "custom_month_year") {
+          // Nếu có năm sinh và lớn hơn năm lọc thì loại (chưa sinh tại thời điểm đó)
+          if (ev.event_year && ev.event_year > customYear) {
+            return false;
+          }
+
+          if (ev.event_month === customMonth) {
+            return true;
+          }
+
+          if (ev.is_lunar) {
+            try {
+              const solar = convertLunar2Solar(ev.event_day, ev.event_month, customYear);
+              if (solar.month === customMonth) return true;
+            } catch {
+              // ignore
+            }
+          }
+
+          return false;
+        }
+
+        return true;
       })
       .sort((a, b) => {
         if (sortBy === "remaining") return a.daysRemaining - b.daysRemaining;
         if (sortBy === "name") return a.name.localeCompare(b.name, "vi");
-        if (sortBy === "date") {
-          return a.event_month !== b.event_month
-            ? a.event_month - b.event_month
-            : a.event_day - b.event_day;
+        if (sortBy === "past_month") {
+          // Xếp theo ngày trong tháng tăng dần (ngày 1 đến ngày 31)
+          return a.event_day - b.event_day;
         }
-        if (sortBy === "age") return (b.upcomingAge || 0) - (a.upcomingAge || 0);
+        if (sortBy === "custom_month_year") {
+          // Xếp theo ngày trong tháng tăng dần (ngày 1 đến ngày 31)
+          return a.event_day - b.event_day;
+        }
         return 0;
       });
-  }, [events, search, selectedGroup, sortBy]);
+  }, [events, search, selectedGroup, sortBy, customMonth, customYear, pastMonth, pastMonthYear]);
 
-  // Gom nhóm theo tháng diễn ra tiếp theo
+  // Gom nhóm theo tháng
   const monthGroups = useMemo(() => {
     const groupsMap = new Map<number, EventWithMeta[]>();
 
     for (const ev of filteredEvents) {
-      const month = ev.nextOccurrence ? ev.nextOccurrence.getMonth() + 1 : ev.event_month;
+      let month: number;
+      if (sortBy === "custom_month_year") {
+        month = customMonth;
+      } else if (sortBy === "past_month") {
+        month = pastMonth;
+      } else {
+        month = ev.nextOccurrence ? ev.nextOccurrence.getMonth() + 1 : ev.event_month;
+      }
+
       const list = groupsMap.get(month) || [];
       list.push(ev);
       groupsMap.set(month, list);
     }
 
     return Array.from(groupsMap.entries());
-  }, [filteredEvents]);
+  }, [filteredEvents, sortBy, customMonth, pastMonth]);
 
-  const currentSortLabel = sortOptions.find((o) => o.value === sortBy)?.label || "Sắp xếp";
+  // Tiêu đề hiển thị trên nút dropdown
+  const currentSortLabel = useMemo(() => {
+    if (sortBy === "custom_month_year") {
+      return `Tháng ${customMonth}/${customYear}`;
+    }
+    return sortOptions.find((o) => o.value === sortBy)?.label || "Sắp xếp";
+  }, [sortBy, customMonth, customYear]);
+
+  // Kiểm tra xem tất cả các tháng đang hiển thị có đang mở không
+  const areAllExpanded = useMemo(() => {
+    if (monthGroups.length === 0) return false;
+    return monthGroups.every(([m]) => !!expandedMonths[m]);
+  }, [monthGroups, expandedMonths]);
+
+  // Chuyển đổi giữa mở rộng tất cả và thu gọn tất cả
+  const toggleAllMonths = () => {
+    if (areAllExpanded) {
+      setExpandedMonths({});
+    } else {
+      const all: Record<number, boolean> = {};
+      monthGroups.forEach(([m]) => {
+        all[m] = true;
+      });
+      setExpandedMonths(all);
+    }
+  };
 
   return (
     <div className="space-y-5">
@@ -129,7 +284,7 @@ export function EventListGrouped({
             <button
               type="button"
               onClick={() => setSearch("")}
-              className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer transition-colors"
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
               title="Xóa tìm kiếm"
             >
               <X className="w-4 h-4" />
@@ -143,8 +298,8 @@ export function EventListGrouped({
             const isSelected = selectedGroup === grp.name;
             return (
               <button
-                key={grp.name}
                 type="button"
+                key={grp.name}
                 onClick={() => setSelectedGroup(grp.name)}
                 className={cn(
                   "px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all shrink-0 flex items-center gap-1.5 cursor-pointer",
@@ -170,25 +325,77 @@ export function EventListGrouped({
 
         {/* Sub-bar: Event Counter & Custom Sort Dropdown */}
         <div className="flex items-center justify-between gap-3 pt-1 border-t border-border/50">
-          <span className="text-xs font-semibold text-muted-foreground">
-            {filteredEvents.length === events.length
-              ? `Tất cả ${events.length} sự kiện`
-              : `Hiển thị ${filteredEvents.length} / ${events.length} sự kiện`}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-muted-foreground">
+              {filteredEvents.length === events.length
+                ? `Tất cả ${events.length} sự kiện`
+                : `Hiển thị ${filteredEvents.length} / ${events.length} sự kiện`}
+            </span>
+
+            {/* Nút hủy bộ lọc nhanh nếu đang ở chế độ lọc đặc biệt */}
+            {(sortBy === "past_month" || sortBy === "custom_month_year") && (
+              <button
+                type="button"
+                onClick={() => setSortBy("remaining")}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                title="Quay lại mặc định"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Đặt lại</span>
+              </button>
+            )}
+
+            {/* Nút Mở rộng / Thu gọn tất cả các tháng */}
+            {monthGroups.length > 0 && !isSearching && (
+              <button
+                type="button"
+                onClick={toggleAllMonths}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold text-muted-foreground hover:text-foreground bg-secondary/60 hover:bg-secondary border border-border/50 transition-colors cursor-pointer select-none"
+                title={areAllExpanded ? "Thu gọn tất cả các tháng" : "Mở rộng tất cả các tháng"}
+              >
+                {areAllExpanded ? (
+                  <>
+                    <ChevronUp className="w-3 h-3 text-primary" />
+                    <span>Thu gọn</span>
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="w-3 h-3 text-primary" />
+                    <span>Mở tất cả</span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
 
           {/* Custom Sort Dropdown */}
           <div className="relative" ref={sortRef}>
             <button
               type="button"
-              onClick={() => setIsSortOpen((prev) => !prev)}
+              onClick={() => {
+                if (sortBy === "custom_month_year") {
+                  // Nếu đang ở custom_month_year, bấm vào mở lại popup đổi tháng năm
+                  setTempMonth(customMonth);
+                  setTempYear(customYear);
+                  setIsCustomModalOpen(true);
+                } else {
+                  setIsSortOpen((prev) => !prev);
+                }
+              }}
               className={cn(
                 "flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer select-none",
-                isSortOpen
-                  ? "bg-primary/10 border-primary/50 text-primary shadow-xs"
+                sortBy === "custom_month_year" || isSortOpen
+                  ? "bg-primary/15 border-primary/50 text-primary shadow-xs font-bold"
                   : "bg-secondary/50 border-border/80 text-foreground hover:bg-secondary hover:border-primary/40"
               )}
             >
-              <SlidersHorizontal className="w-3.5 h-3.5 text-primary shrink-0" />
+              {sortBy === "custom_month_year" ? (
+                <Calendar className="w-3.5 h-3.5 text-primary shrink-0" />
+              ) : sortBy === "past_month" ? (
+                <Clock className="w-3.5 h-3.5 text-primary shrink-0" />
+              ) : (
+                <SlidersHorizontal className="w-3.5 h-3.5 text-primary shrink-0" />
+              )}
               <span>{currentSortLabel}</span>
               <ChevronDown
                 className={cn(
@@ -206,7 +413,7 @@ export function EventListGrouped({
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -4, scale: 0.95 }}
                   transition={{ duration: 0.15, ease: "easeOut" }}
-                  className="absolute right-0 top-full mt-1.5 z-50 w-48 bg-card/95 backdrop-blur-xl border border-border/80 rounded-2xl shadow-2xl p-1.5 space-y-0.5"
+                  className="absolute right-0 top-full mt-1.5 z-50 w-56 bg-card/95 backdrop-blur-xl border border-border/80 rounded-2xl shadow-2xl p-1.5 space-y-0.5"
                 >
                   {sortOptions.map((opt) => {
                     const isSelected = sortBy === opt.value;
@@ -214,10 +421,7 @@ export function EventListGrouped({
                       <button
                         key={opt.value}
                         type="button"
-                        onClick={() => {
-                          setSortBy(opt.value);
-                          setIsSortOpen(false);
-                        }}
+                        onClick={() => handleSelectOption(opt.value)}
                         className={cn(
                           "w-full px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer text-left",
                           isSelected
@@ -225,8 +429,8 @@ export function EventListGrouped({
                             : "text-muted-foreground hover:text-foreground hover:bg-secondary/80"
                         )}
                       >
-                        <span>{opt.label}</span>
-                        {isSelected && <Check className="w-3.5 h-3.5 text-primary shrink-0" />}
+                        <span className="truncate">{opt.label}</span>
+                        {isSelected && <Check className="w-3.5 h-3.5 text-primary shrink-0 ml-1.5" />}
                       </button>
                     );
                   })}
@@ -237,50 +441,181 @@ export function EventListGrouped({
         </div>
       </div>
 
+      {/* MODAL / DIALOG NHẬP THÁNG & NĂM TỰ CHỌN */}
+      <AnimatePresence>
+        {isCustomModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsCustomModalOpen(false)}
+              className="fixed inset-0 bg-black/60 backdrop-blur-xs"
+            />
+
+            {/* Dialog Content */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 12 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="relative w-full max-w-sm bg-card border border-border/90 rounded-3xl p-5 shadow-2xl z-10 space-y-4 select-none"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between pb-3 border-b border-border/60">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                    <Calendar className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-foreground">Lọc theo tháng & năm</h3>
+                    <p className="text-[11px] text-muted-foreground">Chọn tháng và năm bạn muốn xem sự kiện</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsCustomModalOpen(false)}
+                  className="p-1.5 rounded-full hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* 1. Chọn Năm */}
+              <div>
+                <label className="block text-xs font-bold text-muted-foreground mb-1.5">
+                  1. Năm cần xem
+                </label>
+                <div className="flex items-center justify-between bg-secondary/60 rounded-2xl p-1.5 border border-border/70">
+                  <button
+                    type="button"
+                    onClick={() => setTempYear((y) => Math.max(1900, y - 1))}
+                    className="p-2 rounded-xl hover:bg-card text-foreground font-bold transition-all active:scale-90"
+                    title="Năm trước"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      value={tempYear}
+                      onChange={(e) => setTempYear(Number(e.target.value) || now.getFullYear())}
+                      min={1900}
+                      max={2100}
+                      className="w-20 text-center font-mono text-base font-black text-foreground bg-transparent border-none focus:outline-none focus:ring-0"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setTempYear((y) => y + 1)}
+                    className="p-2 rounded-xl hover:bg-card text-foreground font-bold transition-all active:scale-90"
+                    title="Năm sau"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* 2. Chọn Tháng */}
+              <div>
+                <label className="block text-xs font-bold text-muted-foreground mb-1.5">
+                  2. Chọn tháng (Tháng {tempMonth})
+                </label>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => {
+                    const isSelected = tempMonth === m;
+                    return (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setTempMonth(m)}
+                        className={cn(
+                          "py-2.5 rounded-xl text-xs font-semibold transition-all active:scale-95 text-center cursor-pointer border",
+                          isSelected
+                            ? "bg-primary text-white border-primary shadow-sm font-black"
+                            : "bg-secondary/40 hover:bg-secondary text-muted-foreground hover:text-foreground border-border/50"
+                        )}
+                      >
+                        Tháng {m}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2.5 pt-2 border-t border-border/60">
+                <button
+                  type="button"
+                  onClick={() => setIsCustomModalOpen(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-border text-xs font-semibold text-muted-foreground hover:bg-secondary transition-colors"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  onClick={handleApplyCustomFilter}
+                  className="flex-1 py-2.5 rounded-xl bg-primary hover:bg-primary/90 active:scale-95 text-white text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5"
+                >
+                  <Check className="w-3.5 h-3.5 stroke-[3]" />
+                  <span>Áp dụng</span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Grouped Month List */}
       {filteredEvents.length === 0 ? (
         <EmptyState
-          title="Không tìm thấy sự kiện nào"
+          title={
+            sortBy === "past_month"
+              ? `Không có sự kiện nào trong Tháng ${pastMonth}`
+              : sortBy === "custom_month_year"
+              ? `Không có sự kiện nào vào Tháng ${customMonth}/${customYear}`
+              : "Không tìm thấy sự kiện nào"
+          }
           description={
-            search || selectedGroup !== "Tất cả"
+            sortBy === "past_month"
+              ? `Trong Tháng ${pastMonth} năm ${pastMonthYear} không có sinh nhật hay ngày kỷ niệm nào.`
+              : sortBy === "custom_month_year"
+              ? `Chưa có sự kiện nào được ghi nhận diễn ra trong tháng ${customMonth} năm ${customYear}.`
+              : search || selectedGroup !== "Tất cả"
               ? "Hãy thử thay đổi từ khóa hoặc bộ lọc nhóm khác xem sao nhé."
               : "Bắt đầu lưu giữ những ngày đặc biệt của người thân và bạn bè ngay hôm nay!"
           }
-          actionLabel="Thêm sự kiện đầu tiên"
+          actionLabel="Thêm sự kiện"
           onAction={onOpenCreateModal}
         />
       ) : (
-        <div className="space-y-7">
-          {monthGroups.map(([monthNum, monthEvents]) => (
-            <div key={monthNum} className="space-y-3">
-              {/* Header Tháng tinh gọn */}
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full gradient-brand" />
-                  <span className="text-sm font-black text-foreground tracking-tight">
-                    Tháng {monthNum}
-                  </span>
-                </div>
-                <div className="flex-1 h-px bg-border/60" />
-                <span className="text-[11px] font-semibold text-muted-foreground bg-secondary/70 px-2 py-0.5 rounded-md border border-border/40">
-                  {monthEvents.length} sự kiện
-                </span>
-              </div>
+        <div className="space-y-4">
+          {monthGroups.map(([monthNum, monthEvents]) => {
+            const isExpanded = isSearching || !!expandedMonths[monthNum];
+            const monthTitle =
+              sortBy === "custom_month_year"
+                ? `Tháng ${monthNum} năm ${customYear}`
+                : sortBy === "past_month"
+                ? `Tháng ${monthNum} (1 tháng trước)`
+                : `Tháng ${monthNum}`;
 
-              {/* Cards Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                {monthEvents.map((ev) => (
-                  <EventCard
-                    key={ev.id}
-                    event={ev}
-                    onEdit={onEdit}
-                    onDelete={onDelete}
-                    onToggleEnabled={onToggleEnabled}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
+            return (
+              <CollapsibleMonthGroup
+                key={monthNum}
+                monthNum={monthNum}
+                monthTitle={monthTitle}
+                monthEvents={monthEvents}
+                isExpanded={isExpanded}
+                onToggle={() => toggleMonth(monthNum)}
+                onEdit={onEdit}
+                onDelete={onDelete}
+                onToggleEnabled={onToggleEnabled}
+              />
+            );
+          })}
         </div>
       )}
     </div>

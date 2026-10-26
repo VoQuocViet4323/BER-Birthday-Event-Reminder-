@@ -9,6 +9,7 @@ import { EventFormDrawer } from "@/components/events/event-form-drawer";
 import { useEvents } from "@/hooks/use-events";
 import { useAutoReminderScheduler } from "@/hooks/use-auto-reminder-scheduler";
 import { EventWithMeta, EventFormValues } from "@/types/events";
+import { UndoSnackbarPortal } from "@/components/events/undo-manager";
 
 export default function DashboardLayout({
   children,
@@ -65,6 +66,9 @@ export default function DashboardLayout({
         initialData={editingEvent}
         isSubmitting={isAdding || isUpdating}
       />
+
+      {/* Global Undo Snackbar for swipe-to-delete (Prompt #071) */}
+      <UndoSnackbarPortal />
     </div>
   );
 }
