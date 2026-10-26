@@ -145,41 +145,61 @@ Deno.serve(async (req) => {
 
           const occDateStr = nextOcc.toISOString().split("T")[0];
 
-          // 4. Kiểm tra chống gửi trùng trong notification_logs
-          const { data: existingLog } = await supabase
-            .from("notification_logs")
-            .select("id")
-            .eq("event_id", ev.id)
-            .eq("remind_offset", daysDiff)
-            .eq("occurrence_date", occDateStr)
-            .eq("channel", "email")
-            .maybeSingle();
+          // 4. Khóa độc quyền (Atomic Claim Lock) trong notification_logs
+          let isLocked = false;
+          if (!isTest) {
+            // Kiểm tra xem đã có log sent/pending chưa
+            const { data: existingLog } = await supabase
+              .from("notification_logs")
+              .select("id, status")
+              .eq("event_id", ev.id)
+              .eq("remind_offset", daysDiff)
+              .eq("occurrence_date", occDateStr)
+              .eq("channel", "email")
+              .maybeSingle();
 
-          if (!existingLog || isTest) {
-            // Tính tuổi sắp tới nếu có năm sinh
-            let upcomingAge: number | null = null;
-            if (ev.event_year) {
-              upcomingAge = nextOcc.getUTCFullYear() - ev.event_year;
-            }
+            if (existingLog) continue;
 
-            remindersToSend.push({
-              offset: daysDiff,
-              occurrenceDateStr: occDateStr,
-              event: ev as EventRecord,
-              item: {
-                id: ev.id,
-                name: ev.name,
-                eventType: ev.event_type,
-                eventDateFormatted: `${ev.event_day} tháng ${ev.event_month}`,
-                daysRemaining: daysDiff,
-                upcomingAge,
-                groupName: ev.group_name,
-                isLunar: ev.is_lunar,
-                note: ev.note,
-                giftIdea: ev.gift_idea,
-              },
-            });
+            // Thử xí chỗ độc quyền 'pending'
+            const { error: lockErr } = await supabase
+              .from("notification_logs")
+              .insert({
+                user_id: setting.user_id,
+                event_id: ev.id,
+                remind_offset: daysDiff,
+                occurrence_date: occDateStr,
+                channel: "email",
+                status: "pending",
+              });
+
+            if (lockErr) continue; // Luồng song song khác đã chiếm lock
+            isLocked = true;
           }
+
+          // Tính tuổi sắp tới nếu có năm sinh
+          let upcomingAge: number | null = null;
+          if (ev.event_year) {
+            upcomingAge = nextOcc.getUTCFullYear() - ev.event_year;
+          }
+
+          remindersToSend.push({
+            offset: daysDiff,
+            occurrenceDateStr: occDateStr,
+            event: ev as EventRecord,
+            isLocked,
+            item: {
+              id: ev.id,
+              name: ev.name,
+              eventType: ev.event_type,
+              eventDateFormatted: `${ev.event_day} tháng ${ev.event_month}`,
+              daysRemaining: daysDiff,
+              upcomingAge,
+              groupName: ev.group_name,
+              isLunar: ev.is_lunar,
+              note: ev.note,
+              giftIdea: ev.gift_idea,
+            },
+          });
         }
       }
 
@@ -225,18 +245,33 @@ Deno.serve(async (req) => {
           console.log(`[SIMULATE EMAIL] To: ${recipientEmails.join(", ")} | Items: ${remindersToSend.length}`);
         }
 
-        // 6. Ghi log vào notification_logs để chống gửi trùng lặp
+        // 6. Chốt trạng thái notification_logs
         if (!isTest) {
           for (const rem of remindersToSend) {
-            await supabase.from("notification_logs").insert({
-              user_id: setting.user_id,
-              event_id: rem.event.id,
-              remind_offset: rem.offset,
-              occurrence_date: rem.occurrenceDateStr,
-              channel: "email",
-              status: sendStatus,
-              error: sendError,
-            });
+            if (rem.isLocked) {
+              if (sendStatus === "sent") {
+                await supabase
+                  .from("notification_logs")
+                  .update({
+                    status: "sent",
+                    sent_at: new Date().toISOString(),
+                  })
+                  .eq("event_id", rem.event.id)
+                  .eq("remind_offset", rem.offset)
+                  .eq("occurrence_date", rem.occurrenceDateStr)
+                  .eq("channel", "email");
+              } else {
+                // Rollback xóa lock pending nếu gửi thất bại
+                await supabase
+                  .from("notification_logs")
+                  .delete()
+                  .eq("event_id", rem.event.id)
+                  .eq("remind_offset", rem.offset)
+                  .eq("occurrence_date", rem.occurrenceDateStr)
+                  .eq("channel", "email")
+                  .eq("status", "pending");
+              }
+            }
           }
         }
 

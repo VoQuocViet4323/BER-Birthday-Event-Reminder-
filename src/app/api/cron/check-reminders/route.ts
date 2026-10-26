@@ -131,21 +131,20 @@ async function handleCheckReminders(request: Request) {
         continue;
       }
 
-      // 4. Kiểm tra chống gửi trùng lặp bằng bảng notification_logs
-      // Nếu đã đến hoặc qua giờ nhắc (ví dụ cài 08:00 nhưng mở app lúc 16:54) và chưa từng gửi -> gửi bù ngay!
+      // 4. Khóa độc quyền (Atomic Claim Lock) bằng notification_logs
+      // Nhờ ràng buộc UNIQUE (event_id, remind_offset, occurrence_date, channel),
+      // chỉ có DUY NHẤT 1 request insert thành công. Mọi request song song khác sẽ bị chặn đứng 100%.
       const occurrenceDateStr = nextOcc.toISOString().split("T")[0];
-      const { data: existingLog } = await (supabase as any)
-        .from("notification_logs")
-        .select("id")
-        .eq("user_id", user.id)
-        .eq("event_id", ev.id)
-        .eq("remind_offset", daysRemaining)
-        .eq("occurrence_date", occurrenceDateStr)
-        .eq("channel", "email")
-        .maybeSingle();
+      const locked = await claimReminderLock(
+        supabase,
+        user.id,
+        ev.id,
+        daysRemaining,
+        occurrenceDateStr
+      );
 
-      if (existingLog) {
-        // Đã gửi trong ngày rồi, không gửi lại
+      if (!locked) {
+        // Đã gửi hoặc đang có một request song song khác chiếm quyền xử lý -> bỏ qua ngay!
         continue;
       }
 
@@ -166,7 +165,7 @@ async function handleCheckReminders(request: Request) {
         success: true,
         checkedAt: currentTimeStr,
         dueCount: 0,
-        message: `Đã quét lúc ${currentTimeStr}. Không có sự kiện nào đến giờ thông báo tại phút này.`,
+        message: `Đã quét lúc ${currentTimeStr}. Không có sự kiện nào đến giờ thông báo tại phút này (hoặc đã được gửi).`,
       });
     }
 
@@ -178,6 +177,8 @@ async function handleCheckReminders(request: Request) {
       process.env.SMTP_USER;
 
     if (!targetEmail) {
+      // Rollback lock nếu thiếu email nhận
+      await releaseReminderLock(supabase, dueEvents);
       return NextResponse.json(
         {
           success: false,
@@ -227,27 +228,16 @@ async function handleCheckReminders(request: Request) {
     });
 
     if (!sendResult.success) {
+      // Rollback: Xóa bản ghi pending để chu kỳ tiếp theo có thể gửi lại
+      await releaseReminderLock(supabase, dueEvents);
       return NextResponse.json(
         { success: false, error: sendResult.error || "Gửi email thất bại" },
         { status: 500 }
       );
     }
 
-    // 8. Ghi log vào notification_logs để đảm bảo không gửi lại trong lần quét tiếp theo
-    for (const ev of dueEvents) {
-      try {
-        await (supabase as any).from("notification_logs").insert({
-          user_id: user.id,
-          event_id: ev.id,
-          remind_offset: ev.daysRemaining,
-          occurrence_date: ev.occurrenceDateStr,
-          channel: "email",
-          status: "sent",
-        });
-      } catch (logErr) {
-        console.warn("Could not record notification log:", logErr);
-      }
-    }
+    // 8. Chốt thành công: Cập nhật notification_logs từ 'pending' sang 'sent'
+    await commitReminderSent(supabase, dueEvents);
 
     return NextResponse.json({
       success: true,
@@ -332,17 +322,14 @@ async function handleGlobalCronCheck(admin: any, currentTimeStr: string, now: Da
         if (normalizeTime(currentTimeStr) < normalizeTime(eventTime)) continue;
 
         const occurrenceDateStr = nextOcc.toISOString().split("T")[0];
-        const { data: existingLog } = await admin
-          .from("notification_logs")
-          .select("id")
-          .eq("user_id", userId)
-          .eq("event_id", ev.id)
-          .eq("remind_offset", daysRemaining)
-          .eq("occurrence_date", occurrenceDateStr)
-          .eq("channel", "email")
-          .maybeSingle();
-
-        if (existingLog) continue;
+        const locked = await claimReminderLock(
+          admin,
+          userId,
+          ev.id,
+          daysRemaining,
+          occurrenceDateStr
+        );
+        if (!locked) continue;
 
         const upcomingAge = ev.event_year ? calculateUpcomingAge(ev.event_year, nextOcc.getFullYear()) : null;
         dueEvents.push({ ...ev, daysRemaining, upcomingAge, occurrenceDateStr });
@@ -355,7 +342,10 @@ async function handleGlobalCronCheck(admin: any, currentTimeStr: string, now: Da
         profile?.email ||
         process.env.SMTP_USER;
 
-      if (!targetEmail) continue;
+      if (!targetEmail) {
+        await releaseReminderLock(admin, dueEvents);
+        continue;
+      }
 
       const rawAppUrl = process.env.NEXT_PUBLIC_APP_URL;
       const appUrl =
@@ -392,21 +382,9 @@ async function handleGlobalCronCheck(admin: any, currentTimeStr: string, now: Da
       if (sendResult.success) {
         totalEmailsSent++;
         processedEvents.push(...dueEvents.map((e) => e.name));
-
-        for (const ev of dueEvents) {
-          try {
-            await admin.from("notification_logs").insert({
-              user_id: userId,
-              event_id: ev.id,
-              remind_offset: ev.daysRemaining,
-              occurrence_date: ev.occurrenceDateStr,
-              channel: "email",
-              status: "sent",
-            });
-          } catch (logErr) {
-            console.warn("Could not record global notification log:", logErr);
-          }
-        }
+        await commitReminderSent(admin, dueEvents);
+      } else {
+        await releaseReminderLock(admin, dueEvents);
       }
     }
 
@@ -424,5 +402,96 @@ async function handleGlobalCronCheck(admin: any, currentTimeStr: string, now: Da
       { success: false, error: err?.message || "Lỗi quét toàn hệ thống" },
       { status: 500 }
     );
+  }
+}
+
+/**
+ * Khóa độc quyền (Atomic Claim Lock) chống gửi trùng lặp tuyệt đối.
+ * Tận dụng ràng buộc UNIQUE (event_id, remind_offset, occurrence_date, channel).
+ * Chỉ 1 request duy nhất insert thành công. Mọi request song song khác sẽ bị chặn đứng 100%.
+ */
+async function claimReminderLock(
+  client: any,
+  userId: string,
+  eventId: string,
+  remindOffset: number,
+  occurrenceDateStr: string
+): Promise<boolean> {
+  try {
+    // 1. Kiểm tra nhanh xem đã có log trong ngày chưa
+    const { data: existingLog } = await client
+      .from("notification_logs")
+      .select("id, status")
+      .eq("event_id", eventId)
+      .eq("remind_offset", remindOffset)
+      .eq("occurrence_date", occurrenceDateStr)
+      .eq("channel", "email")
+      .maybeSingle();
+
+    if (existingLog) {
+      // Đã gửi ('sent') hoặc đang có luồng khác giữ lock ('pending') -> tuyệt đối không gửi lại
+      return false;
+    }
+
+    // 2. Atomic Lock: Insert một bản ghi 'pending'
+    const { error: lockErr } = await client.from("notification_logs").insert({
+      user_id: userId,
+      event_id: eventId,
+      remind_offset: remindOffset,
+      occurrence_date: occurrenceDateStr,
+      channel: "email",
+      status: "pending",
+    });
+
+    if (lockErr) {
+      // Bị trùng khóa UNIQUE (luồng song song khác vừa chiếm lock trong cùng mili-giây)
+      return false;
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Xác nhận đã gửi email thành công -> chuyển 'pending' sang 'sent'
+ */
+async function commitReminderSent(client: any, events: any[]) {
+  for (const ev of events) {
+    try {
+      await client
+        .from("notification_logs")
+        .update({
+          status: "sent",
+          sent_at: new Date().toISOString(),
+        })
+        .eq("event_id", ev.id)
+        .eq("remind_offset", ev.daysRemaining)
+        .eq("occurrence_date", ev.occurrenceDateStr)
+        .eq("channel", "email");
+    } catch (err) {
+      console.warn("Could not commit reminder log status to sent:", err);
+    }
+  }
+}
+
+/**
+ * Rollback xóa lock 'pending' nếu gửi email gặp sự cố (để lần quét tiếp theo có thể thử lại)
+ */
+async function releaseReminderLock(client: any, events: any[]) {
+  for (const ev of events) {
+    try {
+      await client
+        .from("notification_logs")
+        .delete()
+        .eq("event_id", ev.id)
+        .eq("remind_offset", ev.daysRemaining)
+        .eq("occurrence_date", ev.occurrenceDateStr)
+        .eq("channel", "email")
+        .eq("status", "pending");
+    } catch (err) {
+      console.warn("Could not release pending reminder lock:", err);
+    }
   }
 }

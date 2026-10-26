@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { EventWithMeta } from "@/types/events";
 import { formatDaysRemainingText } from "@/lib/utils";
 import {
@@ -13,7 +13,7 @@ import {
   FileText,
   Moon,
 } from "lucide-react";
-import { motion, useMotionValue, useTransform } from "framer-motion";
+import { motion, useAnimationControls } from "framer-motion";
 import { cn } from "@/lib/utils";
 
 interface EventCardProps {
@@ -30,6 +30,11 @@ export function EventCard({
   onToggleEnabled,
 }: EventCardProps) {
   const [showDetails, setShowDetails] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const isDraggingRef = useRef(false);
+  const controls = useAnimationControls();
+
   const remainingInfo = formatDaysRemainingText(event.daysRemaining);
 
   // Group styling badges
@@ -47,43 +52,110 @@ export function EventCard({
     other: "🌟 Sự kiện",
   };
 
-  // Motion swipe coordinates for mobile gestures
-  const x = useMotionValue(0);
-  const backgroundOpacity = useTransform(x, [-100, 0, 100], [1, 0, 1]);
+  // Xử lý xác nhận xóa (chạy animation mượt mà trước khi kích hoạt onDelete)
+  const executeDelete = async () => {
+    if (typeof navigator !== "undefined" && navigator.vibrate) {
+      try {
+        navigator.vibrate(12);
+      } catch {}
+    }
+    setIsDeleting(true);
+    await controls.start({
+      x: -420,
+      opacity: 0,
+      transition: { duration: 0.22, ease: "easeOut" },
+    });
+    onDelete(event.id);
+  };
+
+  // Xử lý kết thúc thao tác vuốt (iOS Swipe Physics)
+  const handleDragEnd = async (_e: any, info: any) => {
+    // Đặt độ trễ nhỏ để tránh bắt nhầm click sau khi drag
+    setTimeout(() => {
+      isDraggingRef.current = false;
+    }, 120);
+
+    const offsetX = info.offset.x;
+    const velocityX = info.velocity.x;
+
+    // 1. VUỐT MẠNH HOẶC VUỐT DÀI SANG TRÁI -> XÓA LUÔN TỨC THÌ (iOS Full Swipe)
+    if (offsetX < -150 || velocityX < -450) {
+      await executeDelete();
+      return;
+    }
+
+    // 2. VUỐT NHẸ SANG TRÁI -> KHỰNG LẠI 1 NHỊP Ở -82px (iOS Action Reveal)
+    if (offsetX < -35 || (isOpen && offsetX < 20)) {
+      setIsOpen(true);
+      controls.start({
+        x: -82,
+        transition: { type: "spring", stiffness: 450, damping: 35 },
+      });
+      return;
+    }
+
+    // 3. VUỐT NGƯỢC LẠI HOẶC VUỐT CHƯA ĐỦ LỰC -> HỒI VỊ TỰ NHIÊN VỀ 0
+    setIsOpen(false);
+    controls.start({
+      x: 0,
+      transition: { type: "spring", stiffness: 450, damping: 35 },
+    });
+  };
+
+  // Nhấp vào thẻ (Nếu đang hé mở nút xóa thì đóng lại, nếu không thì mở form sửa)
+  const handleCardClick = () => {
+    if (isDraggingRef.current) return;
+    if (isOpen) {
+      setIsOpen(false);
+      controls.start({
+        x: 0,
+        transition: { type: "spring", stiffness: 450, damping: 35 },
+      });
+      return;
+    }
+    onEdit(event);
+  };
 
   return (
-    <div className="relative overflow-hidden rounded-3xl group">
-      {/* Background Action Reveal for Mobile Swipe */}
-      <motion.div
-        style={{ opacity: backgroundOpacity }}
-        className="absolute inset-0 flex items-center justify-between px-6 rounded-3xl pointer-events-none"
-      >
-        <div className="flex items-center gap-2 text-emerald-600 font-bold text-xs">
-          <Edit2 className="w-4 h-4" />
-          <span>Sửa</span>
-        </div>
-        <div className="flex items-center gap-2 text-rose-600 font-bold text-xs">
-          <Trash2 className="w-4 h-4" />
+    <motion.div
+      animate={isDeleting ? { height: 0, opacity: 0, marginBottom: 0 } : { height: "auto", opacity: 1 }}
+      transition={{ duration: 0.25, ease: "easeInOut" }}
+      className="relative overflow-hidden rounded-3xl group select-none"
+    >
+      {/* Background Action Button (Nút "Xóa" màu đỏ kiểu Apple iOS) */}
+      <div className="absolute inset-y-0 right-0 flex items-center pr-2.5 z-0 pointer-events-auto">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            executeDelete();
+          }}
+          className="h-[calc(100%-14px)] w-[72px] rounded-2xl bg-rose-500 hover:bg-rose-600 active:scale-95 text-white flex flex-col items-center justify-center gap-1 font-bold text-xs shadow-md transition-all duration-150 active:bg-rose-700"
+          title="Xóa sự kiện"
+        >
+          <Trash2 className="w-4 h-4 stroke-[2.5]" />
           <span>Xóa</span>
-        </div>
-      </motion.div>
+        </button>
+      </div>
 
-      {/* Main Interactive Card */}
+      {/* Main Interactive Card (Khóa cứng trục cuộn, mượt 120fps trên mobile) */}
       <motion.div
-        style={{ x }}
+        animate={controls}
         drag="x"
-        dragConstraints={{ left: 0, right: 0 }}
-        dragElastic={0.4}
-        onDragEnd={(_e, info) => {
-          if (info.offset.x > 80) {
-            onEdit(event);
-          } else if (info.offset.x < -80) {
-            onDelete(event.id);
-          }
+        dragDirectionLock
+        dragConstraints={{ left: -320, right: 0 }}
+        dragElastic={{ left: 0.15, right: 0.04 }}
+        onDragStart={() => {
+          isDraggingRef.current = true;
         }}
-        onClick={() => onEdit(event)}
+        onDragEnd={handleDragEnd}
+        onClick={handleCardClick}
+        style={{
+          touchAction: "pan-y",
+          willChange: "transform",
+        }}
         className={cn(
-          "relative bg-card rounded-3xl border border-border/80 p-4 sm:p-5 shadow-card hover:shadow-soft-hover transition-all duration-200 cursor-pointer active:scale-[0.98] touch-manipulation",
+          "relative bg-card rounded-3xl border border-border/80 p-4 sm:p-5 shadow-card hover:shadow-soft-hover transition-colors duration-150 cursor-pointer active:scale-[0.99] z-10",
           !event.enabled && "opacity-60 grayscale-[40%]"
         )}
       >
@@ -181,7 +253,7 @@ export function EventCard({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onDelete(event.id);
+                  executeDelete();
                 }}
                 className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 text-muted-foreground hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
                 title="Xóa sự kiện"
@@ -225,6 +297,6 @@ export function EventCard({
           </div>
         )}
       </motion.div>
-    </div>
+    </motion.div>
   );
 }

@@ -2384,6 +2384,70 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
   - [.agents/rules/build_error_fixes.md](file:///e:/BER-Birthday-Event-Reminder-/.agents/rules/build_error_fixes.md) (Thêm Quy tắc số 7)
   - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
 
+---
+
+### 📅 [2026-10-26 08:59:00] - Khắc Phục Triệt Để Lỗi Gửi Double Thông Báo Email Bằng Cơ Chế Atomic Claim Lock
+
+- **Hiện tượng & Yêu cầu của người dùng**:
+  - *"kiểm tra cho tôi hiện tại đang bị gửi double thông báo tới email, tôi muốn chỉ cần gửi thông báo 1 lần là được"*.
+- **Nguyên nhân cốt lõi (Technical Root Cause)**:
+  1. **Race Condition từ Client ([src/hooks/use-events.ts](file:///e:/BER-Birthday-Event-Reminder-/src/hooks/use-events.ts))**:
+     - Trong 4 mutation (`createMutation`, `updateMutation`, `restoreMutation`, `toggleEnabledMutation`), code vừa phát sự kiện `window.dispatchEvent(new CustomEvent("trigger-reminder-check"))`, vừa gọi thêm `fetch("/api/cron/check-reminders", { method: "POST" })`.
+     - Sự kiện `trigger-reminder-check` kích hoạt `useAutoReminderScheduler` gửi 1 request, kết hợp với lệnh `fetch` kế tiếp làm 2 request bay lên server song song trong cùng 1 tick JS.
+  2. **Lỗ hổng Check-Then-Act (TOCTOU) tại Backend ([src/app/api/cron/check-reminders/route.ts](file:///e:/BER-Birthday-Event-Reminder-/src/app/api/cron/check-reminders/route.ts))**:
+     - Quy trình cũ: `SELECT existingLog` $\rightarrow$ Gửi email (`sendEmail`) $\rightarrow$ Mới `INSERT` vào `notification_logs`.
+     - Quá trình gửi email qua SMTP/Resend mất 500ms - 1500ms. Trong thời gian này, `notification_logs` chưa có bản ghi nào.
+     - Cả 2 request song song đều thấy `existingLog` là `null`, dẫn đến cả 2 cùng gọi `sendEmail` $\rightarrow$ Người dùng nhận 2 email giống hệt nhau!
+- **Nội dung giải pháp đã triển khai**:
+  1. **Phía Client (Triệt tiêu gọi trùng lặp)**:
+     - Xóa toàn bộ 4 lệnh `fetch("/api/cron/check-reminders")` dư thừa trong [use-events.ts](file:///e:/BER-Birthday-Event-Reminder-/src/hooks/use-events.ts). Chỉ giữ 1 kênh điều phối duy nhất qua `window.dispatchEvent`.
+     - Thêm Debounce 400ms trong [use-auto-reminder-scheduler.ts](file:///e:/BER-Birthday-Event-Reminder-/src/hooks/use-auto-reminder-scheduler.ts) để gộp các trigger phát sinh gần nhau thành 1 request duy nhất.
+  2. **Phía Backend (Cơ chế Khóa Nguyên Tử - Atomic Claim Lock)**:
+     - Tận dụng ràng buộc `CONSTRAINT unique_event_notification UNIQUE (event_id, remind_offset, occurrence_date, channel)` trong PostgreSQL.
+     - **Pre-flight Lock**: Trước khi gửi email, hệ thống insert bản ghi `status: 'pending'` vào `notification_logs`. Nếu có 2 request chạy song song, chỉ có 1 request insert thành công, request thứ hai bị PostgreSQL báo lỗi `23505 unique violation` và bị chặn đứng ngay lập tức!
+     - **Commit Success**: Sau khi email gửi thành công, cập nhật bản ghi thành `status: 'sent'`.
+     - **Rollback on Error**: Nếu gửi mail thất bại, tự động xóa bản ghi pending để chu kỳ quét sau có thể thử lại.
+  3. **Đồng bộ hóa Edge Function**:
+     - Áp dụng cơ chế Atomic Claim Lock tương tự vào [supabase/functions/send-reminders/index.ts](file:///e:/BER-Birthday-Event-Reminder-/supabase/functions/send-reminders/index.ts).
+  4. **Cơ sở dữ liệu**:
+     - Tạo migration [supabase/migrations/20261026_011_notification_logs_policies.sql](file:///e:/BER-Birthday-Event-Reminder-/supabase/migrations/20261026_011_notification_logs_policies.sql) bổ sung các policy RLS cho `notification_logs`.
+- **Trạng thái kiểm thử**:
+  - `npm test`: **26/26 tests PASS**
+  - `npx tsc --noEmit`: **0 errors** (Type check tuyệt đối an toàn)
+  - Dev Server: Running ổn định tại `http://localhost:3000` (HTTP 200 OK).
+
+---
+
+### 📅 [2026-10-26 09:04:00] - Nâng Cấp Cử Chỉ Vuốt Xóa iOS (Swipe-to-Delete) & Khắc Phục Lỗi Giật Lag Trên Mobile
+
+- **Yêu cầu của người dùng**:
+  - *"toi muốn khi vuốt nhẹ sang trái để xóa(như ảnh phần khoanh đỏ) thì khựng lại 1 nhịp, còn khi vuốt mạnh thì sẽ xóa luôn, giống hđh ios. Hiện tại khi xóa đang bị khựng lại 1 nhịp và bị đơ giật lag trên mobile, tìm cách khắc phục"*.
+- **Nguyên nhân cốt lõi gây đơ giật lag trước đó**:
+  1. **Không có snap threshold**: Trước đó `dragConstraints={{ left: 0, right: 0 }}` kết hợp `onDragEnd` gọi ngay `onDelete` khi vượt quá -80px. Thẻ không thể dừng lại (khựng lại 1 nhịp), đồng thời spring animation giật nảy ngược về 0 trong khi component bị unmount, gây xung đột animation và crash frame rate.
+  2. **Tranh chấp cử chỉ cảm ứng (Gesture Conflict)**: Thiếu `dragDirectionLock` và `touchAction: "pan-y"`, khiến thao tác lướt ngón tay dọc trang bị nhận diện chéo sang kéo ngang thẻ, làm đơ giật toàn bộ danh sách khi cuộn trên mobile.
+  3. **Nút Xóa bị chặn click**: Nút xóa ở layer nền trước đó có `pointer-events-none`, người dùng không thể bấm trực tiếp.
+- **Nội dung đã triển khai ([src/components/events/event-card.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-card.tsx))**:
+  1. **Hai ngưỡng cử chỉ chuẩn Apple iOS (Two-tier iOS Swipe Physics)**:
+     - **Ngưỡng 1: Vuốt nhẹ sang trái (Offset từ -35px đến -150px)**:
+       - Thẻ snap mượt mà dừng lại ở `-82px` (*khựng lại 1 nhịp*) với spring animation (`stiffness: 450, damping: 35`).
+       - Lộ rõ nút "Xóa" màu đỏ kiểu iOS (`w-[72px] bg-rose-500 rounded-2xl shadow-md`), người dùng có thể nhấp vào để xóa.
+       - Nếu nhấp vào thân thẻ (hoặc vuốt ngược lại), thẻ đóng lại êm ái về vị trí ban đầu (`x = 0`).
+     - **Ngưỡng 2: Vuốt mạnh / vuốt dài (Offset < -150px hoặc Vận tốc < -450px/s)**:
+       - **iOS Full Swipe**: Thẻ kích hoạt rung haptic nhẹ (`navigator.vibrate(12)`), trượt vút sang trái (`x: -420px`), thu nhỏ mượt mà và xóa luôn tức thì không cần thêm thao tác nào.
+  2. **Khắc phục triệt để đơ giật lag trên mobile**:
+     - Thêm `dragDirectionLock`: Framer Motion tự động khóa trục ngay khi cử chỉ bắt đầu (vuốt dọc nhường 100% cho cuộn trang mượt mà, vuốt ngang chỉ kéo thẻ).
+     - Thêm `touchAction: "pan-y"` và `willChange: "transform"` để GPU xử lý compositing độc lập ở 60fps - 120fps.
+     - Kiểm soát animation tuần tự bằng `useAnimationControls`: chạy trượt biến mất mượt mà trước khi kích hoạt xóa dữ liệu.
+- **Danh sách file đã chỉnh sửa**:
+  - [src/components/events/event-card.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-card.tsx)
+  - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npm test`: **26/26 tests PASS**
+  - `npx tsc --noEmit`: **0 errors** (Type check an toàn tuyệt đối)
+  - Dev Server: Hoạt động ổn định tại `http://localhost:3000` (HTTP 200 OK)
+
+
+
 
 
 

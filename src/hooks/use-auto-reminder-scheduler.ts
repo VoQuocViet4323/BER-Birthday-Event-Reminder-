@@ -59,10 +59,14 @@ export function useAutoReminderScheduler() {
     // Quét ngay lần đầu tiên sau khi trang nạp
     const initialTimer = setTimeout(checkReminders, 1500);
 
-    // Lắng nghe sự kiện kích hoạt thủ công khi thêm/sửa sự kiện
+    // Lắng nghe sự kiện kích hoạt thủ công khi thêm/sửa sự kiện (Debounce 400ms chống spam gọi liên tiếp)
+    let manualTriggerTimer: NodeJS.Timeout | null = null;
     const handleManualTrigger = () => {
-      lastCheckedMinuteRef.current = "";
-      checkReminders();
+      if (manualTriggerTimer) clearTimeout(manualTriggerTimer);
+      manualTriggerTimer = setTimeout(() => {
+        lastCheckedMinuteRef.current = "";
+        checkReminders();
+      }, 400);
     };
     window.addEventListener("trigger-reminder-check", handleManualTrigger);
 
@@ -71,6 +75,7 @@ export function useAutoReminderScheduler() {
 
     return () => {
       clearTimeout(initialTimer);
+      if (manualTriggerTimer) clearTimeout(manualTriggerTimer);
       clearInterval(interval);
       window.removeEventListener("trigger-reminder-check", handleManualTrigger);
     };

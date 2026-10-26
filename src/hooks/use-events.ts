@@ -323,7 +323,6 @@ export function useEvents() {
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("trigger-reminder-check"));
       }
-      fetch("/api/cron/check-reminders", { method: "POST" }).catch(() => {});
     },
   });
 
@@ -458,7 +457,6 @@ export function useEvents() {
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("trigger-reminder-check"));
       }
-      fetch("/api/cron/check-reminders", { method: "POST" }).catch(() => {});
     },
   });
 
@@ -647,9 +645,6 @@ export function useEvents() {
                       new CustomEvent("trigger-reminder-check")
                     );
                   }
-                  fetch("/api/cron/check-reminders", { method: "POST" }).catch(
-                    () => {}
-                  );
 
                   toast({
                     title: `Đã khôi phục "${deletedItem.name}"`,
@@ -731,7 +726,6 @@ export function useEvents() {
         if (typeof window !== "undefined") {
           window.dispatchEvent(new CustomEvent("trigger-reminder-check"));
         }
-        fetch("/api/cron/check-reminders", { method: "POST" }).catch(() => {});
       }
     },
   });
