@@ -2933,6 +2933,35 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
   - `npx tsc --noEmit`: **0 errors**.
   - Dev Server: Biên dịch thành công trong 411ms.
 
+---
+
+### 📅 2026-10-26 15:20:00 | Fix Cứng Form Thêm Sự Kiện (Chống Trượt Mất, Chỉ Đóng Khi Bấm Ngoài Hoặc Nút X)
+
+- **Yêu cầu của người dùng**:
+  - Khi bấm thêm sự kiện, không được để modal bị trượt mất khi người dùng thao tác nhập thông tin.
+  - Phải cố định (fix cứng) modal, chỉ cho phép đóng khi bấm ra ngoài khoảng trống (backdrop) hoặc bấm nút `X`.
+- **Nguyên nhân trước đó**:
+  - Thẻ `motion.div` trong `event-form-drawer.tsx` được cấu hình cử chỉ kéo vuốt:
+    `drag="y"`, `dragConstraints={{ top: 0 }}`, `dragElastic={{ top: 0, bottom: 0.4 }}`, và `onDragEnd` tự động gọi `onClose()` khi vuốt xuống quá 100px hoặc vận tốc lớn.
+  - Khi người dùng trên điện thoại vuốt ngón tay để cuộn form hoặc chạm vào ô nhập dữ liệu, cử chỉ vuốt bị Framer Motion kích hoạt nhầm làm cả form bị trượt tuột xuống dưới và đóng lại.
+- **Nội dung đã triển khai**:
+  1. Tại [src/components/events/event-form-drawer.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-form-drawer.tsx):
+     - Gỡ bỏ hoàn toàn `drag="y"`, `dragConstraints`, `dragElastic`, và `onDragEnd`.
+     - Xóa thanh kéo mồi (drag indicator handle).
+     - Gỡ `touch-none` trên overlay và thêm `select-text` trên sheet để đảm bảo chạm vuốt cuộn form và nhập văn bản mượt mà 100%.
+     - Bổ sung `document.body.style.overflow = "hidden"` khóa cứng cuộn trang web phía sau khi modal đang mở.
+     - Giữ nguyên cơ chế đóng an toàn:
+       - Bấm nút `X` $\rightarrow$ Đóng form.
+       - Bấm nút `Hủy` $\rightarrow$ Đóng form.
+       - Bấm ra vùng khoảng trống bên ngoài (`e.target === e.currentTarget`) $\rightarrow$ Đóng form.
+       - Bấm phím `Escape` $\rightarrow$ Đóng form.
+       - Thao tác gõ chữ, cuộn form, bấm chọn ngày/giờ, chọn nhóm... bên trong form được `e.stopPropagation()` bảo vệ tuyệt đối, không bao giờ bị trượt mất.
+- **Trạng thái kiểm thử**:
+  - `npm test`: **26/26 unit tests PASS**.
+  - `npx tsc --noEmit`: **0 errors**.
+  - Dev Server: Biên dịch thành công trong 594ms.
+
+
 
 
 

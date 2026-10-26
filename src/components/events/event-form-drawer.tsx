@@ -36,6 +36,22 @@ export function EventFormDrawer({
     setMounted(true);
   }, []);
 
+  // Khóa cuộn trang phía sau khi mở modal và hỗ trợ phím Escape
+  useEffect(() => {
+    if (isOpen) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === "Escape") onClose();
+      };
+      document.addEventListener("keydown", handleKeyDown);
+      return () => {
+        document.body.style.overflow = originalOverflow;
+        document.removeEventListener("keydown", handleKeyDown);
+      };
+    }
+  }, [isOpen, onClose]);
+
   const {
     register,
     handleSubmit,
@@ -171,7 +187,7 @@ export function EventFormDrawer({
               onClick={(e) => {
                 if (e.target === e.currentTarget) onClose();
               }}
-              className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-[3px] p-0 sm:p-4 touch-none"
+              className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4 select-none"
             >
               <motion.div
                 key="event-form-drawer-sheet"
@@ -180,23 +196,13 @@ export function EventFormDrawer({
                 exit={{ y: "100%", opacity: 0.95 }}
                 transition={{
                   type: "spring",
-                  damping: 30,
-                  stiffness: 340,
+                  damping: 32,
+                  stiffness: 350,
                   mass: 0.8,
                 }}
-                drag="y"
-                dragConstraints={{ top: 0 }}
-                dragElastic={{ top: 0, bottom: 0.4 }}
-                onDragEnd={(_e, info) => {
-                  if (info.offset.y > 100 || info.velocity.y > 450) {
-                    onClose();
-                  }
-                }}
-                className="w-full max-w-lg bg-card rounded-t-3xl sm:rounded-3xl border border-border shadow-2xl overflow-hidden max-h-[92vh] flex flex-col will-change-transform transform-gpu"
+                className="w-full max-w-lg bg-card rounded-t-3xl sm:rounded-3xl border border-border shadow-2xl overflow-hidden max-h-[92vh] flex flex-col will-change-transform transform-gpu select-text"
                 onClick={(e) => e.stopPropagation()}
               >
-                {/* Mobile Drag Indicator Handle */}
-                <div className="w-12 h-1.5 bg-muted-foreground/30 rounded-full mx-auto mt-2.5 mb-1 sm:hidden shrink-0 cursor-grab active:cursor-grabbing" />
         {/* Drawer Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <div>
