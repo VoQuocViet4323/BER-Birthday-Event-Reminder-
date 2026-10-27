@@ -187,7 +187,7 @@ export function EventFormDrawer({
               onClick={(e) => {
                 if (e.target === e.currentTarget) onClose();
               }}
-              className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4 select-none"
+              className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4 select-none overscroll-contain"
             >
               <motion.div
                 key="event-form-drawer-sheet"
@@ -200,7 +200,7 @@ export function EventFormDrawer({
                   stiffness: 350,
                   mass: 0.8,
                 }}
-                className="w-full max-w-lg bg-card rounded-t-3xl sm:rounded-3xl border border-border shadow-2xl overflow-hidden max-h-[92vh] flex flex-col will-change-transform transform-gpu select-text"
+                className="w-full max-w-lg bg-card rounded-t-3xl sm:rounded-3xl border border-border shadow-2xl overflow-hidden max-h-[92vh] flex flex-col will-change-transform transform-gpu select-text overscroll-contain"
                 onClick={(e) => e.stopPropagation()}
               >
         {/* Drawer Header */}
@@ -231,7 +231,7 @@ export function EventFormDrawer({
         </div>
 
         {/* Drawer Body Form */}
-        <form onSubmit={handleSubmit(handleFormSubmit)} className="flex-1 overflow-y-auto p-6 space-y-5">
+        <form onSubmit={handleSubmit(handleFormSubmit)} className="flex-1 overflow-y-auto p-6 space-y-5 overscroll-contain">
           {/* 1. Tên người / sự kiện (BẮT BUỘC) */}
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
