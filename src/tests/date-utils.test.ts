@@ -168,5 +168,42 @@ describe("Date Utilities & Edge Cases", () => {
       expect(res41.text).toBe("Còn 41 ngày");
       expect(res41.badgeClass).toContain("dark:bg-slate-800");
     });
+
+    it("trả về thông tin đúng cho sự kiện diễn ra hôm qua (days = -1)", () => {
+      const res = formatDaysRemainingText(-1);
+      expect(res.text).toBe("Hôm qua");
+      expect(res.isToday).toBe(false);
+      expect(res.isUrgent).toBe(true);
+      expect(res.badgeClass).toContain("dark:text-amber-400");
+    });
+
+    it("trả về thông tin đúng cho sự kiện đã qua nhiều ngày (days < -1)", () => {
+      const res = formatDaysRemainingText(-2);
+      expect(res.text).toBe("Đã qua 2 ngày");
+      expect(res.isToday).toBe(false);
+      expect(res.isUrgent).toBe(false);
+    });
+  });
+
+  describe("Sự kiện diễn ra hôm qua (Yesterday Event Occurrence)", () => {
+    it("giữ nguyên ngày hôm qua (diffDays = -1) thay vì nhảy sang năm sau", () => {
+      const event = {
+        event_day: 26,
+        event_month: 10,
+        is_lunar: false,
+        repeat_yearly: true,
+      };
+      // Ngày hiện tại: 27/10/2026, sự kiện là 26/10/2026
+      const baseDate = new Date(2026, 9, 27);
+      const nextOcc = calculateNextOccurrence(event, baseDate);
+
+      expect(nextOcc.getFullYear()).toBe(2026);
+      expect(nextOcc.getMonth()).toBe(9);
+      expect(nextOcc.getDate()).toBe(26);
+
+      const daysDiff = calculateDaysRemaining(nextOcc, baseDate);
+      expect(daysDiff).toBe(-1);
+      expect(formatDaysRemainingText(daysDiff).text).toBe("Hôm qua");
+    });
   });
 });

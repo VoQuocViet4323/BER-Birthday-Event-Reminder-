@@ -465,9 +465,19 @@ export function EventCard({
                     {event.displayDate}
                   </span>
 
-                  {Boolean(event.upcomingAge && event.upcomingAge > 0) && (
+                  {Boolean(event.upcomingAge && event.upcomingAge > 0 && event.event_type === "birthday") && (
                     <span className="text-primary font-bold">
                       • {event.upcomingAge} tuổi
+                    </span>
+                  )}
+                  {Boolean(event.upcomingAge && event.upcomingAge > 0 && event.event_type === "anniversary") && (
+                    <span className="text-primary font-bold">
+                      • Kỷ niệm {event.upcomingAge} năm
+                    </span>
+                  )}
+                  {Boolean(event.upcomingAge && event.upcomingAge > 0 && event.event_type === "memorial") && (
+                    <span className="text-primary font-bold">
+                      • Giỗ năm thứ {event.upcomingAge}
                     </span>
                   )}
 

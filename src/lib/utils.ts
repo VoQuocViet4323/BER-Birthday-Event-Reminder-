@@ -32,6 +32,24 @@ export function formatDaysRemainingText(days: number): {
       isUrgent: true,
     };
   }
+  if (days === -1) {
+    return {
+      text: "Hôm qua",
+      badgeClass:
+        "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-300/40 dark:border-amber-800/40 font-bold",
+      isToday: false,
+      isUrgent: true,
+    };
+  }
+  if (days < -1) {
+    return {
+      text: `Đã qua ${Math.abs(days)} ngày`,
+      badgeClass:
+        "bg-slate-100 text-slate-700 dark:bg-slate-800/90 dark:text-slate-300 border-slate-200 dark:border-slate-700/80",
+      isToday: false,
+      isUrgent: false,
+    };
+  }
   if (days <= 3) {
     return {
       text: `Còn ${days} ngày`,

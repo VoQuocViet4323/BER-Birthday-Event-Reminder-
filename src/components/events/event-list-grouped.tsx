@@ -204,7 +204,15 @@ export function EventListGrouped({
         return true;
       })
       .sort((a, b) => {
-        if (sortBy === "remaining") return a.daysRemaining - b.daysRemaining;
+        if (sortBy === "remaining") {
+          const getWeight = (d: number) => {
+            if (d === 0) return 0; // Hôm nay ở vị trí đầu tiên
+            if (d === -1) return 0.5; // Hôm qua ưu tiên ngay sau Hôm nay
+            if (d < 0) return 1000 + Math.abs(d); // Đã qua lâu hơn
+            return d;
+          };
+          return getWeight(a.daysRemaining) - getWeight(b.daysRemaining);
+        }
         if (sortBy === "name") return a.name.localeCompare(b.name, "vi");
         if (sortBy === "past_month") {
           // Xếp theo ngày trong tháng tăng dần (ngày 1 đến ngày 31)

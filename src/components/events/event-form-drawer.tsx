@@ -90,6 +90,7 @@ export function EventFormDrawer({
   const groupName = watch("group_name");
   const remindDays = watch("remind_days") || [];
   const remindTime = watch("remind_time") || "08:00";
+  const repeatYearly = watch("repeat_yearly") !== false;
 
   // Populate data when editing
   useEffect(() => {
@@ -369,6 +370,24 @@ export function EventFormDrawer({
                 <span>{convertedDateText}</span>
               </div>
             )}
+
+            {/* Lặp lại hàng năm */}
+            <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-border/50">
+              <div>
+                <span className="text-xs font-semibold text-foreground block">Lặp lại hàng năm</span>
+                <span className="text-[11px] text-muted-foreground block">
+                  {repeatYearly ? "Tự động nhắc lại vào ngày này mỗi năm" : "Chỉ diễn ra 1 lần (sự kiện đơn lẻ)"}
+                </span>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  {...register("repeat_yearly")}
+                  className="sr-only peer"
+                />
+                <div className="w-10 h-5 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-border after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+              </label>
+            </div>
           </div>
 
           {/* Toggle mở rộng: Tùy chọn nâng cao */}

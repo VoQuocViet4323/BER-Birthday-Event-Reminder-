@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { EventWithMeta, EventFormValues } from "@/types/events";
 import {
@@ -19,6 +19,10 @@ import {
   Send,
   Trash2,
   Edit2,
+  Search,
+  SearchX,
+  Tag,
+  Filter,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -84,6 +88,27 @@ export function MonthCalendarView({
   const [viewingDiary, setViewingDiary] = useState<DiaryEntry | null>(null);
   const [confirmDeleteDiaryId, setConfirmDeleteDiaryId] = useState<string | null>(null);
   const [isDeletingDiaryModal, setIsDeletingDiaryModal] = useState(false);
+
+  // Khóa cuộn trang nền khi mở modal xem chi tiết sự kiện hoặc nhật ký
+  useEffect(() => {
+    if (viewingEvent || viewingDiary) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === "Escape") {
+          setViewingEvent(null);
+          setViewingDiary(null);
+          setConfirmDeleteEventId(null);
+          setConfirmDeleteDiaryId(null);
+        }
+      };
+      document.addEventListener("keydown", handleKeyDown);
+      return () => {
+        document.body.style.overflow = originalOverflow;
+        document.removeEventListener("keydown", handleKeyDown);
+      };
+    }
+  }, [viewingEvent, viewingDiary]);
 
   // Xóa nhật ký thực tế khỏi DB từ modal / danh sách
   const handleDeleteDiaryEntry = async (id: string) => {
@@ -313,8 +338,136 @@ export function MonthCalendarView({
     Khác: "bg-emerald-500",
   };
 
+  const typeLabels: Record<string, string> = {
+    birthday: "Sinh nhật",
+    anniversary: "Kỷ niệm",
+    memorial: "Ngày giỗ",
+    other: "Sự kiện",
+  };
+
   const dayNames = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
   const today = new Date();
+
+  // State tìm kiếm sự kiện & nhật ký thông minh
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchFilterTab, setSearchFilterTab] = useState<"all" | "events" | "diaries">("all");
+
+  const q = searchQuery.trim().toLowerCase();
+
+  // 1. Tìm sự kiện: tên, phân loại nhóm (mặc định / tùy chỉnh), loại sự kiện, ghi chú, quà tặng
+  const matchedEvents = useMemo(() => {
+    if (!q) return [];
+    return events.filter((ev) => {
+      const nameMatch = ev.name.toLowerCase().includes(q);
+      const groupMatch =
+        (ev.group_name || "").toLowerCase().includes(q) ||
+        ((ev as any).custom_group || "").toLowerCase().includes(q);
+      const typeLabel = typeLabels[ev.event_type] || "Sự kiện";
+      const customType = (ev as any).custom_type || "";
+      const typeMatch =
+        typeLabel.toLowerCase().includes(q) ||
+        ev.event_type.toLowerCase().includes(q) ||
+        customType.toLowerCase().includes(q);
+      const noteMatch = (ev.note || "").toLowerCase().includes(q);
+      const giftMatch = (ev.gift_idea || "").toLowerCase().includes(q);
+
+      return nameMatch || groupMatch || typeMatch || noteMatch || giftMatch;
+    });
+  }, [events, q]);
+
+  // 2. Tìm nhật ký: tiêu đề, thẻ tag / chủ đề, nội dung nhật ký, cảm xúc
+  const matchedDiaries = useMemo(() => {
+    if (!q) return [];
+    return diaries.filter((d) => {
+      const titleMatch = (d.title || "").toLowerCase().includes(q);
+      const tagMatch = (d.tags || []).some((tag) => tag.toLowerCase().includes(q));
+      const contentMatch = (d.content || "").toLowerCase().includes(q);
+      const moodLabel = getMoodInfo(d.mood).label;
+      const moodMatch = moodLabel.toLowerCase().includes(q);
+
+      return titleMatch || tagMatch || contentMatch || moodMatch;
+    });
+  }, [diaries, q]);
+
+  const totalMatches = matchedEvents.length + matchedDiaries.length;
+
+  // Thu thập các ngày trong tháng hiện tại có kết quả tìm kiếm để highlight trên Lịch
+  const matchingDayNumbersInMonth = useMemo(() => {
+    if (!q) return new Set<number>();
+    const matchedDays = new Set<number>();
+    matchedEvents.forEach((ev) => {
+      const occ = ev.nextOccurrence;
+      if (occ && occ.getFullYear() === year && occ.getMonth() === month) {
+        matchedDays.add(occ.getDate());
+      }
+    });
+    matchedDiaries.forEach((d) => {
+      const parts = d.entry_date.split("-").map(Number);
+      if (parts.length === 3 && parts[0] === year && parts[1] === month + 1) {
+        matchedDays.add(parts[2]);
+      }
+    });
+    return matchedDays;
+  }, [q, matchedEvents, matchedDiaries, year, month]);
+
+  const parseDateKey = (key: string): Date => {
+    try {
+      const parts = key.split("-").map(Number);
+      if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+        return new Date(parts[0], parts[1] - 1, parts[2]);
+      }
+    } catch {}
+    return new Date();
+  };
+
+  const handleSelectSearchResultEvent = (ev: EventWithMeta) => {
+    const targetDate = ev.nextOccurrence
+      ? new Date(ev.nextOccurrence)
+      : new Date(year, ev.event_month - 1, ev.event_day);
+    setCurrentDate(targetDate);
+    setSelectedDate(targetDate);
+    setViewingEvent(ev);
+  };
+
+  const handleSelectSearchResultDiary = (d: DiaryEntry) => {
+    const targetDate = parseDateKey(d.entry_date);
+    setCurrentDate(targetDate);
+    setSelectedDate(targetDate);
+    setViewingDiary(d);
+  };
+
+  const highlightMatch = (text: string, query: string) => {
+    if (!query || !text) return text;
+    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(`(${escaped})`, "gi");
+    const parts = text.split(regex);
+    return (
+      <>
+        {parts.map((part, i) =>
+          part.toLowerCase() === query.toLowerCase() ? (
+            <mark key={i} className="bg-primary/25 text-primary font-bold px-0.5 rounded-xs">
+              {part}
+            </mark>
+          ) : (
+            part
+          )
+        )}
+      </>
+    );
+  };
+
+  const getSnippet = (content: string, query: string) => {
+    if (!content) return "";
+    const index = content.toLowerCase().indexOf(query.toLowerCase());
+    if (index === -1) {
+      return content.length > 90 ? content.slice(0, 90) + "..." : content;
+    }
+    const start = Math.max(0, index - 25);
+    const end = Math.min(content.length, index + query.length + 50);
+    const prefix = start > 0 ? "..." : "";
+    const suffix = end < content.length ? "..." : "";
+    return prefix + content.slice(start, end) + suffix;
+  };
 
   const remindDaysList = viewingEvent
     ? Array.isArray(viewingEvent.remind_days)
@@ -374,6 +527,221 @@ export function MonthCalendarView({
         </div>
       </div>
 
+      {/* Ô tìm kiếm thông minh: Sự kiện hoặc Nhật ký */}
+      <div className="bg-card rounded-3xl border border-border p-3.5 sm:p-4 shadow-card space-y-3">
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <input
+            id="calendar-search-input"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Tìm theo tên sự kiện, phân loại nhóm, loại sự kiện, hoặc tiêu đề, thẻ tag, nội dung nhật ký..."
+            className="w-full pl-11 pr-10 py-2.5 sm:py-3 rounded-2xl bg-secondary/50 border border-border/80 focus:outline-none focus:ring-2 focus:ring-primary text-xs sm:text-sm font-medium transition-all placeholder:text-muted-foreground/70"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
+              title="Xóa tìm kiếm"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        {/* Khi có từ khóa tìm kiếm -> Hiển thị Panel kết quả lọc */}
+        <AnimatePresence>
+          {q && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden space-y-3 pt-2 border-t border-border/60"
+            >
+              {/* Filter tabs */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
+                <button
+                  type="button"
+                  onClick={() => setSearchFilterTab("all")}
+                  className={cn(
+                    "px-3 py-1.5 rounded-xl font-semibold transition-all shrink-0 cursor-pointer flex items-center gap-1.5",
+                    searchFilterTab === "all"
+                      ? "bg-primary text-white shadow-soft font-bold"
+                      : "bg-secondary text-muted-foreground hover:text-foreground border border-border/50"
+                  )}
+                >
+                  <Filter className="w-3.5 h-3.5" />
+                  <span>Tất cả ({totalMatches})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSearchFilterTab("events")}
+                  className={cn(
+                    "px-3 py-1.5 rounded-xl font-semibold transition-all shrink-0 cursor-pointer flex items-center gap-1.5",
+                    searchFilterTab === "events"
+                      ? "bg-primary text-white shadow-soft font-bold"
+                      : "bg-secondary text-muted-foreground hover:text-foreground border border-border/50"
+                  )}
+                >
+                  <span>🌟 Sự kiện ({matchedEvents.length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSearchFilterTab("diaries")}
+                  className={cn(
+                    "px-3 py-1.5 rounded-xl font-semibold transition-all shrink-0 cursor-pointer flex items-center gap-1.5",
+                    searchFilterTab === "diaries"
+                      ? "bg-primary text-white shadow-soft font-bold"
+                      : "bg-secondary text-muted-foreground hover:text-foreground border border-border/50"
+                  )}
+                >
+                  <span>📖 Nhật ký ({matchedDiaries.length})</span>
+                </button>
+              </div>
+
+              {/* Danh sách kết quả */}
+              <div className="max-h-80 sm:max-h-96 overflow-y-auto space-y-2 pr-1 divide-y divide-border/40">
+                {totalMatches === 0 ? (
+                  <div className="text-center py-6 px-4">
+                    <SearchX className="w-8 h-8 text-muted-foreground/60 mx-auto mb-2" />
+                    <p className="text-sm font-bold text-foreground">
+                      Không tìm thấy sự kiện hay nhật ký nào
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
+                      Không có kết quả khớp với &quot;{searchQuery}&quot;. Thử tìm kiếm theo tên người, nhóm phân loại, loại sự kiện, hoặc thẻ #tag, nội dung nhật ký khác.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Hiển thị Sự kiện nếu tab là 'all' hoặc 'events' */}
+                    {(searchFilterTab === "all" || searchFilterTab === "events") && matchedEvents.length > 0 && (
+                      <div className="space-y-1.5 pt-2 first:pt-0">
+                        <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground px-1 flex items-center gap-1.5">
+                          <span>🌟 Sự kiện ({matchedEvents.length})</span>
+                        </div>
+                        {matchedEvents.map((ev) => (
+                          <div
+                            key={`search-ev-${ev.id}`}
+                            onClick={() => handleSelectSearchResultEvent(ev)}
+                            className="p-2.5 sm:p-3 rounded-2xl bg-secondary/30 hover:bg-secondary/70 border border-border/60 hover:border-primary/40 transition-all cursor-pointer flex items-center justify-between gap-3 group"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                              <div className="w-9 h-9 rounded-xl gradient-brand text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-2xs">
+                                {ev.event_type === "birthday" ? "🎂" : "🌟"}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <p className="font-bold text-xs sm:text-sm text-foreground truncate group-hover:text-primary transition-colors">
+                                    {highlightMatch(ev.name, q)}
+                                  </p>
+                                  {(ev as any).custom_type && (
+                                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-primary/10 text-primary border border-primary/20">
+                                      {highlightMatch((ev as any).custom_type, q)}
+                                    </span>
+                                  )}
+                                  <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded-md bg-secondary text-muted-foreground border border-border">
+                                    {highlightMatch((ev as any).custom_group || ev.group_name, q)}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-muted-foreground mt-0.5 truncate flex items-center gap-2">
+                                  <span>📅 {ev.displayDate}</span>
+                                  {Boolean(ev.upcomingAge && ev.upcomingAge > 0 && ev.event_type === "birthday") && (
+                                    <span className="text-primary font-semibold">• {ev.upcomingAge} tuổi</span>
+                                  )}
+                                  {ev.note && (
+                                    <span className="truncate italic">• &quot;{highlightMatch(ev.note, q)}&quot;</span>
+                                  )}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-end gap-1 shrink-0">
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                                {ev.daysRemaining === 0
+                                  ? "Hôm nay"
+                                  : ev.daysRemaining === -1
+                                  ? "Hôm qua"
+                                  : ev.daysRemaining < 0
+                                  ? `Đã qua ${Math.abs(ev.daysRemaining)} ngày`
+                                  : `Còn ${ev.daysRemaining} ngày`}
+                              </span>
+                              <span className="text-[10px] text-muted-foreground group-hover:text-primary transition-colors">
+                                Xem ngày →
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Hiển thị Nhật ký nếu tab là 'all' hoặc 'diaries' */}
+                    {(searchFilterTab === "all" || searchFilterTab === "diaries") && matchedDiaries.length > 0 && (
+                      <div className="space-y-1.5 pt-2 first:pt-0">
+                        <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground px-1 flex items-center gap-1.5">
+                          <span>📖 Nhật ký ({matchedDiaries.length})</span>
+                        </div>
+                        {matchedDiaries.map((d) => {
+                          const mood = getMoodInfo(d.mood);
+                          return (
+                            <div
+                              key={`search-diary-${d.id}`}
+                              onClick={() => handleSelectSearchResultDiary(d)}
+                              className="p-2.5 sm:p-3 rounded-2xl bg-secondary/30 hover:bg-secondary/70 border border-border/60 hover:border-primary/40 transition-all cursor-pointer space-y-1.5 group"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="text-base shrink-0">{mood.emoji}</span>
+                                  <p className="font-bold text-xs sm:text-sm text-foreground truncate group-hover:text-primary transition-colors">
+                                    {d.title ? highlightMatch(d.title, q) : `Nhật ký ${formatDiaryDate(d.entry_date)}`}
+                                  </p>
+                                  <span className={cn("text-[10px] font-bold px-1.5 py-0.2 rounded-md border shrink-0", mood.color)}>
+                                    {highlightMatch(mood.label, q)}
+                                  </span>
+                                </div>
+                                <span className="text-[11px] font-semibold text-muted-foreground shrink-0">
+                                  {formatDiaryDate(d.entry_date)}
+                                </span>
+                              </div>
+
+                              {/* Thẻ tag / chủ đề nếu có */}
+                              {d.tags && d.tags.length > 0 && (
+                                <div className="flex items-center gap-1 flex-wrap">
+                                  {d.tags.map((tag) => (
+                                    <span
+                                      key={tag}
+                                      className="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-secondary text-muted-foreground border border-border flex items-center gap-1"
+                                    >
+                                      <Tag className="w-2.5 h-2.5 text-primary" />
+                                      <span>{highlightMatch(tag, q)}</span>
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* Đoạn trích nội dung có chứa từ khóa */}
+                              <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+                                {highlightMatch(getSnippet(d.content, q), q)}
+                              </p>
+
+                              <div className="text-right">
+                                <span className="text-[10px] text-muted-foreground group-hover:text-primary transition-colors">
+                                  Bấm để mở và xem chi tiết →
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
       {/* Calendar Grid */}
       <div className="bg-card rounded-3xl border border-border p-2.5 sm:p-6 shadow-card overflow-hidden">
         {/* Day Name Headers */}
@@ -421,6 +789,8 @@ export function MonthCalendarView({
               selectedDate.getMonth() === month &&
               selectedDate.getFullYear() === year;
 
+            const isSearchMatch = matchingDayNumbersInMonth.has(dayNumber);
+
             return (
               <button
                 key={dayNumber}
@@ -434,6 +804,8 @@ export function MonthCalendarView({
                     ? "ring-2 ring-primary border-primary bg-primary/10 shadow-sm"
                     : isToday
                     ? "border-primary/80 bg-primary/5 ring-1 ring-primary/40"
+                    : isSearchMatch
+                    ? "ring-2 ring-primary border-primary bg-primary/10 shadow-sm"
                     : hasEvents
                     ? "border-border/80 bg-card hover:border-primary/50 hover:bg-muted/40"
                     : "border-border/40 bg-card/40 hover:border-border hover:bg-muted/20"
@@ -447,6 +819,8 @@ export function MonthCalendarView({
                       isToday
                         ? "gradient-brand text-white shadow-xs"
                         : isSelected
+                        ? "bg-primary text-white font-extrabold shadow-xs"
+                        : isSearchMatch
                         ? "bg-primary text-white font-extrabold shadow-xs"
                         : hasEvents
                         ? "text-foreground group-hover:text-primary font-bold"
@@ -743,14 +1117,14 @@ export function MonthCalendarView({
                       <div className="min-w-0 flex-1">
                         <p className="font-bold text-xs text-foreground truncate">{ev.name}</p>
                         <p className="text-[11px] text-muted-foreground truncate">
-                          {(ev as any).custom_group || ev.group_name} {Boolean(ev.upcomingAge && ev.upcomingAge > 0) ? `• ${ev.upcomingAge} tuổi` : ""}
+                          {(ev as any).custom_group || ev.group_name} {Boolean(ev.upcomingAge && ev.upcomingAge > 0 && ev.event_type === "birthday") ? `• ${ev.upcomingAge} tuổi` : ""}
                         </p>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
                       <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary">
-                        {ev.daysRemaining === 0 ? "Hôm nay" : `Còn ${ev.daysRemaining} ngày`}
+                        {ev.daysRemaining === 0 ? "Hôm nay" : ev.daysRemaining === -1 ? "Hôm qua" : ev.daysRemaining < 0 ? `Đã qua ${Math.abs(ev.daysRemaining)} ngày` : `Còn ${ev.daysRemaining} ngày`}
                       </span>
                       {/* Nút xóa nhanh sự kiện */}
                       <button
@@ -811,7 +1185,7 @@ export function MonthCalendarView({
               onClick={(e) => {
                 if (e.target === e.currentTarget) setViewingEvent(null);
               }}
-              className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-[3px] p-0 sm:p-4 touch-none"
+              className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4 select-none overscroll-contain"
             >
               <motion.div
                 key="viewing-event-sheet"
@@ -820,23 +1194,13 @@ export function MonthCalendarView({
                 exit={{ y: "100%", opacity: 0.95 }}
                 transition={{
                   type: "spring",
-                  damping: 30,
-                  stiffness: 340,
+                  damping: 32,
+                  stiffness: 350,
                   mass: 0.8,
                 }}
-                drag="y"
-                dragConstraints={{ top: 0 }}
-                dragElastic={{ top: 0, bottom: 0.4 }}
-                onDragEnd={(_e, info) => {
-                  if (info.offset.y > 100 || info.velocity.y > 450) {
-                    setViewingEvent(null);
-                  }
-                }}
-                className="w-full max-w-lg bg-card rounded-t-3xl sm:rounded-3xl border border-border shadow-2xl p-6 overflow-hidden flex flex-col max-h-[92vh] will-change-transform transform-gpu"
+                className="w-full max-w-lg bg-card rounded-t-3xl sm:rounded-3xl border border-border shadow-2xl p-6 overflow-hidden flex flex-col max-h-[92vh] will-change-transform transform-gpu select-text overscroll-contain"
                 onClick={(e) => e.stopPropagation()}
               >
-                {/* Mobile Drag Indicator Handle */}
-                <div className="w-12 h-1.5 bg-muted-foreground/30 rounded-full mx-auto -mt-2 mb-3 sm:hidden shrink-0 cursor-grab active:cursor-grabbing" />
             {/* Header */}
             <div className="flex items-start justify-between pb-4 border-b border-border">
               <div className="flex items-center gap-3">
@@ -886,19 +1250,29 @@ export function MonthCalendarView({
             </div>
 
             {/* Scrollable Content */}
-            <div className="space-y-4 my-4 overflow-y-auto pr-1">
+            <div className="space-y-4 my-4 overflow-y-auto pr-1 overscroll-contain">
               {/* Banner đếm ngược */}
               <div className="p-4 rounded-2xl bg-gradient-to-r from-primary/15 via-primary/5 to-transparent border border-primary/20 flex items-center justify-between">
                 <div>
                   <p className="text-xs font-semibold text-primary uppercase tracking-wider">
-                    {viewingEvent.daysRemaining === 0 ? "🎉 Diễn ra hôm nay" : "Sắp tới"}
+                    {viewingEvent.daysRemaining === 0
+                      ? "🎉 Diễn ra hôm nay"
+                      : viewingEvent.daysRemaining === -1
+                      ? "🕒 Diễn ra hôm qua"
+                      : viewingEvent.daysRemaining < 0
+                      ? `Đã diễn ra ${Math.abs(viewingEvent.daysRemaining)} ngày trước`
+                      : "Sắp tới"}
                   </p>
                   <p className="text-base font-extrabold text-foreground mt-0.5">
                     {viewingEvent.daysRemaining === 0
                       ? "Hôm nay chính là ngày đặc biệt!"
+                      : viewingEvent.daysRemaining === -1
+                      ? "Sự kiện vừa diễn ra vào ngày hôm qua"
+                      : viewingEvent.daysRemaining < 0
+                      ? `Sự kiện đã qua ${Math.abs(viewingEvent.daysRemaining)} ngày`
                       : `Còn ${viewingEvent.daysRemaining} ngày nữa`}
                   </p>
-                  {Boolean(viewingEvent.upcomingAge && viewingEvent.upcomingAge > 0) && (
+                  {Boolean(viewingEvent.upcomingAge && viewingEvent.upcomingAge > 0 && viewingEvent.event_type === "birthday") && (
                     <p className="text-xs text-muted-foreground mt-0.5">
                       Bước sang tuổi {viewingEvent.upcomingAge}
                     </p>
@@ -906,9 +1280,15 @@ export function MonthCalendarView({
                 </div>
                 <div className="text-right">
                   <span className="text-2xl font-black text-primary">
-                    {viewingEvent.daysRemaining === 0 ? "0" : viewingEvent.daysRemaining}
+                    {viewingEvent.daysRemaining === 0
+                      ? "0"
+                      : viewingEvent.daysRemaining === -1
+                      ? "1"
+                      : Math.abs(viewingEvent.daysRemaining)}
                   </span>
-                  <span className="text-[11px] font-medium text-muted-foreground block">ngày</span>
+                  <span className="text-[11px] font-medium text-muted-foreground block">
+                    {viewingEvent.daysRemaining < 0 ? "ngày trước" : "ngày"}
+                  </span>
                 </div>
               </div>
 
@@ -1081,7 +1461,7 @@ export function MonthCalendarView({
               setConfirmDeleteDiaryId(null);
             }
           }}
-          className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-[3px] p-0 sm:p-4 touch-none"
+          className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4 select-none overscroll-contain"
         >
           <motion.div
             key="viewing-diary-sheet"
@@ -1090,25 +1470,13 @@ export function MonthCalendarView({
             exit={{ y: "100%", opacity: 0.95 }}
             transition={{
               type: "spring",
-              damping: 30,
-              stiffness: 340,
+              damping: 32,
+              stiffness: 350,
               mass: 0.8,
             }}
-            drag="y"
-            dragConstraints={{ top: 0 }}
-            dragElastic={{ top: 0, bottom: 0.4 }}
-            onDragEnd={(_e, info) => {
-              if (info.offset.y > 100 || info.velocity.y > 450) {
-                setViewingDiary(null);
-                setConfirmDeleteDiaryId(null);
-              }
-            }}
-            className="w-full max-w-lg bg-card rounded-t-3xl sm:rounded-3xl border border-border shadow-2xl p-6 overflow-hidden flex flex-col max-h-[92vh] will-change-transform transform-gpu"
+            className="w-full max-w-lg bg-card rounded-t-3xl sm:rounded-3xl border border-border shadow-2xl p-6 overflow-hidden flex flex-col max-h-[92vh] will-change-transform transform-gpu select-text overscroll-contain"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Mobile Drag Indicator Handle */}
-            <div className="w-12 h-1.5 bg-muted-foreground/30 rounded-full mx-auto -mt-2 mb-3 sm:hidden shrink-0 cursor-grab active:cursor-grabbing" />
-
             {/* Header */}
             <div className="flex items-start justify-between pb-4 border-b border-border">
               <div className="flex items-center gap-3">
@@ -1145,7 +1513,7 @@ export function MonthCalendarView({
             </div>
 
             {/* Scrollable Content (Chỉ xem - hoàn toàn không thể sửa trực tiếp tại đây) */}
-            <div className="space-y-4 my-4 overflow-y-auto pr-1">
+            <div className="space-y-4 my-4 overflow-y-auto pr-1 overscroll-contain">
               {/* Hộp thông tin ngày & giờ tạo */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div className="p-3 rounded-2xl bg-secondary/40 border border-border/70 space-y-1">
