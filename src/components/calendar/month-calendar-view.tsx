@@ -32,6 +32,8 @@ import { DiaryEntry } from "@/types/diary";
 import { DiaryDrawer } from "./diary-drawer";
 import { EventFormDrawer } from "@/components/events/event-form-drawer";
 import { useEvents } from "@/hooks/use-events";
+import { isLeapYear } from "@/lib/date-utils";
+import { convertLunar2Solar } from "@/lib/lunar/amlich";
 
 interface MonthCalendarViewProps {
   events?: EventWithMeta[];
@@ -239,12 +241,45 @@ export function MonthCalendarView({
     setSelectedDate(now);
   };
 
-  // Map sự kiện vào từng ngày trong tháng hiện tại
+  // Hàm xác định ngày dương lịch diễn ra của sự kiện trong tháng & năm đang xem
+  const getEventDayInMonth = (
+    ev: EventWithMeta,
+    targetYear: number,
+    targetMonth: number // 0-indexed (0 - 11)
+  ): number | null => {
+    if (ev.event_year && ev.event_year > targetYear) return null;
+    if (ev.repeat_yearly === false && ev.event_year && ev.event_year !== targetYear) return null;
+
+    if (!ev.is_lunar) {
+      if (ev.event_month === targetMonth + 1) {
+        let day = ev.event_day;
+        if (ev.event_month === 2 && ev.event_day === 29 && !isLeapYear(targetYear)) {
+          day = 28;
+        }
+        return day;
+      }
+      return null;
+    } else {
+      try {
+        const solar = convertLunar2Solar(ev.event_day, ev.event_month, targetYear);
+        if (solar.year === targetYear && solar.month === targetMonth + 1) {
+          return solar.day;
+        }
+      } catch {
+        const occ = ev.nextOccurrence;
+        if (occ && occ.getFullYear() === targetYear && occ.getMonth() === targetMonth) {
+          return occ.getDate();
+        }
+      }
+      return null;
+    }
+  };
+
+  // Map sự kiện vào từng ngày trong tháng & năm đang xem trên lịch
   const eventsByDay = new Map<number, EventWithMeta[]>();
   for (const ev of events) {
-    const occ = ev.nextOccurrence;
-    if (occ && occ.getFullYear() === year && occ.getMonth() === month) {
-      const day = occ.getDate();
+    const day = getEventDayInMonth(ev, year, month);
+    if (day !== null) {
       const list = eventsByDay.get(day) || [];
       list.push(ev);
       eventsByDay.set(day, list);
@@ -396,9 +431,9 @@ export function MonthCalendarView({
     if (!q) return new Set<number>();
     const matchedDays = new Set<number>();
     matchedEvents.forEach((ev) => {
-      const occ = ev.nextOccurrence;
-      if (occ && occ.getFullYear() === year && occ.getMonth() === month) {
-        matchedDays.add(occ.getDate());
+      const day = getEventDayInMonth(ev, year, month);
+      if (day !== null) {
+        matchedDays.add(day);
       }
     });
     matchedDiaries.forEach((d) => {

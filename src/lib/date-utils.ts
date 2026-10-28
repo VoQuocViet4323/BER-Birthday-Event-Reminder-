@@ -44,8 +44,8 @@ export function calculateNextOccurrence(
     let occDate = new Date(solar.year, solar.month - 1, solar.day);
     const diffDays = Math.round((occDate.getTime() - todayZero.getTime()) / (1000 * 60 * 60 * 24));
 
-    // Nếu sự kiện lặp hàng năm và đã qua hơn 1 ngày (không tính hôm qua diffDays = -1) -> dời sang năm sau
-    if (diffDays < -1 && event.repeat_yearly !== false) {
+    // Nếu sự kiện lặp hàng năm và đã qua hơn 30 ngày -> dời sang năm sau
+    if (diffDays < -30 && event.repeat_yearly !== false) {
       solar = convertLunar2Solar(event.event_day, event.event_month, currentYear + 1);
       occDate = new Date(solar.year, solar.month - 1, solar.day);
     }
@@ -73,8 +73,8 @@ export function calculateNextOccurrence(
   let occDate = new Date(targetYear, targetMonth, targetDay);
   const diffDays = Math.round((occDate.getTime() - todayZero.getTime()) / (1000 * 60 * 60 * 24));
 
-  // Nếu sự kiện lặp hàng năm và đã qua hơn 1 ngày (nếu là hôm qua diffDays = -1 thì giữ nguyên để hiển thị "Hôm qua") -> dời sang năm sau
-  if (diffDays < -1 && event.repeat_yearly !== false) {
+  // Nếu sự kiện lặp hàng năm và đã qua hơn 30 ngày (trong vòng 30 ngày qua vẫn giữ nguyên để hiển thị "Đã qua X ngày") -> dời sang năm sau
+  if (diffDays < -30 && event.repeat_yearly !== false) {
     targetYear += 1;
     targetMonth = event.event_month - 1;
     targetDay = event.event_day;

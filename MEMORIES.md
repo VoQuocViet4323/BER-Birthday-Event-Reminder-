@@ -3028,6 +3028,53 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
   - `npm test`: **29/29 unit tests PASS (100%)**.
   - `npx tsc --noEmit`: **0 errors**.
 
+---
+
+### 📅 2026-10-28 09:35:00 | Sửa Lỗi Lịch Không Hiển Thị Sự Kiện Đã Qua & Khắc Phục Bộ Đếm Nhảy "Còn 363 ngày" (Past Days Grace Period)
+
+- **Yêu cầu của người dùng**:
+  1. Ngày 26/10 có sự kiện ("KSK cựu chiến binh", "Trúc"), tại sao ở bên Lịch tháng 10/2026 lại báo 0 sự kiện ("Chưa có sự kiện nào cho ngày này")?
+  2. Tại sao panel thông báo danh sách sự kiện lại hiển thị huy hiệu `Còn 363 ngày` trong khi sự kiện đã qua và hôm nay là ngày 28/10 rồi?
+  3. Chỉnh lại bộ đếm thời gian cho chuẩn để hiển thị cho đúng.
+- **Phân tích nguyên nhân gốc rễ (Root Cause Analysis)**:
+  1. **Lỗi Lịch không hiển thị sự kiện trên ngày 26/10**:
+     - Trong [`src/components/calendar/month-calendar-view.tsx`](file:///e:/BER-Birthday-Event-Reminder-/src/components/calendar/month-calendar-view.tsx), thuật toán map sự kiện vào từng ô ngày `eventsByDay` phụ thuộc hoàn toàn vào thuộc tính `ev.nextOccurrence`:
+       `if (occ && occ.getFullYear() === year && occ.getMonth() === month)`.
+     - Vì ngày 26/10/2026 đã qua 2 ngày (hôm nay là 28/10), hàm `calculateNextOccurrence` đã tự động tăng năm lên `2027` (`targetYear += 1`).
+     - Khi người dùng xem Lịch tháng 10/2026, `occ.getFullYear()` bằng `2027` $\neq 2026$ $\rightarrow$ Bị loại bỏ hoàn toàn khỏi ngày 26 của tháng 10/2026, dẫn đến ngày 26 bị rỗng 0 sự kiện!
+     - Tương tự, nếu người dùng lật lịch sang năm khác hoặc tháng khác, mọi sự kiện lặp hàng năm cũng bị biến mất nếu chỉ căn cứ vào `nextOccurrence`.
+  2. **Lỗi huy hiệu hiển thị "Còn 363 ngày" thay vì "Đã qua 2 ngày"**:
+     - Trong [`src/lib/date-utils.ts`](file:///e:/BER-Birthday-Event-Reminder-/src/lib/date-utils.ts) (hàm `calculateNextOccurrence`):
+       `if (diffDays < -1 && event.repeat_yearly !== false) { targetYear += 1; }`
+     - Logic này chỉ cho phép giữ lại ngày hôm qua (`diffDays = -1`). Ngay khi sự kiện bước sang ngày thứ 2 trong quá khứ (`diffDays = -2`), hệ thống lập tức nhảy cóc sang năm sau (`targetYear = 2027`).
+     - `calculateDaysRemaining(26/10/2027, 28/10/2026)` tính ra **363 ngày**, khiến giao diện hiển thị badge `Còn 363 ngày`.
+     - Trong khi đó, hàm `formatDaysRemainingText` trong `src/lib/utils.ts` và component `EventCard` vốn dĩ đã có sẵn logic hiển thị `days < -1 -> "Đã qua ${Math.abs(days)} ngày"`, nhưng không bao giờ chạy tới được vì `calculateNextOccurrence` đã cưỡng chế đẩy sang năm sau.
+- **Nội dung đã triển khai khắc phục triệt để**:
+  1. **Áp dụng Grace Period 30 ngày cho các sự kiện trong quá khứ ([`src/lib/date-utils.ts`](file:///e:/BER-Birthday-Event-Reminder-/src/lib/date-utils.ts))**:
+     - Thay đổi điều kiện chuyển năm: `if (diffDays < -30 && event.repeat_yearly !== false)` (áp dụng đồng bộ cho cả sự kiện Âm lịch và Dương lịch).
+     - Trong vòng 30 ngày kể từ khi sự kiện diễn ra (ví dụ: ngày 26/10 so với ngày 28/10 là 2 ngày trước, `diffDays = -2`), sự kiện vẫn được giữ nguyên ở năm hiện tại `2026`.
+     - Bộ đếm thời gian tính ra `days = -2`, huy hiệu lập tức hiển thị chính xác: **`Đã qua 2 ngày`** (màu badge xám trung tính tinh tế), không còn tình trạng nhảy cóc vô lý thành `Còn 363 ngày`.
+     - Sau 30 ngày (chu kỳ tháng tiếp theo), sự kiện lặp mới dời sang năm sau để chuẩn bị cho chu kỳ nhắc nhở tiếp theo.
+  2. **Tái cấu trúc bộ ánh xạ sự kiện trên Lịch ([`src/components/calendar/month-calendar-view.tsx`](file:///e:/BER-Birthday-Event-Reminder-/src/components/calendar/month-calendar-view.tsx))**:
+     - Xây dựng hàm trợ giúp `getEventDayInMonth(ev, targetYear, targetMonth)` độc lập với `nextOccurrence`:
+       - Đối với sự kiện Dương lịch: Kiểm tra `ev.event_month === targetMonth + 1`, tự động xử lý ngày 29/02 ở năm nhuận/không nhuận.
+       - Đối với sự kiện Âm lịch: Chuyển đổi ngày âm sang dương tương ứng trong năm `targetYear` đang xem bằng `convertLunar2Solar(ev.event_day, ev.event_month, targetYear)`.
+       - Tự động bỏ qua các sự kiện sinh sau năm đang xem hoặc không lặp năm khác.
+     - Đồng bộ cả `eventsByDay` (hiển thị ô lịch) và `matchingDayNumbersInMonth` (kết quả tìm kiếm trên lịch).
+     - Ngày 26/10/2026 giờ đây hiển thị trọn vẹn 2 sự kiện "KSK cựu chiến binh" và "Trúc" kèm chấm tròn danh mục chuẩn xác.
+  3. **Tối ưu hóa bộ đếm Sắp tới tại Desktop Sidebar ([`src/components/layout/desktop-sidebar.tsx`](file:///e:/BER-Birthday-Event-Reminder-/src/components/layout/desktop-sidebar.tsx)) & Command Menu ([`src/components/layout/command-menu.tsx`](file:///e:/BER-Birthday-Event-Reminder-/src/components/layout/command-menu.tsx))**:
+     - Sửa điều kiện `events.filter((e) => e.daysRemaining >= 0 && e.daysRemaining <= 7)` để sự kiện đã qua (`daysRemaining < 0`) không bị tính nhầm vào mục "Sắp tới (7 ngày)".
+     - Bổ sung định dạng hiển thị `Đã qua X ngày` trong Command Menu nhanh.
+  4. **Bổ sung Unit Test ([`src/tests/date-utils.test.ts`](file:///e:/BER-Birthday-Event-Reminder-/src/tests/date-utils.test.ts))**:
+     - Thêm test case xác thực sự kiện 2 ngày trước (26/10 vs 28/10/2026) trả về đúng năm 2026, `daysDiff = -2`, hiển thị `"Đã qua 2 ngày"`.
+     - Thêm test case xác thực sự kiện quá 30 ngày tự động chuyển năm kế tiếp.
+- **Trạng thái kiểm thử**:
+  - `npm test`: **31/31 unit tests PASS (100%)**.
+  - `npx tsc --noEmit`: **0 errors**.
+- **Ghi chú định hướng tiếp theo**:
+  - Người dùng tải lại trang (`Ctrl + F5`) để kiểm tra lại Lịch ngày 26/10 và huy hiệu đếm ngược "Đã qua 2 ngày" trên danh sách sự kiện.
+
+
 
 
 

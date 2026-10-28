@@ -29,7 +29,7 @@ export function DesktopSidebar({ onOpenCreateModal }: DesktopSidebarProps) {
   const { events } = useEvents();
   const { profile } = useUserSettings();
 
-  const upcomingCount = events.filter((e) => e.daysRemaining <= 7).length;
+  const upcomingCount = events.filter((e) => e.daysRemaining >= 0 && e.daysRemaining <= 7).length;
   const isAdmin = profile?.role === "admin";
 
   const navItems = [

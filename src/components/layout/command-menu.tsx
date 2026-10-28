@@ -137,7 +137,13 @@ export function CommandMenu({ onOpenCreateModal }: CommandMenuProps) {
                           </div>
                         </div>
                         <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary">
-                          {item.daysRemaining === 0 ? "Hôm nay" : `Còn ${item.daysRemaining} ngày`}
+                          {item.daysRemaining === 0
+                            ? "Hôm nay"
+                            : item.daysRemaining === -1
+                            ? "Hôm qua"
+                            : item.daysRemaining < 0
+                            ? `Đã qua ${Math.abs(item.daysRemaining)} ngày`
+                            : `Còn ${item.daysRemaining} ngày`}
                         </span>
                       </button>
                     ))}

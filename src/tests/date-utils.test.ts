@@ -185,7 +185,7 @@ describe("Date Utilities & Edge Cases", () => {
     });
   });
 
-  describe("Sự kiện diễn ra hôm qua (Yesterday Event Occurrence)", () => {
+  describe("Sự kiện diễn ra hôm qua và trong vòng 30 ngày qua (Past Events Grace Period)", () => {
     it("giữ nguyên ngày hôm qua (diffDays = -1) thay vì nhảy sang năm sau", () => {
       const event = {
         event_day: 26,
@@ -204,6 +204,41 @@ describe("Date Utilities & Edge Cases", () => {
       const daysDiff = calculateDaysRemaining(nextOcc, baseDate);
       expect(daysDiff).toBe(-1);
       expect(formatDaysRemainingText(daysDiff).text).toBe("Hôm qua");
+    });
+
+    it("giữ nguyên sự kiện diễn ra 2 ngày trước (26/10 vs 28/10/2026) hiển thị 'Đã qua 2 ngày' thay vì 'Còn 363 ngày'", () => {
+      const event = {
+        event_day: 26,
+        event_month: 10,
+        is_lunar: false,
+        repeat_yearly: true,
+      };
+      // Ngày hiện tại: 28/10/2026, sự kiện là 26/10/2026
+      const baseDate = new Date(2026, 9, 28);
+      const nextOcc = calculateNextOccurrence(event, baseDate);
+
+      expect(nextOcc.getFullYear()).toBe(2026);
+      expect(nextOcc.getMonth()).toBe(9);
+      expect(nextOcc.getDate()).toBe(26);
+
+      const daysDiff = calculateDaysRemaining(nextOcc, baseDate);
+      expect(daysDiff).toBe(-2);
+      expect(formatDaysRemainingText(daysDiff).text).toBe("Đã qua 2 ngày");
+    });
+
+    it("tự động dời sang năm sau nếu sự kiện đã qua hơn 30 ngày", () => {
+      const event = {
+        event_day: 10,
+        event_month: 9, // 10/9/2026 so với 28/10/2026 là 48 ngày trước (> 30 ngày)
+        is_lunar: false,
+        repeat_yearly: true,
+      };
+      const baseDate = new Date(2026, 9, 28);
+      const nextOcc = calculateNextOccurrence(event, baseDate);
+
+      expect(nextOcc.getFullYear()).toBe(2027);
+      expect(nextOcc.getMonth()).toBe(8);
+      expect(nextOcc.getDate()).toBe(10);
     });
   });
 });
