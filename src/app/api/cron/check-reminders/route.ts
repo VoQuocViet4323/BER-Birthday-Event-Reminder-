@@ -129,6 +129,13 @@ async function handleCheckReminders(request: Request) {
         continue;
       }
 
+      // Nếu sự kiện được tạo SAU giờ nhắc dự kiến của hôm nay:
+      // Nghĩa là mốc giờ nhắc này đã trôi qua trước khi sự kiện được tạo ra.
+      // Tuyệt đối không gửi bù cho mốc giờ trong quá khứ trước lúc tạo sự kiện!
+      if (isCreatedAtAfterScheduledTimeToday(ev.created_at, normalizedEventTime, now)) {
+        continue;
+      }
+
       // Chuẩn hóa ngày diễn ra sự kiện dạng "YYYY-MM-DD" không phụ thuộc timezone
       const occurrenceDateStr = formatOccurrenceDate(nextOcc);
       const locked = await claimReminderLock(
@@ -317,6 +324,11 @@ async function handleGlobalCronCheck(admin: any, currentTimeStr: string, now: Da
 
         if (normalizeTime(currentTimeStr) < normalizeTime(eventTime)) continue;
 
+        // Bỏ qua mốc giờ nhắc đã trôi qua trước khi tạo sự kiện
+        if (isCreatedAtAfterScheduledTimeToday(ev.created_at, normalizeTime(eventTime), now)) {
+          continue;
+        }
+
         const occurrenceDateStr = formatOccurrenceDate(nextOcc);
         const locked = await claimReminderLock(
           admin,
@@ -459,6 +471,11 @@ async function handleGlobalCronCheckViaRpc(client: any, currentTimeStr: string, 
         // Nếu chưa đến giờ nhắc trong ngày hôm nay -> bỏ qua
         if (normalizeTime(currentTimeStr) < normalizeTime(eventTime)) continue;
 
+        // Bỏ qua mốc giờ nhắc đã trôi qua trước khi tạo sự kiện
+        if (isCreatedAtAfterScheduledTimeToday(ev.created_at, normalizeTime(eventTime), now)) {
+          continue;
+        }
+
         const occurrenceDateStr = formatOccurrenceDate(nextOcc);
         const locked = await claimReminderLock(client, userId, ev.id, daysRemaining, occurrenceDateStr);
         if (!locked) continue;
@@ -534,6 +551,60 @@ async function handleGlobalCronCheckViaRpc(client: any, currentTimeStr: string, 
       { success: false, error: err?.message || "Lỗi quét tự động qua RPC" },
       { status: 500 }
     );
+  }
+}
+
+/**
+ * Kiểm tra xem sự kiện có được tạo SAU giờ nhắc dự kiến của ngày hôm nay (theo giờ VN) hay không.
+ * Nếu sự kiện được tạo sau giờ nhắc hôm nay, tuyệt đối không gửi bù cho mốc giờ đã qua trước khi tạo!
+ */
+function isCreatedAtAfterScheduledTimeToday(
+  createdAtStr: string | null | undefined,
+  scheduledTimeStr: string, // "HH:mm"
+  now: Date
+): boolean {
+  if (!createdAtStr) return false;
+
+  try {
+    const createdDate = new Date(createdAtStr);
+    if (isNaN(createdDate.getTime())) return false;
+
+    // Lấy ngày hiện tại theo giờ Việt Nam dạng "YYYY-MM-DD"
+    const vnDateStr = now.toLocaleDateString("en-CA", {
+      timeZone: "Asia/Ho_Chi_Minh",
+    });
+
+    // Ngày tạo sự kiện theo giờ Việt Nam
+    const createdVnDateStr = createdDate.toLocaleDateString("en-CA", {
+      timeZone: "Asia/Ho_Chi_Minh",
+    });
+
+    // Nếu sự kiện được tạo trước ngày hôm nay (từ hôm qua trở về trước)
+    // -> Đây là sự kiện cũ, nếu bị trễ giờ thì vẫn cho phép gửi bù bình thường!
+    if (createdVnDateStr < vnDateStr) {
+      return false;
+    }
+
+    // Nếu sự kiện được tạo ngay trong ngày hôm nay:
+    // So sánh thời gian tạo (HH:mm:ss) với giờ nhắc (HH:mm:00)
+    if (createdVnDateStr === vnDateStr) {
+      const createdVnTimeStr = createdDate.toLocaleTimeString("en-GB", {
+        timeZone: "Asia/Ho_Chi_Minh",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      });
+
+      const targetTimeWithSeconds = `${scheduledTimeStr.trim().substring(0, 5)}:00`;
+      // Nếu lúc tạo sự kiện (ví dụ 08:15) đã muộn hơn giờ nhắc (ví dụ 07:00)
+      // -> Mốc giờ này đã qua TRƯỚC KHI tạo sự kiện, không được gửi!
+      return createdVnTimeStr > targetTimeWithSeconds;
+    }
+
+    return false;
+  } catch {
+    return false;
   }
 }
 

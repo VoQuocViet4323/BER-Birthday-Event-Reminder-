@@ -3003,6 +3003,32 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
   - `npx tsc --noEmit`: **0 errors**.
   - Endpoint test qua PowerShell: Mode `global-cron-rpc` kích hoạt chính xác khi không có session người dùng.
 
+---
+
+### 📅 2026-10-28 08:32:00 | Khắc Phục Lỗi Gửi Bù Ngay Khi Tạo Sự Kiện Cho Ngày Mai (Premature Catch-Up Filter)
+
+- **Yêu cầu của người dùng**:
+  - Hiện tại bị lỗi: Khi tạo sự kiện cho ngày mai (ví dụ đặt 07:00 sáng ngày mai), vừa bấm tạo sự kiện xong thì hệ thống tự động bắn email thông báo ngay lập tức hôm nay.
+- **Phân tích nguyên nhân gốc rễ**:
+  1. Khi người dùng tạo sự kiện mới mà không chọn mốc ngày nhắc trước (để trống), `event-form-drawer.tsx` gửi lên `remind_days: []`.
+  2. Ở backend, `remind_days` rỗng bị fallback sang `user_settings.default_remind_days` (`[7, 1, 0]`). Vì sự kiện là ngày mai (29/10), hôm nay (28/10) rơi vào mốc `1` (Trước 1 ngày).
+  3. Thời điểm người dùng tạo sự kiện là `08:15` sáng. Giờ nhắc của sự kiện là `07:00` sáng.
+  4. Thuật toán Catch-Up (Gửi bù) thấy: `currentTime (08:15) >= eventTime (07:00)` và hôm nay chưa gửi cho mốc `1` này $\rightarrow$ Hệ thống nhầm tưởng là 07:00 sáng hôm nay bị bỏ lỡ nên đã gửi bù ngay lập tức!
+  5. Tuy nhiên, lúc 07:00 sáng sự kiện **chưa hề tồn tại** (đến 08:15 mới tạo). Mốc giờ 07:00 của ngày hôm nay đã ở trong quá khứ trước khi tạo sự kiện, không được coi là một thông báo bị miss.
+- **Nội dung đã triển khai khắc phục triệt để**:
+  1. **Bổ sung hàm kiểm tra `isCreatedAtAfterScheduledTimeToday` trong [`src/app/api/cron/check-reminders/route.ts`](file:///e:/BER-Birthday-Event-Reminder-/src/app/api/cron/check-reminders/route.ts))**:
+     - Lấy thời gian tạo sự kiện (`ev.created_at`) quy đổi theo múi giờ Việt Nam (`Asia/Ho_Chi_Minh`).
+     - Nếu sự kiện được tạo ngay trong ngày hôm nay VÀ thời điểm tạo (`created_at`) diễn ra **SAU** giờ nhắc dự kiến hôm nay:
+       $\rightarrow$ Mốc nhắc này đã qua TRƯỚC KHI tạo sự kiện, lập tức `continue` (bỏ qua, tuyệt đối không gửi bù)!
+     - Nếu sự kiện được tạo từ các ngày trước đó: Cơ chế gửi bù vẫn hoạt động bình thường nếu người dùng tắt máy qua giờ nhắc.
+  2. **Chuẩn hóa giá trị mặc định của `remind_days` trong [`src/components/events/event-form-drawer.tsx`](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-form-drawer.tsx))**:
+     - Đặt mặc định `remind_days: [0]` ("Đúng ngày") thay vì mảng rỗng `[]`.
+     - Giúp người dùng nhìn thấy rõ ràng trên giao diện badge `[✓ Đúng ngày]`, tránh việc rỗng mảng khiến hệ thống ngầm gán `[7, 1, 0]`.
+- **Trạng thái kiểm thử**:
+  - `npm test`: **29/29 unit tests PASS (100%)**.
+  - `npx tsc --noEmit`: **0 errors**.
+
+
 
 
 
