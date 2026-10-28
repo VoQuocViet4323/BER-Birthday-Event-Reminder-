@@ -160,11 +160,17 @@ export function EventFormDrawer({
       avatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`;
     }
 
-    await onSubmit({
-      ...values,
-      avatar_url: avatarUrl,
-    });
-    onClose();
+    try {
+      await onSubmit({
+        ...values,
+        avatar_url: avatarUrl,
+      });
+      setTimeout(() => {
+        onClose();
+      }, 700);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const toggleRemindOffset = (offset: number) => {

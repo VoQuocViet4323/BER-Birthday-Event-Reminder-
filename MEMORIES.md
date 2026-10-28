@@ -3105,6 +3105,27 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Ghi chú định hướng tiếp theo**:
   - Người dùng bấm nút "Thêm sự kiện" hoặc bấm sửa một sự kiện bất kỳ để trải nghiệm hiệu ứng nút bấm nước thủy tinh cao cấp.
 
+---
+
+### 📅 2026-10-28 10:12:00 | Nâng Cấp Nút Lưu Nhật Ký Với Hiệu Ứng Nước Thủy Tinh (Liquid Glass Button - Prompt #001)
+
+- **Yêu cầu của người dùng**:
+  - Sửa UI/UX nút "Lưu nhật ký" (trong form Thêm nhật ký mới và Chỉnh sửa nhật ký) cho đồng bộ với nút lưu sự kiện vừa rồi (Liquid glass button).
+- **Nội dung đã triển khai**:
+  1. **Tích hợp vào [`src/components/calendar/diary-drawer.tsx`](file:///e:/BER-Birthday-Event-Reminder-/src/components/calendar/diary-drawer.tsx)**:
+     - Nhúng component `<LiquidGlassButton />` thay thế cho nút "Lưu nhật ký" cũ trong thanh tác vụ dưới cùng của `DiaryDrawer`.
+     - Cấu hình kích thước nhỏ gọn tinh tế `btnWidth="145px"`, `btnHeight="42px"` đặt cân đối bên cạnh nút "Hủy" và nút "Xóa nhật ký".
+     - Truyền trạng thái `isSubmitting={isSaving}`, tiêu đề `idleText={initialData ? "Lưu thay đổi" : "Lưu nhật ký"}`, và `successText="Đã lưu!"`.
+     - Bổ sung độ trễ 700ms trong `handleFormSubmit` trước khi `onClose()` để người dùng nhìn thấy rõ hiệu ứng co thắt giọt nước và bung mở checkmark xanh "Đã lưu!" hoàn chỉnh.
+  2. **Đồng bộ hóa trong [`src/components/events/event-form-drawer.tsx`](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-form-drawer.tsx)**:
+     - Bổ sung độ trễ 700ms tương tự cho form Lưu sự kiện để người dùng thưởng thức trọn vẹn hiệu ứng checkmark thành công trước khi đóng form.
+- **Trạng thái kiểm thử**:
+  - `npm test`: **31/31 unit tests PASS (100%)**.
+  - `npx tsc --noEmit`: **0 errors**.
+- **Ghi chú định hướng tiếp theo**:
+  - Người dùng mở form "Viết thêm nhật ký" hoặc bấm sửa nhật ký trên Lịch để cảm nhận nút bấm nước thủy tinh mới.
+
+
 
 
 

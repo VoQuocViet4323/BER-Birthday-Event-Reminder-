@@ -10,6 +10,7 @@ import { X, BookOpen, Trash2, Check, Sparkles, Hash } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
+import { LiquidGlassButton } from "@/components/ui/liquid-glass-button";
 
 interface DiaryDrawerProps {
   isOpen: boolean;
@@ -134,14 +135,20 @@ export function DiaryDrawer({
   };
 
   const handleFormSubmit = async (values: DiaryFormValues) => {
-    await onSave({
-      id: initialData?.id,
-      values: {
-        ...values,
-        entry_date: entryDateStr,
-      },
-    });
-    onClose();
+    try {
+      await onSave({
+        id: initialData?.id,
+        values: {
+          ...values,
+          entry_date: entryDateStr,
+        },
+      });
+      setTimeout(() => {
+        onClose();
+      }, 700);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const handleDelete = async () => {
@@ -384,9 +391,15 @@ export function DiaryDrawer({
             >
               Hủy
             </button>
-            <button
+            <LiquidGlassButton
               type="button"
               id="btn-save-diary"
+              isSubmitting={isSaving}
+              idleText={initialData ? "Lưu thay đổi" : "Lưu nhật ký"}
+              loadingText="Đang lưu..."
+              successText="Đã lưu!"
+              btnWidth="145px"
+              btnHeight="42px"
               onClick={handleSubmit(
                 (values) => handleFormSubmit(values),
                 (errs) => {
@@ -400,12 +413,7 @@ export function DiaryDrawer({
                   }
                 }
               )}
-              disabled={isSaving}
-              className="px-5 py-2.5 rounded-xl gradient-brand text-white font-bold text-xs shadow-soft hover:opacity-95 transition-opacity cursor-pointer flex items-center gap-1.5"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>{isSaving ? "Đang lưu..." : "Lưu nhật ký"}</span>
-            </button>
+            />
           </div>
         </div>
       </motion.div>
