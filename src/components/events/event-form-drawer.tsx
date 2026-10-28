@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { convertLunar2Solar, convertSolar2Lunar } from "@/lib/lunar/amlich";
 import { cn } from "@/lib/utils";
 import { IosTimePicker } from "@/components/ui/ios-time-picker";
+import { IosDatePicker } from "@/components/ui/ios-date-picker";
 import { RemindDaysPicker } from "@/components/events/remind-days-picker";
 import { LiquidGlassButton } from "@/components/ui/liquid-glass-button";
 
@@ -315,64 +316,35 @@ export function EventFormDrawer({
             </AnimatePresence>
           </div>
 
-          {/* 3. Ngày, Tháng & Năm sinh (BẮT BUỘC NGÀY/THÁNG) */}
+          {/* 3. Ngày, Tháng & Năm (Apple UIDatePickerStyle.wheels 3D Drum Roll) */}
           <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Ngày diễn ra <span className="text-rose-500">*</span>
-              </label>
-
-              {/* Toggle Âm lịch nhanh */}
-              <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-semibold text-primary">
-                <input
-                  type="checkbox"
-                  checked={isLunar}
-                  onChange={(e) => setValue("is_lunar", e.target.checked)}
-                  className="rounded border-border text-primary focus:ring-primary h-4 w-4"
-                />
-                <span>Theo Âm lịch</span>
-              </label>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <input
-                  type="number"
-                  min={1}
-                  max={31}
-                  {...register("event_day")}
-                  placeholder="Ngày (1-31)"
-                  className="w-full px-3 py-2.5 rounded-xl bg-secondary/50 border border-border focus:ring-2 focus:ring-primary text-sm text-center font-bold"
-                />
-                <span className="block text-[10px] text-muted-foreground text-center mt-1">Ngày</span>
-              </div>
-              <div>
-                <input
-                  type="number"
-                  min={1}
-                  max={12}
-                  {...register("event_month")}
-                  placeholder="Tháng (1-12)"
-                  className="w-full px-3 py-2.5 rounded-xl bg-secondary/50 border border-border focus:ring-2 focus:ring-primary text-sm text-center font-bold"
-                />
-                <span className="block text-[10px] text-muted-foreground text-center mt-1">Tháng</span>
-              </div>
-              <div>
-                <input
-                  type="number"
-                  min={1900}
-                  max={2100}
-                  {...register("event_year")}
-                  placeholder="Năm"
-                  className="w-full px-3 py-2.5 rounded-xl bg-secondary/50 border border-border focus:ring-2 focus:ring-primary text-sm text-center font-bold"
-                />
-                <span className="block text-[10px] text-muted-foreground text-center mt-1">Năm diễn ra</span>
-              </div>
-            </div>
+            <IosDatePicker
+              day={Number(eventDay) || 1}
+              month={Number(eventMonth) || 1}
+              year={eventYear ? Number(eventYear) : currentYear}
+              isLunar={Boolean(isLunar)}
+              defaultOpen={false}
+              headerRight={
+                <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-primary select-none">
+                  <input
+                    type="checkbox"
+                    checked={isLunar}
+                    onChange={(e) => setValue("is_lunar", e.target.checked)}
+                    className="rounded border-border text-primary focus:ring-primary h-3.5 w-3.5 cursor-pointer"
+                  />
+                  <span>Theo Âm lịch</span>
+                </label>
+              }
+              onChange={({ day, month, year }) => {
+                setValue("event_day", day);
+                setValue("event_month", month);
+                setValue("event_year", year);
+              }}
+            />
 
             {/* Live conversion banner */}
             {convertedDateText && (
-              <div className="mt-2.5 px-3 py-2 rounded-xl bg-primary/10 border border-primary/20 text-xs text-primary font-medium flex items-center gap-2">
+              <div className="mt-2 px-3 py-2 rounded-xl bg-primary/10 border border-primary/20 text-xs text-primary font-medium flex items-center gap-2">
                 <Sparkles className="w-3.5 h-3.5 shrink-0" />
                 <span>{convertedDateText}</span>
               </div>

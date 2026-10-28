@@ -3159,6 +3159,47 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Ghi chú định hướng tiếp theo**:
   - Người dùng mở form Thêm sự kiện hoặc Sửa sự kiện, bấm vào ô "Thời gian gửi lời nhắc" để trải nghiệm con lăn 3D Apple Wheels hoàn toàn mới.
 
+---
+
+### 📅 2026-10-28 10:45:00 | Chuyển Đổi Ô Chọn Ngày Sự Kiện Sang Con Lăn 3D Apple UIKit (UIDatePickerStyle.wheels)
+
+- **Yêu cầu của người dùng**:
+  - Sửa lại toàn bộ UI/UX phần chọn ngày sự kiện (trước đó là 3 ô nhập số Ngày 29 / Tháng 10 / Năm 2026) thành dạng kéo chỉnh con lăn 3D giống như phần chỉnh thời gian vừa sửa theo chuẩn Apple UIKit (`UIDatePickerStyle.wheels`).
+- **Nội dung đã triển khai hoàn thiện**:
+  1. **Tạo mới Component [`src/components/ui/ios-date-picker.tsx`](file:///e:/BER-Birthday-Event-Reminder-/src/components/ui/ios-date-picker.tsx)**:
+     - **3 Cột hình trụ con lăn 3D độc lập (3D Cylinder Drum Rollers)**:
+       - Cột 1: **Ngày** (1..31 hoặc 28..31 tùy theo tháng & năm nhuận).
+       - Cột 2: **Tháng** (Tháng 1 .. Tháng 12).
+       - Cột 3: **Năm** (1920 .. 2050).
+     - **Hình học chiếu 3D chuẩn Apple UIKit (`UIDatePickerStyle.wheels`)**:
+       - Bán kính hình trụ $R = 105\text{px}$, chiều cao item $42\text{px}$.
+       - Góc nghiêng $\theta = \text{diff} \times 22^\circ$, tính toán `translate3d(0, y, z)` và `rotateX(-\theta)` kết hợp độ mờ cosine $\cos(\theta)^{2.2}$.
+       - Vòng lặp cuộn vô tận (Infinite loop wrap-around) cho cả Ngày, Tháng và Năm.
+       - Cơ chế vật lý quán tính (Inertia Momentum Coasting) tự động hãm phanh với phương trình lò xo mượt mà, snap chính xác từng nấc.
+       - Hỗ trợ đầy đủ: Vuốt chạm cảm ứng di động, kéo chuột mượt mà, cuộn bánh xe chuột (Mouse Wheel/Trackpad), và bàn phím (Arrow Up/Down).
+       - Phản hồi âm thanh & rung Taptic Engine cơ học chân thực của Apple (`CupertinoHaptics`) tại mỗi khấc lăn qua tâm.
+     - **Tự động thích ứng số ngày trong tháng (Dynamic Leap Year & Month Clamping)**:
+       - Khi người dùng lăn qua Tháng 2, nếu năm nhuận thì giới hạn 29 ngày, năm thường giới hạn 28 ngày. Tháng 4, 6, 9, 11 giới hạn 30 ngày. Tự động clamp ngày đã chọn không để vượt quá số ngày thực tế.
+     - **Thanh lăng kính chọn Apple Cupertino Lens & Vignette Gradient**:
+       - Viên nang kính mờ trung tâm định vị mục được chọn, đi kèm dải gradient mờ dần ở 2 đầu trên dưới tạo chiều sâu quang học 3D.
+     - **Thanh Header thu gọn thông minh phong cách iOS**:
+       - Hiển thị badge ngày tháng năm đã chọn: `29 / 10 / 2026` kèm Thứ trong tuần (ví dụ: `Thứ Năm` hoặc `Âm lịch`).
+       - Bấm vào mở/đóng con lăn 3D với chuyển động lò xo mượt mà (`Framer Motion`).
+       - Nhúng tích hợp liền mạch tùy chọn "Theo Âm lịch" qua prop `headerRight`.
+  2. **Tích hợp vào [`src/components/events/event-form-drawer.tsx`](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-form-drawer.tsx)**:
+     - Thay thế hoàn toàn 3 ô nhập `input[type=number]` truyền thống bằng `<IosDatePicker ... />`.
+     - Đồng bộ 2 chiều với React Hook Form (`event_day`, `event_month`, `event_year`, `is_lunar`).
+     - Tự động kích hoạt live banner chuyển đổi Âm $\leftrightarrow$ Dương tức thì khi người dùng lăn bất kỳ cột nào.
+- **Danh sách file tạo / chỉnh sửa**:
+  - [src/components/ui/ios-date-picker.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/ui/ios-date-picker.tsx)
+  - [src/components/events/event-form-drawer.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-form-drawer.tsx)
+  - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 errors** (TypeScript trong sạch 100%).
+  - `npm test`: **31/31 unit tests PASS** (2/2 test files passed sạch sẽ).
+- **Ghi chú định hướng tiếp theo**:
+  - Người dùng mở form Tạo sự kiện hoặc Sửa sự kiện, bấm vào ô chọn ngày hoặc lướt trực tiếp để cảm nhận con lăn 3D chuẩn Apple UIKit.
+
 
 
 
