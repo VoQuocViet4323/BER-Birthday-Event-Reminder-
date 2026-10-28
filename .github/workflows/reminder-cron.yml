@@ -1,0 +1,29 @@
+name: Event Reminder Background Scheduler
+
+on:
+  schedule:
+    # Chạy tự động mỗi 30 phút một lần (UTC)
+    - cron: '*/30 * * * *'
+  workflow_dispatch: # Cho phép bấm "Run workflow" thủ công trên GitHub UI
+
+jobs:
+  check-and-send-reminders:
+    name: Trigger Check Reminders Cron
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping BER Reminder Endpoint
+        run: |
+          echo "Triggering https://ber-birthday-event-reminder.vercel.app/api/cron/check-reminders..."
+          HTTP_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "https://ber-birthday-event-reminder.vercel.app/api/cron/check-reminders")
+          HTTP_BODY=$(echo "$HTTP_RESPONSE" | sed '$d')
+          HTTP_STATUS=$(echo "$HTTP_RESPONSE" | tail -n 1)
+          
+          echo "HTTP Status Code: $HTTP_STATUS"
+          echo "Response Body: $HTTP_BODY"
+          
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 400 ]; then
+            echo "Cron check completed successfully!"
+          else
+            echo "Cron check returned non-200 code ($HTTP_STATUS)"
+            exit 1
+          fi

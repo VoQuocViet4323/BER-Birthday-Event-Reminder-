@@ -2961,6 +2961,49 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
   - `npx tsc --noEmit`: **0 errors**.
   - Dev Server: Biên dịch thành công trong 594ms.
 
+---
+
+### 📅 2026-10-28 07:20:00 | Khắc Phục Lỗ Hổng Bảo Mật auth_users_exposed & Sửa Triệt Để Lỗi Miss Thông Báo Tự Động Ngầm 24/7
+
+- **Yêu cầu của người dùng**:
+  1. Khắc phục triệt để lỗi miss thông báo: Email chỉ gửi khi bấm vào Web App trên trình duyệt, không tự động gửi về nữa khi không mở web. Yêu cầu xử lý dứt điểm, không để lặp lại.
+  2. Kiểm tra lỗi và xử lý lỗ hổng bảo mật nghiêm trọng theo email cảnh báo từ Supabase: *"CRITICAL ISSUE: User data exposed through a view (auth_users_exposed)"*.
+- **Phân tích nguyên nhân gốc rễ (Root Cause Analysis)**:
+  1. **Lỗ hổng bảo mật `auth_users_exposed` từ Supabase**:
+     - Trong Migration 004 trước đây, 2 view `public.admin_accounts` và `public.user_accounts` được tạo trong schema `public` có `LEFT JOIN auth.users u ON p.id = u.id` và SELECT các cột nhạy cảm `u.email, u.last_sign_in_at`.
+     - Vì 2 view nằm trong schema `public` và chưa bật RLS, PostgREST tự động phơi bày chúng qua REST API cho bất kỳ client nào có `anon_key` đều có thể đọc toàn bộ danh sách email và thông tin tài khoản người dùng mà không cần đăng nhập.
+  2. **Lỗi chỉ gửi email khi mở Web App (Miss thông báo khi đóng web)**:
+     - Biến môi trường `SUPABASE_SERVICE_ROLE_KEY` trong `.env.local` (và trên Vercel) đang là chuỗi dummy `...dummy_service_role`.
+     - Hàm `createAdminClient()` kiểm tra `if (serviceRoleKey.includes("dummy")) return null;`.
+     - Khi cron ngầm (Vercel cron, pg_cron, Cloud Scheduler) gọi endpoint `/api/cron/check-reminders`: Vì không có phiên đăng nhập của người dùng (`!user`), route gọi `createAdminClient()` nhưng nhận về `null`. Hệ thống dừng lại và trả về: `{"success": true, "message": "Chưa có phiên người dùng đăng nhập để quét nhắc nhở."}` $\rightarrow$ Không có email nào được gửi ngầm.
+     - Chỉ khi người dùng mở Web App, hook `useAutoReminderScheduler` trong trình duyệt gửi request kèm cookie phiên đăng nhập (`user` tồn tại), route mới quét theo `user.id` và gửi email.
+     - Migration 002 cũ cấu hình `pg_cron` gọi sang URL chứa placeholder `'YOUR_PROJECT_REF'` và Edge Function `send-reminders` chỉ hỗ trợ Resend API chứ không hỗ trợ Nodemailer Gmail SMTP mà người dùng đang sử dụng.
+- **Nội dung đã triển khai khắc phục triệt để**:
+  1. **Tạo Migration 017 ([supabase/migrations/20261028_017_fix_auth_users_exposed_and_cron_auto_send.sql](file:///e:/BER-Birthday-Event-Reminder-/supabase/migrations/20261028_017_fix_auth_users_exposed_and_cron_auto_send.sql))**:
+     - `DROP VIEW IF EXISTS public.admin_accounts CASCADE;` & `DROP VIEW IF EXISTS public.user_accounts CASCADE;` $\rightarrow$ Loại bỏ hoàn toàn 2 view gây rò rỉ dữ liệu `auth.users`, Supabase Security Advisor sẽ tự động xóa cảnh báo Critical.
+     - Tạo hàm RPC bảo mật `public.get_all_users_for_admin()` (`SECURITY DEFINER`, chỉ cấp quyền cho role `admin`) để thay thế.
+     - Tạo bộ hàm RPC bảo mật phục vụ Dual-Engine Cron:
+       - `cron_get_active_events_and_settings()`: Lấy dữ liệu sự kiện của người dùng bật email trong 1 lần truy vấn Postgres duy nhất.
+       - `cron_claim_reminder_lock(...)`: Khóa độc quyền đa tầng nguyên tử (Triple Lock Idempotency).
+       - `cron_commit_reminder_sent(...)` & `cron_release_reminder_lock(...)`.
+     - Cấu hình lại `invoke_send_reminders()` trong `pg_cron` & `pg_net` gọi trực tiếp endpoint Next.js Production: `https://ber-birthday-event-reminder.vercel.app/api/cron/check-reminders` mỗi 10 phút một lần (chạy 24/7 ngầm trong database).
+  2. **Cập Nhật Hook Admin ([src/hooks/use-admin.ts](file:///e:/BER-Birthday-Event-Reminder-/src/hooks/use-admin.ts))**:
+     - Gỡ bỏ hoàn toàn việc truy vấn vào `admin_accounts` và `user_accounts`.
+     - Truy vấn trực tiếp từ bảng `public.profiles` (đã có RLS `Admins can view all profiles`) và bảng `events`, với fallback qua RPC `get_all_users_for_admin`.
+  3. **Cập Nhật Route Handler Quét Nhắc Nhở ([src/app/api/cron/check-reminders/route.ts](file:///e:/BER-Birthday-Event-Reminder-/src/app/api/cron/check-reminders/route.ts))**:
+     - Bổ sung cơ chế **Dual-Engine Cron**:
+       - Ưu tiên 1: Nếu có `SUPABASE_SERVICE_ROLE_KEY` $\rightarrow$ Sử dụng Admin Client.
+       - Ưu tiên 2 (Tự động kích hoạt khi chưa có Service Key hoặc key dummy): Tự động chuyển sang `handleGlobalCronCheckViaRpc` sử dụng RPC Function `cron_get_active_events_and_settings`.
+     - Tích hợp hàm `claimReminderLock`, `commitReminderSent`, `releaseReminderLock` ưu tiên gọi các RPC Postgres nguyên tử.
+     - Hỗ trợ đầy đủ cả Gmail SMTP và Resend API.
+  4. **Tạo GitHub Actions Workflow ([.github/workflows/reminder-cron.yml](file:///e:/BER-Birthday-Event-Reminder-/.github/workflows/reminder-cron.yml))**:
+     - Chạy tự động mỗi 30 phút trên hạ tầng đám mây GitHub Actions để gọi endpoint nhắc nhở, đóng vai trò là cơ chế dự phòng phụ (Secondary Redundancy Fail-Safe) hoàn toàn miễn phí.
+- **Trạng thái kiểm thử**:
+  - `npm test`: **29/29 unit tests PASS (100%)**.
+  - `npx tsc --noEmit`: **0 errors**.
+  - Endpoint test qua PowerShell: Mode `global-cron-rpc` kích hoạt chính xác khi không có session người dùng.
+
+
 
 
 

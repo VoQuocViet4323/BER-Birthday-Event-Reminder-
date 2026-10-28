@@ -107,10 +107,9 @@ export function useAdmin() {
     queryKey: ["admin-all-users"],
     queryFn: async (): Promise<AdminUserItem[]> => {
       if (isConfigured) {
-        // Query song song admin_accounts và user_accounts (không bị RLS profiles chặn)
-        const [adminRes, userRes, profilesRes, eventsRes] = await Promise.all([
-          (supabase as any).from("admin_accounts").select("*"),
-          (supabase as any).from("user_accounts").select("*"),
+        // Truy vấn danh sách người dùng trực tiếp từ bảng profiles (được bảo vệ bởi RLS cho Admin)
+        // và bảng events để đếm số lượng sự kiện
+        const [profilesRes, eventsRes] = await Promise.all([
           (supabase as any).from("profiles").select("*"),
           (supabase as any).from("events").select("id, user_id"),
         ]);
@@ -122,47 +121,36 @@ export function useAdmin() {
           });
         }
 
+        let profilesList: any[] = profilesRes.data || [];
+        // Nếu RLS profiles chưa đủ quyền, thử gọi fallback qua RPC bảo mật get_all_users_for_admin
+        if (profilesList.length <= 1) {
+          try {
+            const rpcRes = await (supabase as any).rpc("get_all_users_for_admin");
+            if (rpcRes.data && rpcRes.data.length > 0) {
+              profilesList = rpcRes.data;
+            }
+          } catch {
+            // Giữ nguyên profilesList
+          }
+        }
+
         const userMap = new Map<string, AdminUserItem>();
-
-        // Lấy từ các Views phân loại tài khoản (admin_accounts, user_accounts)
-        const accountsList = [
-          ...(adminRes.data || []),
-          ...(userRes.data || []),
-        ];
-
-        accountsList.forEach((acc: any) => {
-          const email = acc.email || (acc.username ? `${acc.username}@ber-app.com` : "");
-          const username = acc.username || (email ? email.split("@")[0] : "");
-          userMap.set(acc.id, {
-            id: acc.id,
-            display_name: acc.display_name || username || "Người dùng",
+        profilesList.forEach((p: any) => {
+          const email = p.email || (p.username ? `${p.username}@ber-app.com` : "");
+          const username = p.username || (email ? email.split("@")[0] : "");
+          userMap.set(p.id, {
+            id: p.id,
+            display_name: p.display_name || username || "Người dùng",
             username,
-            role: acc.role || "user",
+            role: p.role || "user",
             email,
-            timezone: acc.timezone || "Asia/Ho_Chi_Minh",
-            avatar_url: `https://api.dicebear.com/7.x/bottts/svg?seed=${username || acc.id}`,
-            onboarded: true,
-            created_at: acc.created_at || new Date().toISOString(),
-            events_count: eventsByUser[acc.id] || 0,
+            timezone: p.timezone || "Asia/Ho_Chi_Minh",
+            avatar_url: p.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${username || p.id}`,
+            onboarded: p.onboarded ?? true,
+            created_at: p.created_at || new Date().toISOString(),
+            events_count: eventsByUser[p.id] || 0,
           });
         });
-
-        // Bổ sung thêm các trường từ bảng profiles nếu có
-        if (profilesRes.data) {
-          profilesRes.data.forEach((p: any) => {
-            const existing = userMap.get(p.id);
-            const username = p.username || existing?.username || "";
-            const email = p.email || existing?.email || (username ? `${username}@ber-app.com` : "");
-            userMap.set(p.id, {
-              ...existing,
-              ...p,
-              username,
-              email,
-              avatar_url: p.avatar_url || existing?.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${username || p.id}`,
-              events_count: eventsByUser[p.id] || 0,
-            });
-          });
-        }
 
         if (userMap.size > 0) {
           return Array.from(userMap.values()).sort((a, b) => {

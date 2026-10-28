@@ -36,7 +36,7 @@ async function handleCheckReminders(request: Request) {
       hour12: false,
     }); // Dạng "HH:mm" (ví dụ: "16:50")
 
-    // Nếu không có phiên người dùng (được gọi từ Vercel Cron hoặc Cloud scheduler):
+    // Nếu không có phiên người dùng (được gọi từ Vercel Cron, pg_cron, GitHub Actions hoặc Cloud scheduler):
     // Tự động chuyển sang chế độ quét toàn hệ thống cho mọi người dùng
     if (!user) {
       const admin = createAdminClient();
@@ -44,11 +44,9 @@ async function handleCheckReminders(request: Request) {
         return await handleGlobalCronCheck(admin, currentTimeStr, now);
       }
 
-      return NextResponse.json({
-        success: true,
-        checkedAt: currentTimeStr,
-        message: "Chưa có phiên người dùng đăng nhập để quét nhắc nhở.",
-      });
+      // Fallback: Khi SUPABASE_SERVICE_ROLE_KEY chưa được cấu hình hoặc là dummy,
+      // tự động dùng RPC bảo mật cron_get_active_events_and_settings để quét toàn bộ sự kiện ngầm 24/7
+      return await handleGlobalCronCheckViaRpc(supabase, currentTimeStr, now);
     }
 
     // 1. Lấy thông tin cấu hình người dùng
@@ -404,6 +402,142 @@ async function handleGlobalCronCheck(admin: any, currentTimeStr: string, now: Da
 }
 
 /**
+ * Quét toàn bộ hệ thống bằng RPC Function (SECURITY DEFINER)
+ * Hoạt động 24/7 độc lập ngay cả khi chưa có SUPABASE_SERVICE_ROLE_KEY
+ */
+async function handleGlobalCronCheckViaRpc(client: any, currentTimeStr: string, now: Date) {
+  try {
+    const { data: userPayloads, error: rpcErr } = await client.rpc(
+      "cron_get_active_events_and_settings"
+    );
+
+    if (rpcErr || !userPayloads || userPayloads.length === 0) {
+      return NextResponse.json({
+        success: true,
+        mode: "global-cron-rpc",
+        checkedAt: currentTimeStr,
+        totalEmailsSent: 0,
+        message: userPayloads?.length === 0
+          ? "Không có người dùng nào đang bật nhận email."
+          : `Chưa cấu hình RPC quét ngầm: ${rpcErr?.message || "Vui lòng chạy Migration 017 trong Supabase SQL Editor"}.`,
+      });
+    }
+
+    let totalEmailsSent = 0;
+    const processedEvents: string[] = [];
+
+    for (const item of userPayloads) {
+      const userId = item.user_id;
+      const profile = item.profile;
+      const leapDayRule = item.leap_day_rule || "feb28";
+      const defaultRemindTime = item.remind_time || "08:00";
+      const defaultOffsets: number[] = item.default_remind_days || [7, 3, 1, 0];
+      const events = item.events || [];
+
+      if (!events || events.length === 0) continue;
+
+      const dueEvents: any[] = [];
+
+      for (const ev of events) {
+        const nextOcc = calculateNextOccurrence(ev, now, leapDayRule);
+        const daysRemaining = calculateDaysRemaining(nextOcc, now);
+        const rawOffsets =
+          Array.isArray(ev.remind_days) && ev.remind_days.length > 0
+            ? ev.remind_days
+            : defaultOffsets;
+        const eventOffsets = (rawOffsets || []).map((d: any) => Number(d)).filter((d: number) => !isNaN(d));
+
+        if (!eventOffsets.includes(daysRemaining)) continue;
+
+        const eventTime = ev.remind_time || defaultRemindTime;
+        const normalizeTime = (t: string | null | undefined) => {
+          if (!t) return "08:00";
+          const parts = t.trim().split(":");
+          return parts.length >= 2 ? `${parts[0].padStart(2, "0")}:${parts[1].padStart(2, "0")}` : t;
+        };
+
+        // Nếu chưa đến giờ nhắc trong ngày hôm nay -> bỏ qua
+        if (normalizeTime(currentTimeStr) < normalizeTime(eventTime)) continue;
+
+        const occurrenceDateStr = formatOccurrenceDate(nextOcc);
+        const locked = await claimReminderLock(client, userId, ev.id, daysRemaining, occurrenceDateStr);
+        if (!locked) continue;
+
+        const upcomingAge = ev.event_year ? calculateUpcomingAge(ev.event_year, nextOcc.getFullYear()) : null;
+        dueEvents.push({ ...ev, daysRemaining, upcomingAge, occurrenceDateStr });
+      }
+
+      if (dueEvents.length === 0) continue;
+
+      const targetEmail =
+        item.custom_reminder_email ||
+        profile?.email ||
+        process.env.SMTP_USER;
+
+      if (!targetEmail) {
+        await releaseReminderLock(client, dueEvents);
+        continue;
+      }
+
+      const rawAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+      const appUrl =
+        rawAppUrl && !rawAppUrl.includes("localhost")
+          ? rawAppUrl.replace(/\/+$/, "")
+          : "https://ber-birthday-event-reminder.vercel.app";
+
+      const itemsToSend: ReminderItem[] = dueEvents.map((ev) => ({
+        id: ev.id,
+        name: ev.name,
+        eventType: ev.event_type,
+        eventDateFormatted: `${ev.event_day} tháng ${ev.event_month}${ev.is_lunar ? " (Âm lịch)" : ""}`,
+        daysRemaining: ev.daysRemaining,
+        upcomingAge: ev.upcomingAge,
+        groupName: ev.group_name || "Khác",
+        isLunar: ev.is_lunar,
+        note: ev.note,
+        giftIdea: ev.gift_idea,
+      }));
+
+      const recipientName = profile?.display_name || "Bạn";
+      const html = generateReminderEmailHtml({
+        userName: recipientName,
+        items: itemsToSend,
+        appUrl,
+        unsubscribeUrl: `${appUrl}/settings`,
+      });
+
+      const eventNames = dueEvents.map((e) => e.name).join(", ");
+      const subject = `🔔 [Nhắc nhở lúc ${currentTimeStr}] Sự kiện: ${eventNames}`;
+
+      const sendResult = await sendEmail({ to: targetEmail, subject, html });
+
+      if (sendResult.success) {
+        totalEmailsSent++;
+        processedEvents.push(...dueEvents.map((e) => e.name));
+        await commitReminderSent(client, dueEvents);
+      } else {
+        await releaseReminderLock(client, dueEvents);
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      mode: "global-cron-rpc",
+      checkedAt: currentTimeStr,
+      totalEmailsSent,
+      events: processedEvents,
+      message: `Đã hoàn tất quét tự động ngầm lúc ${currentTimeStr}. Đã gửi ${totalEmailsSent} email.`,
+    });
+  } catch (err: any) {
+    console.error("Global cron RPC check error:", err);
+    return NextResponse.json(
+      { success: false, error: err?.message || "Lỗi quét tự động qua RPC" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
  * Định dạng ngày sự kiện độc lập tuyệt đối với múi giờ client/server
  * Tránh lỗi lệch 1 ngày khi dùng .toISOString() ở múi giờ GMT+7
  */
@@ -416,9 +550,7 @@ function formatOccurrenceDate(date: Date): string {
 
 /**
  * Khóa độc quyền đa tầng (Triple Lock Idempotency) chống gửi trùng lặp tuyệt đối:
- * Lớp 1: Kiểm tra xem trong 18 giờ qua đã có email 'sent' cho sự kiện & mốc nhắc này chưa.
- * Lớp 2: Kiểm tra bản ghi với occurrence_date chính xác (dọn dẹp pending stuck > 3 phút).
- * Lớp 3: Ràng buộc cơ sở dữ liệu UNIQUE (event_id, remind_offset, occurrence_date, channel).
+ * Ưu tiên gọi hàm RPC bảo mật cron_claim_reminder_lock nếu có, fallback về query trực tiếp.
  */
 async function claimReminderLock(
   client: any,
@@ -427,6 +559,21 @@ async function claimReminderLock(
   remindOffset: number,
   occurrenceDateStr: string
 ): Promise<boolean> {
+  // Thử qua RPC trước (hoạt động cho cả anon caller khi không có session)
+  try {
+    const { data: rpcResult, error: rpcErr } = await client.rpc("cron_claim_reminder_lock", {
+      p_user_id: userId,
+      p_event_id: eventId,
+      p_remind_offset: remindOffset,
+      p_occurrence_date: occurrenceDateStr,
+    });
+    if (!rpcErr && typeof rpcResult === "boolean") {
+      return rpcResult;
+    }
+  } catch {
+    // Fallback sang query bảng trực tiếp
+  }
+
   try {
     // LỚP 1: Chống gửi lặp trong vòng 18 giờ qua (ngăn chặn tuyệt đối double email trong cùng 1 ngày)
     const eighteenHoursAgo = new Date(Date.now() - 18 * 60 * 60 * 1000).toISOString();
@@ -441,7 +588,6 @@ async function claimReminderLock(
       .limit(1);
 
     if (recentSent && recentSent.length > 0) {
-      // Đã gửi email thành công trong 18 giờ qua -> TUYỆT ĐỐI KHÔNG GỬI LẠI!
       return false;
     }
 
@@ -461,12 +607,10 @@ async function claimReminderLock(
       if (log.status === "sent") {
         return false;
       }
-      // Nếu là 'pending' nhưng vừa mới tạo trong vòng 3 phút -> đang có luồng khác gửi
       const logTime = new Date(log.sent_at || Date.now()).getTime();
       if (Date.now() - logTime < 3 * 60 * 1000) {
         return false;
       }
-      // Nếu là 'pending' đã quá 3 phút (stuck timeout) -> xóa để claim lại
       await client.from("notification_logs").delete().eq("id", log.id);
     }
 
@@ -481,7 +625,6 @@ async function claimReminderLock(
     });
 
     if (lockErr) {
-      // Bị trùng khóa UNIQUE (luồng song song khác vừa chiếm lock trong cùng mili-giây)
       return false;
     }
 
@@ -497,18 +640,38 @@ async function claimReminderLock(
 async function commitReminderSent(client: any, events: any[]) {
   for (const ev of events) {
     try {
-      await client
-        .from("notification_logs")
-        .update({
-          status: "sent",
-          sent_at: new Date().toISOString(),
-        })
-        .eq("event_id", ev.id)
-        .eq("remind_offset", ev.daysRemaining)
-        .eq("occurrence_date", ev.occurrenceDateStr)
-        .eq("channel", "email");
-    } catch (err) {
-      console.warn("Could not commit reminder log status to sent:", err);
+      const { error: rpcErr } = await client.rpc("cron_commit_reminder_sent", {
+        p_event_id: ev.id,
+        p_remind_offset: ev.daysRemaining,
+        p_occurrence_date: ev.occurrenceDateStr,
+      });
+      if (rpcErr) {
+        await client
+          .from("notification_logs")
+          .update({
+            status: "sent",
+            sent_at: new Date().toISOString(),
+          })
+          .eq("event_id", ev.id)
+          .eq("remind_offset", ev.daysRemaining)
+          .eq("occurrence_date", ev.occurrenceDateStr)
+          .eq("channel", "email");
+      }
+    } catch {
+      try {
+        await client
+          .from("notification_logs")
+          .update({
+            status: "sent",
+            sent_at: new Date().toISOString(),
+          })
+          .eq("event_id", ev.id)
+          .eq("remind_offset", ev.daysRemaining)
+          .eq("occurrence_date", ev.occurrenceDateStr)
+          .eq("channel", "email");
+      } catch (err) {
+        console.warn("Could not commit reminder log status to sent:", err);
+      }
     }
   }
 }
@@ -519,16 +682,34 @@ async function commitReminderSent(client: any, events: any[]) {
 async function releaseReminderLock(client: any, events: any[]) {
   for (const ev of events) {
     try {
-      await client
-        .from("notification_logs")
-        .delete()
-        .eq("event_id", ev.id)
-        .eq("remind_offset", ev.daysRemaining)
-        .eq("occurrence_date", ev.occurrenceDateStr)
-        .eq("channel", "email")
-        .eq("status", "pending");
-    } catch (err) {
-      console.warn("Could not release pending reminder lock:", err);
+      const { error: rpcErr } = await client.rpc("cron_release_reminder_lock", {
+        p_event_id: ev.id,
+        p_remind_offset: ev.daysRemaining,
+        p_occurrence_date: ev.occurrenceDateStr,
+      });
+      if (rpcErr) {
+        await client
+          .from("notification_logs")
+          .delete()
+          .eq("event_id", ev.id)
+          .eq("remind_offset", ev.daysRemaining)
+          .eq("occurrence_date", ev.occurrenceDateStr)
+          .eq("channel", "email")
+          .eq("status", "pending");
+      }
+    } catch {
+      try {
+        await client
+          .from("notification_logs")
+          .delete()
+          .eq("event_id", ev.id)
+          .eq("remind_offset", ev.daysRemaining)
+          .eq("occurrence_date", ev.occurrenceDateStr)
+          .eq("channel", "email")
+          .eq("status", "pending");
+      } catch (err) {
+        console.warn("Could not release pending reminder lock:", err);
+      }
     }
   }
 }
