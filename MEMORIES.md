@@ -3125,6 +3125,41 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Ghi chú định hướng tiếp theo**:
   - Người dùng mở form "Viết thêm nhật ký" hoặc bấm sửa nhật ký trên Lịch để cảm nhận nút bấm nước thủy tinh mới.
 
+---
+
+### 📅 2026-10-28 10:20:00 | Nâng Cấp Bộ Chọn Giờ Theo Chuẩn Apple UIDatePickerStyle.wheels (3D Drum Cylinder & Inertia Physics)
+
+- **Yêu cầu của người dùng**:
+  - Sửa lại phần kéo chỉnh thời gian theo chuẩn của Apple UIKit (`UIDatePickerStyle.wheels`): https://developer.apple.com/documentation/uikit/uidatepickerstyle/wheels.
+- **Phân tích nguyên nhân & cải tiến cần có so với bản cũ**:
+  1. Bản cũ dùng `overflow-y: auto` dạng web truyền thống kèm 2 nút mũi tên chevron `^` và `v` ở trên dưới làm giao diện rườm rà, thiếu tính chân thực.
+  2. Bị giới hạn kịch trần (Hard-clamped): khi cuộn đến 00 hoặc 59 bị chặn lại, không có vòng lặp vô tận (Infinite Looping).
+  3. Thiếu quán tính vật lý (Inertia momentum coasting) và cơ chế Snap đàn hồi tự nhiên.
+- **Nội dung đã triển khai hoàn thiện trong [`src/components/ui/ios-time-picker.tsx`](file:///e:/BER-Birthday-Event-Reminder-/src/components/ui/ios-time-picker.tsx)**:
+  1. **Hình học chiếu 3D Cylinder chuẩn Apple UIKit**:
+     - Chiều cao dòng `ITEM_HEIGHT = 42px`, bán kính hình trụ `RADIUS = 105px`.
+     - Góc quay $\theta = \text{diff} \times 22^\circ$, độ cong $Y = R \cdot \sin(\theta)$, độ sâu $Z = R \cdot (\cos(\theta) - 1)$, xoay $rotateX = -\theta$, độ mờ $opacity = \cos(\theta)^{2.2}$.
+     - Các con số cuộn cong về phía xa ở 2 đỉnh trên dưới, phóng to sắc nét (`font-black text-2xl/3xl`) khi nằm ngang tầm mắt ở trung tâm.
+     - Lớp phủ mờ dần (Vignette Gradient Mask) ở 2 đầu trên dưới tạo chiều sâu không gian 3D.
+  2. **Thanh kính lúp chọn giờ trung tâm (Cupertino Selection Lens)**:
+     - Viên nang thủy tinh trong suốt với viền mảnh trên dưới (`border-y border-white/20 dark:border-white/10 backdrop-blur-[2px]`).
+     - Dấu hai chấm `:` màu thương hiệu đặt trang nhã ngay giữa 2 cột giờ và phút.
+     - Gỡ bỏ hoàn toàn các nút mũi tên chevron `^` và `v` rườm rà, trả lại mặt trống trơn láng thuần khiết của Apple.
+  3. **Vật lý kéo lướt quán tính & Vòng lặp vô tận (Infinite Loop & Momentum)**:
+     - Kéo chuột hoặc vuốt ngón tay: bám dính 1:1 theo cử chỉ.
+     - Khi thả tay/nhả chuột với vận tốc: hệ thống tự động lướt tiếp theo quán tính (`momentum = velocity * 14`) và hãm phanh mượt mà bằng phương trình lò xo Spring Physics `force = (target - current) * 0.22`, `velocity *= 0.74`.
+     - Phút (00-59) và Giờ (00-23) xoay vòng vô tận qua phép toán modulo `((val % N) + N) % N`, không bao giờ bị kẹt lại.
+     - Cho phép bấm trực tiếp vào bất kỳ con số nào nhìn thấy để con lăn tự xoay mượt mà về tâm.
+     - Hỗ trợ cuộn con lăn chuột / trackpad và phím mũi tên bàn phím (Arrow Up/Down/PageUp/PageDown).
+  4. **Phản hồi xúc giác & Âm thanh Taptic Engine (CupertinoHaptics)**:
+     - Khi mỗi nấc số lăn qua trung tâm, hệ thống kích hoạt âm thanh tick cơ học siêu ngắn (760Hz $\rightarrow$ 160Hz trong 12ms) kết hợp rung micro-vibration 8ms như xoay núm vặn Apple Digital Crown.
+- **Trạng thái kiểm thử**:
+  - `npm test`: **31/31 unit tests PASS (100%)**.
+  - `npx tsc --noEmit`: **0 errors**.
+- **Ghi chú định hướng tiếp theo**:
+  - Người dùng mở form Thêm sự kiện hoặc Sửa sự kiện, bấm vào ô "Thời gian gửi lời nhắc" để trải nghiệm con lăn 3D Apple Wheels hoàn toàn mới.
+
+
 
 
 
