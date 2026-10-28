@@ -101,6 +101,7 @@ function WheelColumn({ itemsCount, value, onChange, label }: WheelColumnProps) {
 
   const lastHapticRef = useRef<number>(value);
   const animFrameRef = useRef<number | null>(null);
+  const isAnimatingRef = useRef<boolean>(false);
 
   // Trạng thái Dragging
   const isDraggingRef = useRef<boolean>(false);
@@ -111,9 +112,9 @@ function WheelColumn({ itemsCount, value, onChange, label }: WheelColumnProps) {
   const velocityRef = useRef<number>(0);
   const hasMovedRef = useRef<boolean>(false);
 
-  // Đồng bộ khi prop `value` thay đổi từ bên ngoài (khi không kéo)
+  // Đồng bộ khi prop `value` thay đổi từ bên ngoài (khi không kéo & không đang chạy animation nội bộ)
   useEffect(() => {
-    if (!isDraggingRef.current) {
+    if (!isDraggingRef.current && !isAnimatingRef.current) {
       const currentNorm = ((Math.round(offsetRef.current) % itemsCount) + itemsCount) % itemsCount;
       if (currentNorm !== value) {
         // Tìm bước nhảy gần nhất để tránh quay vòng lớn
@@ -141,15 +142,17 @@ function WheelColumn({ itemsCount, value, onChange, label }: WheelColumnProps) {
     (targetIndex: number) => {
       if (animFrameRef.current) {
         cancelAnimationFrame(animFrameRef.current);
+        animFrameRef.current = null;
       }
 
+      isAnimatingRef.current = true;
       let current = offsetRef.current;
       const target = targetIndex;
       let velocity = 0;
 
       const step = () => {
-        const force = (target - current) * 0.22;
-        velocity = (velocity + force) * 0.74;
+        const force = (target - current) * 0.28;
+        velocity = (velocity + force) * 0.72;
         current += velocity;
 
         setOffset(current);
@@ -160,10 +163,11 @@ function WheelColumn({ itemsCount, value, onChange, label }: WheelColumnProps) {
           CupertinoHaptics.trigger();
         }
 
-        if (Math.abs(velocity) < 0.0005 && Math.abs(target - current) < 0.0005) {
+        if (Math.abs(velocity) < 0.003 && Math.abs(target - current) < 0.003) {
           setOffset(target);
           const normalized = ((target % itemsCount) + itemsCount) % itemsCount;
           onChange(normalized);
+          isAnimatingRef.current = false;
           animFrameRef.current = null;
           return;
         }
@@ -190,6 +194,7 @@ function WheelColumn({ itemsCount, value, onChange, label }: WheelColumnProps) {
     if (animFrameRef.current) {
       cancelAnimationFrame(animFrameRef.current);
       animFrameRef.current = null;
+      isAnimatingRef.current = false;
     }
 
     try {
@@ -207,10 +212,11 @@ function WheelColumn({ itemsCount, value, onChange, label }: WheelColumnProps) {
 
     const dt = now - lastTimeRef.current;
     if (dt > 0) {
-      velocityRef.current = (e.clientY - lastYRef.current) / dt;
+      const instantV = (e.clientY - lastYRef.current) / dt;
+      velocityRef.current = velocityRef.current * 0.35 + instantV * 0.65;
+      lastYRef.current = e.clientY;
+      lastTimeRef.current = now;
     }
-    lastYRef.current = e.clientY;
-    lastTimeRef.current = now;
 
     // 1:1 Direct Tracking theo ngón tay / chuột
     const newOffset = startOffsetRef.current - dy / ITEM_HEIGHT;
@@ -231,10 +237,22 @@ function WheelColumn({ itemsCount, value, onChange, label }: WheelColumnProps) {
       (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
     } catch {}
 
-    // Lướt quán tính theo vận tốc nhả chuột/ngón tay
+    const now = performance.now();
+    const timeSinceLastMove = now - lastTimeRef.current;
     const v = velocityRef.current;
-    const momentum = Math.max(-12, Math.min(12, v * 14));
-    const target = Math.round(offsetRef.current - momentum);
+
+    let target: number;
+    // Nếu người dùng dừng lại trước khi nhả tay (> 60ms) hoặc kéo từ từ (< 0.22 px/ms):
+    // -> TUYỆT ĐỐI KHÔNG DÙNG QUÁN TÍNH! Snap 100% vào số đang hiển thị ở tâm!
+    if (timeSinceLastMove > 60 || Math.abs(v) < 0.22) {
+      target = Math.round(offsetRef.current);
+    } else {
+      // Chỉ khi người dùng vuốt nhanh (flick) thì mới lướt nhẹ theo quán tính
+      const momentum = (v * 70) / ITEM_HEIGHT;
+      const clampedMomentum = Math.max(-4, Math.min(4, momentum));
+      target = Math.round(offsetRef.current - clampedMomentum);
+    }
+
     animateTo(target);
   };
 

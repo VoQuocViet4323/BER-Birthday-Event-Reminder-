@@ -88,9 +88,10 @@ interface WheelColumnProps {
   onChange: (index: number) => void;
   formatItem: (index: number) => string;
   label: string;
+  loop?: boolean;
 }
 
-function WheelColumn({ itemsCount, value, onChange, formatItem, label }: WheelColumnProps) {
+function WheelColumn({ itemsCount, value, onChange, formatItem, label, loop = true }: WheelColumnProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [offset, setOffset] = useState<number>(value);
   const offsetRef = useRef<number>(value);
@@ -98,6 +99,7 @@ function WheelColumn({ itemsCount, value, onChange, formatItem, label }: WheelCo
 
   const lastHapticRef = useRef<number>(value);
   const animFrameRef = useRef<number | null>(null);
+  const isAnimatingRef = useRef<boolean>(false);
 
   const isDraggingRef = useRef<boolean>(false);
   const startYRef = useRef<number>(0);
@@ -107,20 +109,28 @@ function WheelColumn({ itemsCount, value, onChange, formatItem, label }: WheelCo
   const velocityRef = useRef<number>(0);
   const hasMovedRef = useRef<boolean>(false);
 
-  // Đồng bộ khi prop `value` thay đổi từ bên ngoài
+  // Đồng bộ khi prop `value` thay đổi từ bên ngoài (khi không kéo & không đang chạy animation nội bộ)
   useEffect(() => {
-    if (!isDraggingRef.current) {
-      const currentNorm = ((Math.round(offsetRef.current) % itemsCount) + itemsCount) % itemsCount;
-      if (currentNorm !== value) {
-        let diff = value - currentNorm;
-        if (diff > itemsCount / 2) diff -= itemsCount;
-        if (diff < -itemsCount / 2) diff += itemsCount;
-        const target = Math.round(offsetRef.current) + diff;
-        setOffset(target);
-        lastHapticRef.current = target;
+    if (!isDraggingRef.current && !isAnimatingRef.current) {
+      if (loop) {
+        const currentNorm = ((Math.round(offsetRef.current) % itemsCount) + itemsCount) % itemsCount;
+        if (currentNorm !== value) {
+          let diff = value - currentNorm;
+          if (diff > itemsCount / 2) diff -= itemsCount;
+          if (diff < -itemsCount / 2) diff += itemsCount;
+          const target = Math.round(offsetRef.current) + diff;
+          setOffset(target);
+          lastHapticRef.current = target;
+        }
+      } else {
+        const currentVal = Math.round(offsetRef.current);
+        if (currentVal !== value) {
+          setOffset(value);
+          lastHapticRef.current = value;
+        }
       }
     }
-  }, [value, itemsCount]);
+  }, [value, itemsCount, loop]);
 
   useEffect(() => {
     return () => {
@@ -134,15 +144,21 @@ function WheelColumn({ itemsCount, value, onChange, formatItem, label }: WheelCo
     (targetIndex: number) => {
       if (animFrameRef.current) {
         cancelAnimationFrame(animFrameRef.current);
+        animFrameRef.current = null;
       }
 
+      let target = targetIndex;
+      if (!loop) {
+        target = Math.max(0, Math.min(itemsCount - 1, target));
+      }
+
+      isAnimatingRef.current = true;
       let current = offsetRef.current;
-      const target = targetIndex;
       let velocity = 0;
 
       const step = () => {
-        const force = (target - current) * 0.22;
-        velocity = (velocity + force) * 0.74;
+        const force = (target - current) * 0.28;
+        velocity = (velocity + force) * 0.72;
         current += velocity;
 
         setOffset(current);
@@ -153,10 +169,12 @@ function WheelColumn({ itemsCount, value, onChange, formatItem, label }: WheelCo
           CupertinoHaptics.trigger();
         }
 
-        if (Math.abs(velocity) < 0.0005 && Math.abs(target - current) < 0.0005) {
+        // Dừng chính xác khi sai số dưới 0.004 item (~0.16px)
+        if (Math.abs(velocity) < 0.003 && Math.abs(target - current) < 0.003) {
           setOffset(target);
-          const normalized = ((target % itemsCount) + itemsCount) % itemsCount;
+          const normalized = loop ? (((target % itemsCount) + itemsCount) % itemsCount) : target;
           onChange(normalized);
+          isAnimatingRef.current = false;
           animFrameRef.current = null;
           return;
         }
@@ -166,7 +184,7 @@ function WheelColumn({ itemsCount, value, onChange, formatItem, label }: WheelCo
 
       animFrameRef.current = requestAnimationFrame(step);
     },
-    [itemsCount, onChange]
+    [itemsCount, onChange, loop]
   );
 
   const handlePointerDown = (e: React.PointerEvent) => {
@@ -182,6 +200,7 @@ function WheelColumn({ itemsCount, value, onChange, formatItem, label }: WheelCo
     if (animFrameRef.current) {
       cancelAnimationFrame(animFrameRef.current);
       animFrameRef.current = null;
+      isAnimatingRef.current = false;
     }
 
     try {
@@ -199,12 +218,24 @@ function WheelColumn({ itemsCount, value, onChange, formatItem, label }: WheelCo
 
     const dt = now - lastTimeRef.current;
     if (dt > 0) {
-      velocityRef.current = (e.clientY - lastYRef.current) / dt;
+      const instantV = (e.clientY - lastYRef.current) / dt;
+      // Bộ lọc low-pass mượt mà vận tốc
+      velocityRef.current = velocityRef.current * 0.35 + instantV * 0.65;
+      lastYRef.current = e.clientY;
+      lastTimeRef.current = now;
     }
-    lastYRef.current = e.clientY;
-    lastTimeRef.current = now;
 
-    const newOffset = startOffsetRef.current - dy / ITEM_HEIGHT;
+    let newOffset = startOffsetRef.current - dy / ITEM_HEIGHT;
+
+    // Giảm độ trượt đàn hồi (Rubber-band) nếu không lặp vô tận
+    if (!loop) {
+      if (newOffset < 0) {
+        newOffset = newOffset * 0.25;
+      } else if (newOffset > itemsCount - 1) {
+        newOffset = itemsCount - 1 + (newOffset - (itemsCount - 1)) * 0.25;
+      }
+    }
+
     setOffset(newOffset);
 
     const rounded = Math.round(newOffset);
@@ -222,9 +253,27 @@ function WheelColumn({ itemsCount, value, onChange, formatItem, label }: WheelCo
       (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
     } catch {}
 
+    const now = performance.now();
+    const timeSinceLastMove = now - lastTimeRef.current;
     const v = velocityRef.current;
-    const momentum = Math.max(-12, Math.min(12, v * 14));
-    const target = Math.round(offsetRef.current - momentum);
+
+    let target: number;
+    // QUY TẮC CỐT LÕI:
+    // Nếu người dùng dừng lại trước khi nhả tay (> 60ms) hoặc kéo từ từ (vận tốc < 0.22 px/ms):
+    // -> TUYỆT ĐỐI KHÔNG DÙNG QUÁN TÍNH! Snap chính xác 100% vào số đang hiển thị ở tâm!
+    if (timeSinceLastMove > 60 || Math.abs(v) < 0.22) {
+      target = Math.round(offsetRef.current);
+    } else {
+      // Chỉ khi người dùng vuốt nhanh (flick gesture) thì mới lướt theo quán tính vừa phải
+      const momentum = (v * 70) / ITEM_HEIGHT;
+      const clampedMomentum = Math.max(-4, Math.min(4, momentum));
+      target = Math.round(offsetRef.current - clampedMomentum);
+    }
+
+    if (!loop) {
+      target = Math.max(0, Math.min(itemsCount - 1, target));
+    }
+
     animateTo(target);
   };
 
@@ -232,34 +281,49 @@ function WheelColumn({ itemsCount, value, onChange, formatItem, label }: WheelCo
     e.preventDefault();
     e.stopPropagation();
     const dir = e.deltaY > 0 ? 1 : -1;
-    animateTo(Math.round(offsetRef.current) + dir);
+    let nextTarget = Math.round(offsetRef.current) + dir;
+    if (!loop) {
+      nextTarget = Math.max(0, Math.min(itemsCount - 1, nextTarget));
+    }
+    animateTo(nextTarget);
   };
 
   const handleItemClick = (index: number) => {
     if (hasMovedRef.current) return;
-    animateTo(index);
+    let nextTarget = index;
+    if (!loop) {
+      nextTarget = Math.max(0, Math.min(itemsCount - 1, index));
+    }
+    animateTo(nextTarget);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "ArrowUp") {
+    let delta = 0;
+    if (e.key === "ArrowUp") delta = -1;
+    else if (e.key === "ArrowDown") delta = 1;
+    else if (e.key === "PageUp") delta = -5;
+    else if (e.key === "PageDown") delta = 5;
+
+    if (delta !== 0) {
       e.preventDefault();
-      animateTo(Math.round(offsetRef.current) - 1);
-    } else if (e.key === "ArrowDown") {
-      e.preventDefault();
-      animateTo(Math.round(offsetRef.current) + 1);
-    } else if (e.key === "PageUp") {
-      e.preventDefault();
-      animateTo(Math.round(offsetRef.current) - 5);
-    } else if (e.key === "PageDown") {
-      e.preventDefault();
-      animateTo(Math.round(offsetRef.current) + 5);
+      let nextTarget = Math.round(offsetRef.current) + delta;
+      if (!loop) {
+        nextTarget = Math.max(0, Math.min(itemsCount - 1, nextTarget));
+      }
+      animateTo(nextTarget);
     }
   };
 
   const centerIndex = Math.round(offset);
   const visibleIndices: number[] = [];
   for (let i = centerIndex - 3; i <= centerIndex + 3; i++) {
-    visibleIndices.push(i);
+    if (!loop) {
+      if (i >= 0 && i < itemsCount) {
+        visibleIndices.push(i);
+      }
+    } else {
+      visibleIndices.push(i);
+    }
   }
 
   return (
@@ -290,7 +354,7 @@ function WheelColumn({ itemsCount, value, onChange, formatItem, label }: WheelCo
         const z = RADIUS * (Math.cos(angleRad) - 1);
         const scale = Math.max(0.72, 1 - absDiff * 0.05);
         const opacity = Math.max(0, Math.pow(Math.cos(angleRad), 2.2));
-        const valIndex = ((i % itemsCount) + itemsCount) % itemsCount;
+        const valIndex = loop ? (((i % itemsCount) + itemsCount) % itemsCount) : i;
 
         const isCenter = absDiff < 0.45;
 
@@ -512,6 +576,7 @@ export function IosDatePicker({
                     onChange={handleDayChange}
                     formatItem={(idx) => String(idx + 1).padStart(2, "0")}
                     label="ngày"
+                    loop={true}
                   />
                   <WheelColumn
                     itemsCount={12}
@@ -519,6 +584,7 @@ export function IosDatePicker({
                     onChange={handleMonthChange}
                     formatItem={(idx) => `Tháng ${idx + 1}`}
                     label="tháng"
+                    loop={true}
                   />
                   <WheelColumn
                     itemsCount={YEARS_COUNT}
@@ -526,6 +592,7 @@ export function IosDatePicker({
                     onChange={handleYearChange}
                     formatItem={(idx) => String(MIN_YEAR + idx)}
                     label="năm"
+                    loop={false}
                   />
                 </div>
 

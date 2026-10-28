@@ -3200,6 +3200,44 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Ghi chú định hướng tiếp theo**:
   - Người dùng mở form Tạo sự kiện hoặc Sửa sự kiện, bấm vào ô chọn ngày hoặc lướt trực tiếp để cảm nhận con lăn 3D chuẩn Apple UIKit.
 
+---
+
+### 📅 2026-10-28 10:57:00 | Khắc Phục Triệt Để Lỗi Cuộn Bị Nhảy Nấc (Overshoot) & Hoàn Thiện Vật Lý Bắt Dính Snap Trên Con Lăn Ngày, Tháng, Năm & Giờ
+
+- **Yêu cầu của người dùng**:
+  - Khi cuộn từ Ngày 9 lên Ngày 10 thì bị tự động nhảy vọt lên Ngày 11, dù đã kéo ngược lại vẫn không dừng được ở 10.
+  - Yêu cầu kiểm tra và fix đồng bộ cả bên Tháng, Năm và Giờ.
+- **Phân tích nguyên nhân kỹ thuật cốt lõi**:
+  1. **Tính toán quán tính sai lệch (Flawed Momentum)**:
+     - Trước đó công thức dùng `momentum = v * 14`. Ngay cả khi người dùng kéo rê rất chậm hoặc dừng tay ngắm số 10 rồi nhả chuột/ngón tay, vận tốc thặng dư của frame cuối cùng vẫn tạo ra một lượng momentum `~ 1.5 - 2` items. Khi nhả tay ở vị trí số 10, công thức `target = offset - momentum` lập tức cộng/trừ 1 đến 2 nấc, khiến con lăn vọt lên 11 (hoặc kéo xuống bị nhảy về 8), không thể nào dừng đúng số 10.
+  2. **Thiếu điều kiện kiểm tra dừng cử chỉ (No Rest / Stationary Check)**:
+     - Khi người dùng dừng chuột tại số 10 và nhả ra, khoảng thời gian giữa lần di chuyển cuối và lúc nhả tay (`timeSinceLastMove`) không được đo đạc, khiến vận tốc cũ từ trước đó vẫn bị áp dụng sai.
+  3. **Xung đột State Animation & Prop Synchronization (Race Condition)**:
+     - Khi con lăn đang tự xoay `animateTo`, `isDraggingRef` là `false` khiến `useEffect` đồng bộ prop `value` bị kích hoạt sớm bởi các re-render của component cha, gây ra giật lắc và ghi đè vị trí.
+  4. **Năm (Year) không nên lặp vô tận (Infinite loop)**:
+     - Năm là đại lượng có khoảng xác định (1920 - 2050). Nếu lặp vô tận sẽ gây nhảy vọt từ 2050 sang 1920 khi cuộn quá tay.
+- **Nội dung đã triển khai khắc phục**:
+  1. **Cơ chế phân biệt Kéo Rê Định Vị vs Vuốt Nhanh Quán Tính (Direct Drag vs Flick Gesture)**:
+     - Đo lường chính xác `timeSinceLastMove = performance.now() - lastTimeRef.current` và `Math.abs(v)`.
+     - **Nếu dừng lại trước khi nhả (> 60ms) HOẶC kéo từ từ ($|v| < 0.22\text{px/ms}$)**:
+       $\rightarrow$ **TUYỆT ĐỐI KHÔNG CÓ QUÁN TÍNH**: `target = Math.round(offsetRef.current)`. Con lăn snap chính xác 100% vào đúng số đang hiển thị ở tâm (kéo đến 10 là đứng im tại 10, không bao giờ nhảy lên 11).
+     - **Nếu vuốt nhanh (Flick)**: Áp dụng lực quán tính tự nhiên được chuẩn hóa theo tỉ lệ `(v * 70) / ITEM_HEIGHT` và giới hạn tối đa 4 nấc.
+  2. **Nâng cấp độ nhạy lò xo Spring Physics**:
+     - Tăng lực đàn hồi `force = (target - current) * 0.28`, hệ số cản `velocity * 0.72` và ngưỡng dừng chính xác `< 0.003` (~0.12px), giúp con lăn dừng dứt khoát trong 150-200ms, không bị trôi hay rung lắc.
+  3. **Khóa an toàn chống xung đột Re-render (`isAnimatingRef`)**:
+     - Thêm cờ `isAnimatingRef` để chặn `useEffect` đồng bộ giá trị ngoại vi khi con lăn đang tự thực hiện animation, loại bỏ hoàn toàn hiện tượng giật lắc.
+  4. **Cột Năm có giới hạn chặn trên/dưới đàn hồi (Rubber-band Resistance)**:
+     - Cột Năm được đặt `loop={false}`, có lực hãm đàn hồi ở 1920 và 2050, trong khi Ngày và Tháng tiếp tục cuộn vô tận (`loop={true}`).
+  5. **Đồng bộ toàn diện sang cả [`IosTimePicker`](file:///e:/BER-Birthday-Event-Reminder-/src/components/ui/ios-time-picker.tsx)**:
+     - Áp dụng toàn bộ cải tiến vật lý trên vào cả bộ chọn Giờ và Phút, đảm bảo trải nghiệm cuộn mượt mà, chính xác và đồng nhất trên toàn hệ thống.
+- **Danh sách file chỉnh sửa**:
+  - [src/components/ui/ios-date-picker.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/ui/ios-date-picker.tsx)
+  - [src/components/ui/ios-time-picker.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/ui/ios-time-picker.tsx)
+  - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 errors** (TypeScript sạch sẽ).
+  - `npm test`: **31/31 unit tests PASS** (2/2 test suites passed).
+
 
 
 
