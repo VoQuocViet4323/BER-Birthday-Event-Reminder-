@@ -11,6 +11,7 @@ import { convertLunar2Solar, convertSolar2Lunar } from "@/lib/lunar/amlich";
 import { cn } from "@/lib/utils";
 import { IosTimePicker } from "@/components/ui/ios-time-picker";
 import { RemindDaysPicker } from "@/components/events/remind-days-picker";
+import { LiquidGlassButton } from "@/components/ui/liquid-glass-button";
 
 interface EventFormDrawerProps {
   isOpen: boolean;
@@ -547,21 +548,21 @@ export function EventFormDrawer({
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-3 px-4 rounded-2xl border border-border hover:bg-secondary text-muted-foreground font-semibold text-sm transition-colors"
+              className="py-3 px-5 rounded-2xl border border-border hover:bg-secondary text-muted-foreground font-semibold text-sm transition-colors shrink-0"
             >
               Hủy
             </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="flex-1 py-3 px-4 rounded-2xl gradient-brand text-white font-bold text-sm shadow-soft hover:shadow-soft-hover active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-            >
-              {isSubmitting ? (
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <span>{initialData ? "Lưu thay đổi" : "Tạo sự kiện"}</span>
-              )}
-            </button>
+            <div className="flex-1 flex justify-center items-center">
+              <LiquidGlassButton
+                type="submit"
+                isSubmitting={isSubmitting}
+                idleText={initialData ? "Lưu thay đổi" : "Tạo sự kiện"}
+                loadingText="Đang lưu..."
+                successText={initialData ? "Đã lưu!" : "Đã tạo!"}
+                btnWidth="100%"
+                btnHeight="48px"
+              />
+            </div>
           </div>
         </form>
       </motion.div>

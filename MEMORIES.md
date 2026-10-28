@@ -3074,6 +3074,38 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Ghi chú định hướng tiếp theo**:
   - Người dùng tải lại trang (`Ctrl + F5`) để kiểm tra lại Lịch ngày 26/10 và huy hiệu đếm ngược "Đã qua 2 ngày" trên danh sách sự kiện.
 
+---
+
+### 📅 2026-10-28 09:55:00 | Nâng Cấp Toàn Bộ Nút Lưu Sự Kiện Với Hiệu Ứng Nước Thủy Tinh (Liquid Glass Button - Prompt #001)
+
+- **Yêu cầu của người dùng**:
+  - Thay đổi tất cả các nút lưu sự kiện với prompt UI/UX Lucian #001 (Liquid glass button).
+  - Đặc điểm: Một viên nang thủy tinh khúc xạ ánh sáng (glass capsule with light caught inside). Khi bấm vào, nút co thắt lại như giọt nước tròn xoay spinner hiển thị loading, sau đó mở rộng trở lại với dấu tích checkmark xanh và chữ "Đã lưu!".
+  - Hiệu ứng từ tính (Magnetic Pull) khi di chuyển con trỏ chuột đến gần nút.
+- **Nội dung đã triển khai**:
+  1. **Khởi tạo Component [`src/components/ui/liquid-glass-button.tsx`](file:///e:/BER-Birthday-Event-Reminder-/src/components/ui/liquid-glass-button.tsx)**:
+     - Giữ nguyên license comment: `// Lucian UX/UI Prompt #001 · MIT License (c) 2026 Seokwoooo · https://lucianlabs.dev/uxui-prompt/#001`.
+     - Chuyển đổi mã gốc HTML/CSS/JS thuần sang React Client Component với đầy đủ TypeScript props.
+     - Ánh xạ hệ thống token màu `--ux-*` tương thích hoàn hảo với cả Light mode và Dark mode của dự án:
+       - 3 đốm sáng dạ quang chuyển động ngầm (`.u001-blobs i`): `#8B6CFF` (Tím brand), `#33B6FF` (Xanh cyan), `#3BE0B0` (Mint).
+       - Kính mờ khúc xạ ánh sáng: `-webkit-backdrop-filter: blur(18px) saturate(180%)`.
+       - Lớp phản chiếu ánh sáng tự nhiên khi hover: `.u001-sheen` quét góc nghiêng `-12deg`.
+       - Ánh sáng điểm hội tụ theo tọa độ chuột: radial-gradient `--mx`, `--my`.
+       - Hiệu ứng lực từ tính (Magnetic Pull): tự động kéo nhẹ nút về hướng con trỏ chuột qua `mag.style.translate`.
+     - Cơ chế co thắt giọt nước (Water Drop Shrink):
+       - Trạng thái `load`: Co từ chiều rộng 100% xuống giọt nước tròn `width: var(--btn-h, 48px)`.
+       - Trạng thái `ok`: Bật mở lại chiều rộng ban đầu với `cubic-bezier(0.34, 1.45, 0.64, 1)`, hiện vòng tròn tick xanh `Đã lưu!` / `Đã tạo!`.
+     - Hỗ trợ đầy đủ `prefers-reduced-motion: reduce` và nhãn trợ năng `aria-busy`, `aria-live`.
+  2. **Tích hợp vào [`src/components/events/event-form-drawer.tsx`](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-form-drawer.tsx)**:
+     - `EventFormDrawer` là trung tâm duy nhất quản lý toàn bộ thao tác Thêm mới và Chỉnh sửa sự kiện của toàn hệ thống (từ Dashboard, Lịch sự kiện, Danh sách sự kiện, Quản trị viên, đến nút Tạo nhanh Floating Action Button).
+     - Thay thế nút submit cũ bằng `<LiquidGlassButton type="submit" isSubmitting={isSubmitting} idleText={initialData ? "Lưu thay đổi" : "Tạo sự kiện"} successText={initialData ? "Đã lưu!" : "Đã tạo!"} />`.
+- **Trạng thái kiểm thử**:
+  - `npm test`: **31/31 unit tests PASS (100%)**.
+  - `npx tsc --noEmit`: **0 errors**.
+- **Ghi chú định hướng tiếp theo**:
+  - Người dùng bấm nút "Thêm sự kiện" hoặc bấm sửa một sự kiện bất kỳ để trải nghiệm hiệu ứng nút bấm nước thủy tinh cao cấp.
+
+
 
 
 
