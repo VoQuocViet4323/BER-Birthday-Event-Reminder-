@@ -3296,8 +3296,44 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
   - [src/app/(dashboard)/events/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/events/page.tsx)
   - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
 
+---
 
+### 📅 2026-10-29 14:35:00 | Tắt Mặc Định Lặp Lại Hàng Năm Khi Tạo Sự Kiện Mới, Giữ Nguyên Sự Kiện Cũ & Kiểm Thử Toàn Diện Nút Gạt
 
+- **Yêu cầu của người dùng**:
+  1. Tắt mặc định "Lặp lại hàng năm" khi tạo sự kiện mới, để người dùng tự chọn khi cần.
+  2. Giữ nguyên 100% trạng thái lặp lại hàng năm của tất cả sự kiện đã tạo trước đó.
+  3. Kiểm tra xem nút gạt này có thực sự hoạt động hiệu quả từ giao diện đến lưu trữ và nhắc nhở hay không.
+- **Nội dung đã triển khai hoàn thiện**:
+  1. **Giữ nguyên trạng thái của các sự kiện đã có trong cơ sở dữ liệu**:
+     - Không can thiệp sửa đổi các dòng dữ liệu cũ trong Supabase; toàn bộ sự kiện đã tạo trước đó vẫn giữ nguyên giá trị `repeat_yearly` hiện hữu.
+     - Khi người dùng nhấn nút sửa sự kiện cũ ([src/components/events/event-form-drawer.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-form-drawer.tsx)), form nạp chính xác giá trị đã lưu: `repeat_yearly: initialData.repeat_yearly !== undefined ? Boolean(initialData.repeat_yearly) : true`.
+  2. **Thiết lập mặc định không lặp lại cho sự kiện tạo mới**:
+     - Cập nhật Zod Schema tại [src/types/events.ts](file:///e:/BER-Birthday-Event-Reminder-/src/types/events.ts): `repeat_yearly: z.boolean().default(false)`.
+     - Trong [src/components/events/event-form-drawer.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-form-drawer.tsx):
+       - `defaultValues.repeat_yearly = false`.
+       - Trong hàm `reset()` khi mở form tạo mới: `repeat_yearly = false`.
+       - Chuyển `repeatYearly = Boolean(watch("repeat_yearly"))` để tránh fallback nhầm thành `true`.
+  3. **Nâng cấp nút công tắc (Controlled Toggle Switch)**:
+     - Nâng cấp phần giao diện công tắc thành Accessible Switch component có `role="switch"`, `aria-checked={repeatYearly}`.
+     - Cho phép click trực tiếp vào nút gạt hoặc click vào cả dòng chữ để kích hoạt bật/tắt mượt mà thông qua `setValue("repeat_yearly", !repeatYearly, { shouldValidate: true, shouldDirty: true })`.
+     - Hiển thị phản hồi thị giác rõ nét:
+       - Khi BẬT: Nền tím chủ đạo (`bg-primary`), núm trượt sang phải (`translate-x-5`), chú thích "Tự động nhắc lại vào ngày này mỗi năm".
+       - Khi TẮT: Nền xám viền mờ (`bg-secondary`), núm trượt về trái (`translate-x-0.5`), chú thích "Chỉ diễn ra 1 lần (sự kiện đơn lẻ)".
+  4. **Kiểm thử chu trình hoạt động thực tế (Lifecycle Verification)**:
+     - **Lưu trữ database**: [src/hooks/use-events.ts](file:///e:/BER-Birthday-Event-Reminder-/src/hooks/use-events.ts) truyền chính xác trường `repeat_yearly` (boolean) vào bảng `events` cả khi thêm mới lẫn cập nhật.
+     - **Tính toán ngày & Nhắc nhở ([src/lib/date-utils.ts](file:///e:/BER-Birthday-Event-Reminder-/src/lib/date-utils.ts))**:
+       - Với `repeat_yearly === false`: Thuật toán `calculateNextOccurrence` cố định `targetYear = event.event_year`. Sau khi sự kiện qua đi hơn 30 ngày, hệ thống dừng lại, không tự động tăng năm và không gửi email nhắc nhở vào các năm tiếp theo.
+       - Với `repeat_yearly === true`: Hệ thống tự động dịch chuyển sang năm tiếp theo (`targetYear = currentYear + 1`) để tiếp tục nhắc nhở hàng năm.
+     - **Hiển thị Lịch ([src/components/calendar/month-calendar-view.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/calendar/month-calendar-view.tsx))**:
+       - Sự kiện không lặp (`repeat_yearly === false`) chỉ hiển thị trên lịch của năm diễn ra (`ev.event_year === targetYear`), không hiển thị tràn sang các năm sau.
+- **Danh sách file chỉnh sửa**:
+  - [src/types/events.ts](file:///e:/BER-Birthday-Event-Reminder-/src/types/events.ts)
+  - [src/components/events/event-form-drawer.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-form-drawer.tsx)
+  - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 errors** (TypeScript sạch sẽ).
+  - `npm test`: **31/31 unit tests PASS** (2/2 test suites passed).
 
 
 

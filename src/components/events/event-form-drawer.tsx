@@ -74,7 +74,7 @@ export function EventFormDrawer({
       note: "",
       gift_idea: "",
       avatar_url: "",
-      repeat_yearly: true,
+      repeat_yearly: false,
       remind_days: [0],
       remind_time: "08:00",
       custom_type: "",
@@ -92,7 +92,7 @@ export function EventFormDrawer({
   const groupName = watch("group_name");
   const remindDays = watch("remind_days") || [];
   const remindTime = watch("remind_time") || "08:00";
-  const repeatYearly = watch("repeat_yearly") !== false;
+  const repeatYearly = Boolean(watch("repeat_yearly"));
 
   // Populate data when editing
   useEffect(() => {
@@ -108,7 +108,7 @@ export function EventFormDrawer({
         note: initialData.note || "",
         gift_idea: initialData.gift_idea || "",
         avatar_url: initialData.avatar_url || "",
-        repeat_yearly: initialData.repeat_yearly,
+        repeat_yearly: initialData.repeat_yearly !== undefined ? Boolean(initialData.repeat_yearly) : true,
         remind_days: initialData.remind_days || [],
         remind_time: (initialData as any)?.remind_time || "08:00",
         custom_type: (initialData as any)?.custom_type || "",
@@ -131,7 +131,7 @@ export function EventFormDrawer({
         note: "",
         gift_idea: "",
         avatar_url: "",
-        repeat_yearly: true,
+        repeat_yearly: false,
         remind_days: [0],
         remind_time: "08:00",
         custom_type: "",
@@ -351,21 +351,38 @@ export function EventFormDrawer({
             )}
 
             {/* Lặp lại hàng năm */}
-            <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-border/50">
+            <div
+              className="flex items-center justify-between mt-3 pt-2.5 border-t border-border/50 cursor-pointer select-none group"
+              onClick={() => setValue("repeat_yearly", !repeatYearly, { shouldValidate: true, shouldDirty: true })}
+            >
               <div>
-                <span className="text-xs font-semibold text-foreground block">Lặp lại hàng năm</span>
+                <span className="text-xs font-semibold text-foreground block group-hover:text-primary transition-colors">
+                  Lặp lại hàng năm
+                </span>
                 <span className="text-[11px] text-muted-foreground block">
                   {repeatYearly ? "Tự động nhắc lại vào ngày này mỗi năm" : "Chỉ diễn ra 1 lần (sự kiện đơn lẻ)"}
                 </span>
               </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  {...register("repeat_yearly")}
-                  className="sr-only peer"
+              <button
+                type="button"
+                role="switch"
+                aria-checked={repeatYearly}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setValue("repeat_yearly", !repeatYearly, { shouldValidate: true, shouldDirty: true });
+                }}
+                className={cn(
+                  "relative inline-flex h-5 w-10 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
+                  repeatYearly ? "bg-primary" : "bg-secondary border border-border"
+                )}
+              >
+                <span
+                  className={cn(
+                    "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out",
+                    repeatYearly ? "translate-x-5" : "translate-x-0.5"
+                  )}
                 />
-                <div className="w-10 h-5 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-border after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
-              </label>
+              </button>
             </div>
           </div>
 

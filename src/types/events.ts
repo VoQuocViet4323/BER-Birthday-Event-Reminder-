@@ -34,7 +34,7 @@ export const eventFormSchema = z.object({
   note: z.string().max(500, "Ghi chú không quá 500 ký tự").optional().nullable(),
   gift_idea: z.string().max(300, "Gợi ý quà không quá 300 ký tự").optional().nullable(),
   avatar_url: z.string().url("URL không hợp lệ").optional().nullable().or(z.literal("")),
-  repeat_yearly: z.boolean().default(true),
+  repeat_yearly: z.boolean().default(false),
   remind_days: z.array(z.number()).optional().nullable(),
   remind_time: z.string().optional().nullable(),
   custom_type: z.string().max(100, "Tên loại sự kiện không quá 100 ký tự").optional().nullable(),
