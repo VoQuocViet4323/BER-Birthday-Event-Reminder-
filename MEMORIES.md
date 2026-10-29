@@ -3273,6 +3273,29 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
   - [src/components/events/event-list-grouped.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-list-grouped.tsx)
   - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
 
+---
+
+### 📅 2026-10-29 14:17:00 | Gỡ Bỏ Mục Menu "Sắp Tới (7 ngày)" Khỏi Thanh Bên Sidebar & Tối Giản Hóa Trang Sự Kiện
+
+- **Yêu cầu của người dùng**:
+  - Bỏ mục menu "Sắp tới 7 ngày" khỏi thanh bên Sidebar do thấy bị thừa thãi (Dashboard đã có thống kê và danh sách sự kiện đã có sắp xếp theo ngày sắp tới gần nhất).
+- **Nội dung đã triển khai hoàn thiện**:
+  1. **Thanh bên Sidebar ([src/components/layout/desktop-sidebar.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/layout/desktop-sidebar.tsx))**:
+     - Gỡ bỏ mục "Sắp tới (7 ngày)" khỏi mảng `navItems`.
+     - Giữ nguyên độ rộng `w-72` (288px) để mục **"Danh sách sự kiện"** hiển thị trọn vẹn 100% tên và badge số lượng, không bị cắt chữ.
+     - Danh sách menu thanh bên trở về trạng thái tinh gọn, tập trung:
+       - Trang chủ (`/dashboard`)
+       - Danh sách sự kiện (`/events`)
+       - Lịch sự kiện (`/calendar`)
+       - Cài đặt & Hồ sơ (`/settings`)
+       - Quản trị hệ thống (`/admin` nếu là Admin)
+  2. **Trang Danh sách Sự kiện ([src/app/(dashboard)/events/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/events/page.tsx))**:
+     - Loại bỏ các nút tab pill chuyển đổi, trả lại tiêu đề tinh gọn "Tất cả sự kiện" kèm huy hiệu tổng số sự kiện và thanh tìm kiếm / phân loại nhóm.
+- **Danh sách file chỉnh sửa**:
+  - [src/components/layout/desktop-sidebar.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/layout/desktop-sidebar.tsx)
+  - [src/app/(dashboard)/events/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/events/page.tsx)
+  - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+
 
 
 

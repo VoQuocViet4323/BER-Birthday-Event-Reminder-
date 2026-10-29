@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
   Home,
@@ -11,7 +11,6 @@ import {
   Plus,
   ChevronLeft,
   ChevronRight,
-  Clock,
   Download,
   ShieldCheck,
 } from "lucide-react";
@@ -25,18 +24,11 @@ interface DesktopSidebarProps {
 
 export function DesktopSidebar({ onOpenCreateModal }: DesktopSidebarProps) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const filter = searchParams.get("filter");
-
   const [collapsed, setCollapsed] = useState(false);
   const { events } = useEvents();
   const { profile } = useUserSettings();
 
-  const upcomingCount = events.filter((e) => e.daysRemaining >= 0 && e.daysRemaining <= 7).length;
   const isAdmin = profile?.role === "admin";
-
-  const isEventsAllActive = pathname === "/events" && filter !== "upcoming7";
-  const isUpcoming7Active = pathname === "/events" && filter === "upcoming7";
 
   const navItems = [
     { label: "Trang chủ", href: "/dashboard", icon: Home },
@@ -47,13 +39,6 @@ export function DesktopSidebar({ onOpenCreateModal }: DesktopSidebarProps) {
       badge: events.length > 0 ? events.length : undefined,
     },
     { label: "Lịch sự kiện", href: "/calendar", icon: Calendar },
-    {
-      label: "Sắp tới (7 ngày)",
-      href: "/events?filter=upcoming7",
-      icon: Clock,
-      badge: upcomingCount > 0 ? upcomingCount : undefined,
-      badgeColor: "bg-rose-500 text-white",
-    },
     { label: "Cài đặt & Hồ sơ", href: "/settings", icon: Settings },
     ...(isAdmin
       ? [
@@ -94,15 +79,7 @@ export function DesktopSidebar({ onOpenCreateModal }: DesktopSidebarProps) {
       <nav className="flex-1 space-y-1.5">
         {navItems.map((item) => {
           const Icon = item.icon;
-          
-          let isActive = false;
-          if (item.href === "/events") {
-            isActive = isEventsAllActive;
-          } else if (item.href === "/events?filter=upcoming7") {
-            isActive = isUpcoming7Active;
-          } else {
-            isActive = pathname === item.href;
-          }
+          const isActive = pathname === item.href;
 
           return (
             <Link
