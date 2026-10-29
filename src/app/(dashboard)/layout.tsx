@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { AppHeader } from "@/components/layout/app-header";
 import { DesktopSidebar } from "@/components/layout/desktop-sidebar";
 import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
@@ -47,7 +47,9 @@ export default function DashboardLayout({
       <AppHeader onOpenCreateModal={handleOpenCreate} />
 
       <div className="flex-1 flex w-full">
-        <DesktopSidebar onOpenCreateModal={handleOpenCreate} />
+        <Suspense fallback={<aside className="hidden lg:flex w-72 shrink-0 border-r border-border/60 bg-card/40" />}>
+          <DesktopSidebar onOpenCreateModal={handleOpenCreate} />
+        </Suspense>
 
         <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 xl:p-10 pb-24 lg:pb-12 w-full max-w-7xl">
           {children}

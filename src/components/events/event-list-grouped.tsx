@@ -30,6 +30,7 @@ interface EventListGroupedProps {
   onOpenCreateModal: () => void;
   initialSearch?: string;
   initialGroup?: string;
+  defaultExpandAll?: boolean;
 }
 
 export type SortFilterOption = "remaining" | "name" | "past_month" | "custom_month_year";
@@ -42,6 +43,7 @@ export function EventListGrouped({
   onOpenCreateModal,
   initialSearch = "",
   initialGroup = "Tất cả",
+  defaultExpandAll = false,
 }: EventListGroupedProps) {
   const [search, setSearch] = useState(initialSearch);
   const [selectedGroup, setSelectedGroup] = useState<string>(initialGroup);
@@ -66,7 +68,7 @@ export function EventListGrouped({
   const [tempMonth, setTempMonth] = useState<number>(() => now.getMonth() + 1);
   const [tempYear, setTempYear] = useState<number>(() => now.getFullYear());
 
-  // Quản lý trạng thái đóng/mở của từng tháng (mặc định gom gọn lại theo yêu cầu)
+  // Quản lý trạng thái đóng/mở của từng tháng
   const [expandedMonths, setExpandedMonths] = useState<Record<number, boolean>>({});
 
   // Tự động mở rộng khi đang gõ tìm kiếm
@@ -247,6 +249,17 @@ export function EventListGrouped({
 
     return Array.from(groupsMap.entries());
   }, [filteredEvents, sortBy, customMonth, pastMonth]);
+
+  // Tự động mở rộng tất cả các tháng nếu defaultExpandAll = true (dành cho chế độ 7 ngày sắp tới)
+  useEffect(() => {
+    if (defaultExpandAll && monthGroups.length > 0) {
+      const all: Record<number, boolean> = {};
+      monthGroups.forEach(([m]) => {
+        all[m] = true;
+      });
+      setExpandedMonths(all);
+    }
+  }, [defaultExpandAll, monthGroups]);
 
   // Tiêu đề hiển thị trên nút dropdown
   const currentSortLabel = useMemo(() => {

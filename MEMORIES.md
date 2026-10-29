@@ -3238,6 +3238,41 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
   - `npx tsc --noEmit`: **0 errors** (TypeScript sạch sẽ).
   - `npm test`: **31/31 unit tests PASS** (2/2 test suites passed).
 
+---
+
+### 📅 2026-10-29 14:10:00 | Tách Biệt Tab "Sắp Tới (7 ngày)" & Khắc Phục Mất Chữ Menu "Danh Sách Sự Kiện"
+
+- **Yêu cầu của người dùng**:
+  1. Hai tab **"Danh sách sự kiện"** và **"Sắp tới (7 ngày)"** đang bị hiển thị chung 1 nội dung (bấm vào tab 7 ngày vẫn hiển thị tất cả sự kiện, không lọc và bị highlight nhầm tab).
+  2. Nút menu thanh bên **"Danh sách sự kiện"** bị cắt cụt đuôi chữ thành `Danh sách sự k...`.
+- **Nguyên nhân kỹ thuật**:
+  1. **Trang `/events/page.tsx` bỏ quên tham số query `filter`**: Khi người dùng vào `/events?filter=upcoming7`, code chỉ đọc `search` mà không đọc `filter`, dẫn tới vẫn render toàn bộ `events` thay vì lọc theo `0 <= daysRemaining <= 7`.
+  2. **Active State trong thanh bên Sidebar so sánh cứng `pathname === item.href`**: Đối với `/events?filter=upcoming7`, `pathname` chỉ trả về `/events`, dẫn tới mục "Danh sách sự kiện" luôn luôn bị sáng đèn active, còn "Sắp tới (7 ngày)" không bao giờ sáng đèn.
+  3. **Độ rộng Sidebar `w-64` (256px) quá hẹp**: Sau khi trừ lề padding và trừ kích thước badge đếm số lượng, không gian còn lại không đủ cho chuỗi 17 ký tự "Danh sách sự kiện" $\rightarrow$ kích hoạt `truncate` thành `Danh sách sự k...`.
+- **Nội dung đã triển khai hoàn thiện**:
+  1. **Khắc phục lỗi mất chữ Menu Sidebar ([src/components/layout/desktop-sidebar.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/layout/desktop-sidebar.tsx))**:
+     - Mở rộng thanh bên từ `w-64` (256px) lên `w-72` (288px), tăng 32px chiều ngang giúp toàn bộ chữ và badge có không gian thoải mái.
+     - Thêm `shrink-0` cho khối badge và cấu hình `whitespace-nowrap overflow-hidden text-ellipsis` giúp "Danh sách sự kiện" hiển thị 100% đầy đủ chữ.
+  2. **Tách biệt chính xác Active State của 2 Tab**:
+     - Sử dụng `useSearchParams()` để kiểm tra `filter === 'upcoming7'`.
+     - Nhấp "Danh sách sự kiện" $\rightarrow$ Sáng đèn "Danh sách sự kiện".
+     - Nhấp "Sắp tới (7 ngày)" $\rightarrow$ Sáng đèn chuẩn xác "Sắp tới (7 ngày)" với badge đỏ hồng nổi bật.
+     - Bọc `DesktopSidebar` trong `<Suspense>` tại [layout.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/layout.tsx) chuẩn quy tắc Rule 5 Next.js App Router.
+  3. **Lọc chính xác sự kiện trong 7 ngày ([src/app/(dashboard)/events/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/events/page.tsx))**:
+     - Tự động lọc danh sách chỉ lấy các sự kiện có `0 <= daysRemaining <= 7`.
+     - Cập nhật tiêu đề trang động:
+       - Tab Tất cả: **"Tất cả sự kiện"** (badge số lượng tổng, ví dụ 16).
+       - Tab Sắp tới: **"Sự kiện sắp tới (7 ngày)"** (badge đỏ hồng số lượng gấp, ví dụ 6).
+     - Bổ sung thanh chuyển đổi nhanh (Tab Switcher Pills) ngay trên đầu trang để người dùng có thể nhấp qua lại giữa "Tất cả" và "Sắp tới 7 ngày" tức thì.
+     - Tự động mở rộng (auto-expand) tất cả các tháng có sự kiện trong 7 ngày tới qua prop `defaultExpandAll={true}` trên [EventListGrouped](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-list-grouped.tsx), giúp người dùng xem được ngay sự kiện cần lưu ý mà không phải nhấn mở từng tháng.
+     - Bổ sung Empty State lịch sự khi không có sự kiện nào trong 7 ngày tới kèm nút bấm quay về "Xem tất cả sự kiện".
+- **Danh sách file chỉnh sửa**:
+  - [src/components/layout/desktop-sidebar.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/layout/desktop-sidebar.tsx)
+  - [src/app/(dashboard)/events/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/events/page.tsx)
+  - [src/app/(dashboard)/layout.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/layout.tsx)
+  - [src/components/events/event-list-grouped.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-list-grouped.tsx)
+  - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+
 
 
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import {
   Home,
@@ -25,12 +25,18 @@ interface DesktopSidebarProps {
 
 export function DesktopSidebar({ onOpenCreateModal }: DesktopSidebarProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const filter = searchParams.get("filter");
+
   const [collapsed, setCollapsed] = useState(false);
   const { events } = useEvents();
   const { profile } = useUserSettings();
 
   const upcomingCount = events.filter((e) => e.daysRemaining >= 0 && e.daysRemaining <= 7).length;
   const isAdmin = profile?.role === "admin";
+
+  const isEventsAllActive = pathname === "/events" && filter !== "upcoming7";
+  const isUpcoming7Active = pathname === "/events" && filter === "upcoming7";
 
   const navItems = [
     { label: "Trang chủ", href: "/dashboard", icon: Home },
@@ -66,7 +72,7 @@ export function DesktopSidebar({ onOpenCreateModal }: DesktopSidebarProps) {
     <aside
       className={cn(
         "hidden lg:flex flex-col shrink-0 border-r border-border/60 bg-card/40 backdrop-blur-xl sticky top-16 h-[calc(100vh-4rem)] transition-all duration-300 z-30",
-        collapsed ? "w-20 p-3" : "w-64 p-4"
+        collapsed ? "w-20 p-3" : "w-72 p-4"
       )}
     >
       {/* Nút Thêm mới */}
@@ -88,14 +94,22 @@ export function DesktopSidebar({ onOpenCreateModal }: DesktopSidebarProps) {
       <nav className="flex-1 space-y-1.5">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const isActive = pathname === item.href;
+          
+          let isActive = false;
+          if (item.href === "/events") {
+            isActive = isEventsAllActive;
+          } else if (item.href === "/events?filter=upcoming7") {
+            isActive = isUpcoming7Active;
+          } else {
+            isActive = pathname === item.href;
+          }
 
           return (
             <Link
               key={item.href}
               href={item.href}
               className={cn(
-                "flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-sm transition-all relative group",
+                "flex items-center gap-3 px-3 py-2.5 rounded-2xl text-sm transition-all relative group",
                 isActive
                   ? "bg-gradient-to-r from-purple-500/15 to-pink-500/15 text-primary font-bold shadow-xs border border-purple-500/20 dark:border-purple-500/30"
                   : "text-muted-foreground hover:bg-muted/70 hover:text-foreground font-medium",
@@ -107,11 +121,13 @@ export function DesktopSidebar({ onOpenCreateModal }: DesktopSidebarProps) {
 
               {!collapsed && (
                 <>
-                  <span className="flex-1 truncate">{item.label}</span>
+                  <span className="flex-1 whitespace-nowrap overflow-hidden text-ellipsis font-medium">
+                    {item.label}
+                  </span>
                   {item.badge !== undefined && (
                     <span
                       className={cn(
-                        "text-[11px] font-bold px-2 py-0.5 rounded-full",
+                        "text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0",
                         item.badgeColor || "bg-secondary text-secondary-foreground"
                       )}
                     >
