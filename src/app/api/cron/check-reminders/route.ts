@@ -5,7 +5,7 @@ import {
   calculateDaysRemaining,
   calculateUpcomingAge,
 } from "@/lib/date-utils";
-import { ReminderItem, generateReminderEmailHtml } from "@/lib/email/template-builder";
+import { ReminderItem, generateReminderEmailHtml, formatReminderSubject } from "@/lib/email/template-builder";
 import { sendEmail } from "@/lib/email/mailer";
 
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -220,8 +220,7 @@ async function handleCheckReminders(request: Request) {
       unsubscribeUrl: `${appUrl}/settings`,
     });
 
-    const eventNames = dueEvents.map((e) => e.name).join(", ");
-    const subject = `🔔 [Nhắc nhở lúc ${currentTimeStr}] Sự kiện: ${eventNames}`;
+    const subject = formatReminderSubject(itemsToSend);
 
     // 7. Gửi email qua Gmail SMTP / Resend
     const sendResult = await sendEmail({
@@ -382,8 +381,7 @@ async function handleGlobalCronCheck(admin: any, currentTimeStr: string, now: Da
         unsubscribeUrl: `${appUrl}/settings`,
       });
 
-      const eventNames = dueEvents.map((e) => e.name).join(", ");
-      const subject = `🔔 [Nhắc nhở lúc ${currentTimeStr}] Sự kiện: ${eventNames}`;
+      const subject = formatReminderSubject(itemsToSend);
 
       const sendResult = await sendEmail({ to: targetEmail, subject, html });
 
@@ -523,8 +521,7 @@ async function handleGlobalCronCheckViaRpc(client: any, currentTimeStr: string, 
         unsubscribeUrl: `${appUrl}/settings`,
       });
 
-      const eventNames = dueEvents.map((e) => e.name).join(", ");
-      const subject = `🔔 [Nhắc nhở lúc ${currentTimeStr}] Sự kiện: ${eventNames}`;
+      const subject = formatReminderSubject(itemsToSend);
 
       const sendResult = await sendEmail({ to: targetEmail, subject, html });
 

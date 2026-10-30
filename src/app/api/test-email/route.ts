@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { ReminderItem, generateReminderEmailHtml } from "@/lib/email/template-builder";
+import { ReminderItem, generateReminderEmailHtml, formatReminderSubject } from "@/lib/email/template-builder";
 import {
   calculateNextOccurrence,
   calculateDaysRemaining,
@@ -169,8 +169,8 @@ export async function POST(request: Request) {
     });
 
     const subject = isUsingRealEvents
-      ? `🔔 [Nhắc nhở thật] Bạn có ${itemsToSend.length} sự kiện sắp tới: ${itemsToSend.map((i) => i.name).join(", ")}`
-      : "🔔 [Thử nghiệm] Email nhắc sinh nhật & sự kiện mẫu";
+      ? formatReminderSubject(itemsToSend)
+      : `🔔 [Thử nghiệm] ${formatReminderSubject(itemsToSend)}`;
 
     const result = await sendEmail({
       to: targetEmail,

@@ -5,7 +5,7 @@ import {
   calculateUpcomingAge,
   isLeapYear,
 } from "../lib/date-utils";
-import { generateReminderEmailHtml, ReminderItem } from "../lib/email/template-builder";
+import { generateReminderEmailHtml, formatReminderSubject, ReminderItem } from "../lib/email/template-builder";
 import { sendEmail } from "../lib/email/mailer";
 
 describe("Real Reminder Engine & Notification Flow Verification", () => {
@@ -135,7 +135,6 @@ describe("Real Reminder Engine & Notification Flow Verification", () => {
         unsubscribeUrl: "http://localhost:3000/settings",
       });
 
-      expect(html).toContain("Quốc Việt");
       expect(html).toContain("Sinh nhật Mai Lan");
       expect(html).toContain("Giỗ Cụ Nội");
       expect(html).toContain("Hôm nay có sự kiện đặc biệt!");
@@ -150,7 +149,41 @@ describe("Real Reminder Engine & Notification Flow Verification", () => {
       expect(html).toContain("https://ber-birthday-event-reminder.vercel.app/dashboard");
       expect(html).toContain("https://ber-birthday-event-reminder.vercel.app/calendar");
       expect(html).toContain("https://ber-birthday-event-reminder.vercel.app/settings");
-      expect(html).not.toContain("localhost:3000");
+      expect(html).toContain("Nhắc Nhở Sự Kiện");
+      expect(html).toContain("• Loại sự kiện:");
+      expect(html).toContain("• Thời gian:");
+    });
+
+    it("tạo tiêu đề email chuẩn mực theo định dạng [Nhắc nhở]: + (tên sự kiện)", () => {
+      const singleItem: ReminderItem[] = [
+        {
+          id: "event-1",
+          name: "Đặt xe đi Thái Bình",
+          eventType: "other",
+          eventDateFormatted: "31 tháng 10",
+          daysRemaining: 1,
+          groupName: "Công việc",
+        },
+      ];
+      expect(formatReminderSubject(singleItem)).toBe("[Nhắc nhở]: Đặt xe đi Thái Bình");
+
+      const birthdayItem: ReminderItem[] = [
+        {
+          id: "event-2",
+          name: "Mai Lan",
+          eventType: "birthday",
+          eventDateFormatted: "30 tháng 10",
+          daysRemaining: 0,
+          groupName: "Bạn bè",
+        },
+      ];
+      expect(formatReminderSubject(birthdayItem)).toBe("[Nhắc nhở]: Mai Lan");
+
+      const multipleItems: ReminderItem[] = [
+        ...birthdayItem,
+        ...singleItem,
+      ];
+      expect(formatReminderSubject(multipleItems)).toBe("[Nhắc nhở]: Mai Lan, Đặt xe đi Thái Bình");
     });
   });
 

@@ -3,7 +3,7 @@
 // This code is designed to run in Supabase Edge Functions (Deno runtime).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.46.1";
-import { generateReminderEmailHtml, ReminderItem } from "./email-template.ts";
+import { generateReminderEmailHtml, formatReminderSubject, ReminderItem } from "./email-template.ts";
 import {
   EventRecord,
   getNextOccurrence,
@@ -253,7 +253,7 @@ Deno.serve(async (req) => {
               body: JSON.stringify({
                 from: emailFrom,
                 to: recipientEmails,
-                subject: `🔔 [Nhắc nhở] Bạn có ${remindersToSend.length} sự kiện quan trọng sắp tới!`,
+                subject: formatReminderSubject(remindersToSend.map((r) => r.item)),
                 html: emailHtml,
               }),
             });

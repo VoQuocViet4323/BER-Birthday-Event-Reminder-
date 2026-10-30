@@ -48,7 +48,7 @@ export async function sendEmail(options: SendEmailOptions): Promise<SendEmailRes
         from ||
         (process.env.EMAIL_FROM && !process.env.EMAIL_FROM.includes("resend.dev")
           ? process.env.EMAIL_FROM
-          : `"Nhắc Sự Kiện BER" <${smtpUser}>`);
+          : `"BER" <${smtpUser}>`);
 
       await transporter.sendMail({
         from: senderFrom,
@@ -76,7 +76,7 @@ export async function sendEmail(options: SendEmailOptions): Promise<SendEmailRes
   const resendApiKey = process.env.RESEND_API_KEY;
   if (resendApiKey && !resendApiKey.includes("dummy")) {
     try {
-      const emailFrom = process.env.EMAIL_FROM || "Nhắc Sự Kiện <onboarding@resend.dev>";
+      const emailFrom = process.env.EMAIL_FROM || "BER <onboarding@resend.dev>";
       const res = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {

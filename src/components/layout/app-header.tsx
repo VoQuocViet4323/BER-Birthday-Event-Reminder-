@@ -8,7 +8,7 @@ import { CommandMenu } from "./command-menu";
 import { NotificationBellDropdown } from "./notification-bell-dropdown";
 import { useUserSettings } from "@/hooks/use-user-settings";
 import { createClient } from "@/lib/supabase/client";
-import { LogOut, Settings, Sparkles, ShieldCheck } from "lucide-react";
+import { LogOut, Settings, Sparkles, ShieldCheck, RefreshCw } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface AppHeaderProps {
@@ -18,9 +18,15 @@ interface AppHeaderProps {
 export function AppHeader({ onOpenCreateModal }: AppHeaderProps) {
   const { profile } = useUserSettings();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const router = useRouter();
   const supabase = createClient();
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const handleRefreshPage = () => {
+    setIsRefreshing(true);
+    window.location.reload();
+  };
 
   const isAdmin = profile?.role === "admin";
 
@@ -99,6 +105,24 @@ export function AppHeader({ onOpenCreateModal }: AppHeaderProps) {
           )}
 
           <CommandMenu onOpenCreateModal={onOpenCreateModal} />
+
+          {/* Nút Tải lại toàn bộ trang (Refresh) */}
+          <motion.button
+            type="button"
+            whileTap={{ scale: 0.92 }}
+            onClick={handleRefreshPage}
+            disabled={isRefreshing}
+            className="relative w-9 h-9 sm:w-10 sm:h-10 rounded-2xl flex items-center justify-center bg-secondary/80 hover:bg-secondary text-foreground hover:text-primary transition-all active:scale-95 border border-border/70 focus-visible:outline-2 focus-visible:outline-primary cursor-pointer shadow-xs group"
+            title="Tải lại toàn bộ trang"
+            aria-label="Tải lại toàn bộ trang"
+          >
+            <RefreshCw
+              className={`w-4 h-4 sm:w-5 sm:h-5 text-foreground/80 group-hover:text-primary transition-all duration-300 ${
+                isRefreshing ? "animate-spin text-primary" : "group-hover:rotate-180"
+              }`}
+            />
+          </motion.button>
+
           <NotificationBellDropdown />
           <ThemeToggle />
 
