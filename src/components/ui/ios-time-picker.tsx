@@ -256,13 +256,23 @@ function WheelColumn({ itemsCount, value, onChange, label }: WheelColumnProps) {
     animateTo(target);
   };
 
-  // Cuộn bằng con lăn chuột (Mouse Wheel)
-  const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const dir = e.deltaY > 0 ? 1 : -1;
-    animateTo(Math.round(offsetRef.current) + dir);
-  };
+  // Cuộn bằng con lăn chuột (Mouse Wheel) với { passive: false } để tránh cảnh báo passive listener của Chrome
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const dir = e.deltaY > 0 ? 1 : -1;
+      animateTo(Math.round(offsetRef.current) + dir);
+    };
+
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+    };
+  }, [animateTo]);
 
   // Bấm vào số bất kỳ để trượt đến số đó
   const handleItemClick = (index: number) => {
@@ -301,7 +311,6 @@ function WheelColumn({ itemsCount, value, onChange, label }: WheelColumnProps) {
       aria-label={`Chọn ${label}`}
       tabIndex={0}
       onKeyDown={handleKeyDown}
-      onWheel={handleWheel}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}

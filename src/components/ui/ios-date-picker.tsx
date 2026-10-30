@@ -277,16 +277,27 @@ function WheelColumn({ itemsCount, value, onChange, formatItem, label, loop = tr
     animateTo(target);
   };
 
-  const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const dir = e.deltaY > 0 ? 1 : -1;
-    let nextTarget = Math.round(offsetRef.current) + dir;
-    if (!loop) {
-      nextTarget = Math.max(0, Math.min(itemsCount - 1, nextTarget));
-    }
-    animateTo(nextTarget);
-  };
+  // Cuộn bằng con lăn chuột (Mouse Wheel) với { passive: false } để tránh cảnh báo passive listener của Chrome
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const dir = e.deltaY > 0 ? 1 : -1;
+      let nextTarget = Math.round(offsetRef.current) + dir;
+      if (!loop) {
+        nextTarget = Math.max(0, Math.min(itemsCount - 1, nextTarget));
+      }
+      animateTo(nextTarget);
+    };
+
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+    };
+  }, [loop, itemsCount, animateTo]);
 
   const handleItemClick = (index: number) => {
     if (hasMovedRef.current) return;
@@ -333,7 +344,6 @@ function WheelColumn({ itemsCount, value, onChange, formatItem, label, loop = tr
       aria-label={`Chọn ${label}`}
       tabIndex={0}
       onKeyDown={handleKeyDown}
-      onWheel={handleWheel}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}

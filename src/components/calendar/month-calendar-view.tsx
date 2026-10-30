@@ -212,9 +212,6 @@ export function MonthCalendarView({
     } else {
       await addEvent(values);
     }
-    setIsEventDrawerOpen(false);
-    setEditingEvent(null);
-    setEventInitialDate(null);
   };
 
   const year = currentDate.getFullYear();
@@ -834,7 +831,7 @@ export function MonthCalendarView({
                   setSelectedDate(new Date(year, month, dayNumber));
                 }}
                 className={cn(
-                  "min-h-[66px] sm:min-h-[90px] p-1.5 sm:p-2 rounded-xl sm:rounded-2xl border transition-all text-left flex flex-col justify-between relative cursor-pointer group active:scale-95 overflow-hidden",
+                  "w-full min-h-[66px] sm:min-h-[90px] p-1.5 sm:p-2 rounded-xl sm:rounded-2xl border transition-all text-center sm:text-left flex flex-col justify-between items-center sm:items-stretch relative cursor-pointer group active:scale-95 overflow-hidden",
                   isSelected
                     ? "ring-2 ring-primary border-primary bg-primary/10 shadow-sm"
                     : isToday
@@ -846,20 +843,20 @@ export function MonthCalendarView({
                     : "border-border/40 bg-card/40 hover:border-border hover:bg-muted/20"
                 )}
               >
-                {/* Day Number Header */}
-                <div className="flex items-center justify-between w-full">
+                {/* Day Number Header - Trên mobile căn giữa hoàn hảo, trên desktop căn 2 bên */}
+                <div className="flex items-center justify-center sm:justify-between w-full">
                   <span
                     className={cn(
-                      "text-xs font-bold w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center transition-colors shrink-0",
+                      "text-xs font-bold w-6 h-6 sm:w-6 sm:h-6 rounded-full flex items-center justify-center transition-all shrink-0",
                       isToday
-                        ? "gradient-brand text-white shadow-xs"
+                        ? "gradient-brand text-white shadow-xs font-black ring-2 ring-primary/40 ring-offset-1 ring-offset-background"
                         : isSelected
-                        ? "bg-primary text-white font-extrabold shadow-xs"
+                        ? "bg-primary text-white font-black shadow-xs ring-2 ring-primary/40 ring-offset-1 ring-offset-background"
                         : isSearchMatch
-                        ? "bg-primary text-white font-extrabold shadow-xs"
+                        ? "bg-primary text-white font-black shadow-xs"
                         : hasEvents
                         ? "text-foreground group-hover:text-primary font-bold"
-                        : "text-muted-foreground"
+                        : "text-muted-foreground/80 group-hover:text-foreground"
                     )}
                   >
                     {dayNumber}
@@ -892,23 +889,23 @@ export function MonthCalendarView({
                 </div>
 
                 {/* Indicators & Event details */}
-                <div className="w-full mt-auto">
-                  {/* Mobile: Chấm tròn sự kiện và Icon nhật ký nằm gọn gàng bên dưới */}
-                  <div className="flex sm:hidden flex-col items-center justify-end w-full gap-0.5">
+                <div className="w-full mt-auto flex flex-col items-center sm:items-stretch">
+                  {/* Mobile: Chấm tròn sự kiện và Icon nhật ký căn giữa chuẩn xác bên dưới */}
+                  <div className="flex sm:hidden flex-col items-center justify-center w-full gap-1 pb-0.5">
                     {/* Chấm tròn sự kiện */}
                     {hasEvents && (
-                      <div className="flex items-center justify-center gap-1 max-w-full">
+                      <div className="flex items-center justify-center gap-1.5 w-full">
                         {dayEvents.slice(0, 3).map((ev) => (
                           <span
                             key={ev.id}
                             className={cn(
-                              "w-1.5 h-1.5 rounded-full shadow-xs shrink-0",
+                              "w-1.5 h-1.5 rounded-full shadow-xs shrink-0 transition-transform group-hover:scale-125",
                               groupColors[ev.group_name] || "bg-primary"
                             )}
                           />
                         ))}
                         {dayEvents.length > 3 && (
-                          <span className="text-[8px] font-bold text-muted-foreground leading-none">
+                          <span className="text-[8px] font-extrabold text-muted-foreground leading-none">
                             +{dayEvents.length - 3}
                           </span>
                         )}
@@ -932,7 +929,7 @@ export function MonthCalendarView({
                   </div>
 
                   {/* Desktop: Danh sách nhãn sự kiện */}
-                  <div className="hidden sm:block space-y-0.5">
+                  <div className="hidden sm:block space-y-0.5 w-full">
                     {dayEvents.slice(0, 2).map((ev) => (
                       <div
                         key={ev.id}
@@ -941,7 +938,7 @@ export function MonthCalendarView({
                           setSelectedDate(new Date(year, month, dayNumber));
                           setViewingEvent(ev);
                         }}
-                        className="truncate text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-secondary/80 text-foreground flex items-center gap-1 hover:bg-secondary"
+                        className="truncate text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-secondary/80 text-foreground flex items-center gap-1 hover:bg-secondary cursor-pointer"
                       >
                         <span
                           className={cn(

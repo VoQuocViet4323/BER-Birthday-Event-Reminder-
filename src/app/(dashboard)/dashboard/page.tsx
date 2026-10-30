@@ -155,7 +155,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8">
       {/* 1. Thẻ Hôm Nay (Nổi bật nhất nếu có sự kiện hôm nay) */}
-      <TodayHighlightCard events={todayEvents} />
+      <TodayHighlightCard events={todayEvents} onSelectEvent={handleEdit} />
 
       {/* 2. Thống kê nhỏ (Mini Stats Cards) */}
       <div className="grid grid-cols-3 gap-3 sm:gap-4">

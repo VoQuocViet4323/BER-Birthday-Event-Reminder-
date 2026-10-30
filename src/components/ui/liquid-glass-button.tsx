@@ -36,6 +36,8 @@ export function LiquidGlassButton({
   const rootRef = useRef<HTMLDivElement>(null);
   const magRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
+  const onSuccessDoneRef = useRef(onSuccessDone);
+  onSuccessDoneRef.current = onSuccessDone;
 
   // Đồng bộ trạng thái submitting từ Form & TanStack Query
   useEffect(() => {
@@ -46,12 +48,12 @@ export function LiquidGlassButton({
       setInternalState("ok");
       timer = setTimeout(() => {
         setInternalState("idle");
-        onSuccessDone?.();
-      }, 1500);
+        onSuccessDoneRef.current?.();
+      }, 1400);
     }
     prevSubmittingRef.current = isSubmitting;
     return () => clearTimeout(timer);
-  }, [isSubmitting, onSuccessDone]);
+  }, [isSubmitting]);
 
   // Hiệu ứng lực từ tính (Magnetic Pull) theo con trỏ chuột
   useEffect(() => {

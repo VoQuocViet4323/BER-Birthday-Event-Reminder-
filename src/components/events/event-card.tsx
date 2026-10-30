@@ -13,9 +13,11 @@ import {
   Gift,
   FileText,
   Moon,
+  Heart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { undoManager } from "./undo-manager";
+import { WishSuggestionModal } from "./wish-suggestion-modal";
 
 interface EventCardProps {
   event: EventWithMeta;
@@ -31,6 +33,7 @@ export function EventCard({
   onToggleEnabled,
 }: EventCardProps) {
   const [showDetails, setShowDetails] = useState(false);
+  const [isWishOpen, setIsWishOpen] = useState(false);
   const [isGone, setIsGone] = useState(false);
 
   const rowRef = useRef<HTMLDivElement>(null);
@@ -578,12 +581,33 @@ export function EventCard({
                       <span><strong>Gợi ý quà:</strong> {event.gift_idea}</span>
                     </p>
                   )}
+                  {(event.event_type === "birthday" || event.event_type === "anniversary") && (
+                    <div className="pt-1 flex items-center justify-end">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsWishOpen(true);
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-pink-500/10 text-pink-600 hover:bg-pink-500/20 text-xs font-bold transition-colors cursor-pointer"
+                      >
+                        <Heart className="w-3.5 h-3.5 fill-pink-500" />
+                        <span>Gợi ý lời chúc</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           )}
         </div>
       </div>
+
+      <WishSuggestionModal
+        isOpen={isWishOpen}
+        onClose={() => setIsWishOpen(false)}
+        event={event}
+      />
     </div>
   );
 }

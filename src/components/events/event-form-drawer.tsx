@@ -153,6 +153,9 @@ export function EventFormDrawer({
     convertedDateText = `Tương ứng Âm lịch: ngày ${lunar.day} tháng ${lunar.month}${lunar.isLeap ? " (Nhuận)" : ""}`;
   }
 
+  const [isLocalSubmitting, setIsLocalSubmitting] = useState(false);
+  const isActuallySubmitting = isSubmitting || isLocalSubmitting;
+
   const handleFormSubmit = async (values: EventFormValues) => {
     // Tự sinh avatar nếu chưa có
     let avatarUrl = values.avatar_url;
@@ -162,15 +165,17 @@ export function EventFormDrawer({
     }
 
     try {
+      setIsLocalSubmitting(true);
       await onSubmit({
         ...values,
         avatar_url: avatarUrl,
       });
-      setTimeout(() => {
-        onClose();
-      }, 700);
+      // Đợi tối thiểu 350ms để người dùng thấy rõ trạng thái xoay spinner
+      await new Promise((resolve) => setTimeout(resolve, 350));
     } catch (err) {
       console.error(err);
+    } finally {
+      setIsLocalSubmitting(false);
     }
   };
 
@@ -250,8 +255,8 @@ export function EventFormDrawer({
               {...register("name")}
               placeholder="VD: Mẹ yêu, Bạn thân Tuấn, Kỷ niệm ngày cưới..."
               className={cn(
-                "w-full px-4 py-3 rounded-2xl bg-secondary/50 border border-border focus:outline-none focus:ring-2 focus:ring-primary text-sm font-medium transition-all",
-                errors.name && "border-rose-500 focus:ring-rose-500"
+                "w-full px-4 py-2.5 rounded-xl bg-secondary/50 border border-border/80 hover:border-border focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 text-sm font-medium transition-all placeholder:text-muted-foreground/60",
+                errors.name && "border-rose-500 focus:border-rose-500 focus:ring-rose-500/20"
               )}
             />
             {errors.name && (
@@ -304,8 +309,8 @@ export function EventFormDrawer({
                     {...register("custom_type")}
                     placeholder="VD: Lễ tốt nghiệp, Họp lớp, Tân gia, Thi bằng lái..."
                     className={cn(
-                      "w-full px-3.5 py-2.5 rounded-xl bg-secondary/60 border border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary text-sm font-medium placeholder:text-muted-foreground/60 transition-all",
-                      errors.custom_type && "border-rose-500 focus:ring-rose-500"
+                      "w-full px-3.5 py-2.5 rounded-xl bg-secondary/60 border border-border/80 hover:border-border focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 text-sm font-medium placeholder:text-muted-foreground/60 transition-all",
+                      errors.custom_type && "border-rose-500 focus:border-rose-500 focus:ring-rose-500/20"
                     )}
                   />
                   {errors.custom_type && (
@@ -517,7 +522,7 @@ export function EventFormDrawer({
                       rows={2}
                       {...register("note")}
                       placeholder="VD: Thích màu tím, thích ăn đồ ngọt, không ăn cay..."
-                      className="w-full px-3 py-2 rounded-xl bg-secondary/50 border border-border focus:ring-2 focus:ring-primary text-xs"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-secondary/50 border border-border/80 hover:border-border focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 text-xs font-medium placeholder:text-muted-foreground/60 transition-all resize-none"
                     />
                   </div>
 
@@ -529,7 +534,7 @@ export function EventFormDrawer({
                     <input
                       {...register("gift_idea")}
                       placeholder="VD: Máy massage, áo sơ mi, sách khởi nghiệp..."
-                      className="w-full px-3 py-2 rounded-xl bg-secondary/50 border border-border focus:ring-2 focus:ring-primary text-xs"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-secondary/50 border border-border/80 hover:border-border focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 text-xs font-medium placeholder:text-muted-foreground/60 transition-all"
                     />
                   </div>
                 </div>
@@ -550,12 +555,13 @@ export function EventFormDrawer({
             <div className="flex-1 flex justify-center items-center">
               <LiquidGlassButton
                 type="submit"
-                isSubmitting={isSubmitting}
+                isSubmitting={isActuallySubmitting}
                 idleText={initialData ? "Lưu thay đổi" : "Tạo sự kiện"}
                 loadingText="Đang lưu..."
                 successText={initialData ? "Đã lưu!" : "Đã tạo!"}
                 btnWidth="100%"
                 btnHeight="48px"
+                onSuccessDone={onClose}
               />
             </div>
           </div>

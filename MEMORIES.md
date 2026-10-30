@@ -3332,8 +3332,38 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
   - [src/components/events/event-form-drawer.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-form-drawer.tsx)
   - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
 - **Trạng thái kiểm thử**:
-  - `npx tsc --noEmit`: **0 errors** (TypeScript sạch sẽ).
-  - `npm test`: **31/31 unit tests PASS** (2/2 test suites passed).
+
+---
+
+### 📅 2026-10-30 15:52:00 | Nâng Cấp Toàn Diện UI/UX: Gợi Ý Lời Chúc, Carousel Hôm Nay, Animation Nút Lưu & Căn Chuẩn Lịch
+
+- **Yêu cầu của người dùng**:
+  1. Thêm nút Refresh tải lại toàn bộ trang đặt cạnh chuông thông báo.
+  2. Tối ưu mẫu email nhắc nhở: tiêu đề `[Nhắc nhở]: (tên sự kiện)`, tên người gửi "BER", bố cục tinh giản, hiện đại, dễ đọc.
+  3. Xây dựng Modal gợi ý lời chúc thông minh có nút sao chép, chỉ hiển thị cho sự kiện sinh nhật & kỷ niệm.
+  4. Sửa cảnh báo đỏ `Unable to preventDefault inside passive event listener` khi lăn chuột trên date picker.
+  5. Cập nhật thẻ "Sự kiện hôm nay" thành dải cuộn ngang (Horizontal Carousel) khi có nhiều sự kiện trong ngày.
+  6. Sửa lỗi ô nhập liệu bị hở/miss ở 4 góc viền và mất hiệu ứng animation khi bấm "Lưu thay đổi" / "Tạo sự kiện".
+  7. Căn chỉnh lại cụm dấu chấm và số ngày trong các ô lịch trên mobile đang bị lệch trục.
+- **Nội dung đã triển khai**:
+  1. **Nút Refresh tải lại trang ([src/components/layout/app-header.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/layout/app-header.tsx))**:
+     - Đặt ngay cạnh chuông thông báo, có hiệu ứng xoay tròn mượt mà khi click và gọi `window.location.reload()`.
+  2. **Email nhắc nhở chuẩn hóa ([src/lib/email/template-builder.ts](file:///e:/BER-Birthday-Event-Reminder-/src/lib/email/template-builder.ts))**:
+     - Định dạng thẻ thư sang trọng, tên người gửi đổi thành "BER", tiêu đề ngắn gọn theo thể thức gửi đến.
+  3. **Modal Gợi ý lời chúc ([src/components/events/wish-suggestion-modal.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/wish-suggestion-modal.tsx))**:
+     - Tích hợp sao chép nhanh 1 chạm, phân loại theo phong cách (Ấm áp, Vui vẻ, Trang trọng...), tự động lọc theo `birthday` và `anniversary`.
+  4. **Sửa lỗi Passive Wheel Listener ([src/components/ui/ios-date-picker.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/ui/ios-date-picker.tsx), [src/components/ui/ios-time-picker.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/ui/ios-time-picker.tsx))**:
+     - Chuyển `onWheel` sang native listener qua `useEffect` với `{ passive: false }` triệt tiêu 100% warning đỏ trên Chrome DevTools.
+  5. **Dải lướt ngang sự kiện hôm nay ([src/components/events/today-highlight-card.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/today-highlight-card.tsx), [src/app/(dashboard)/dashboard/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/dashboard/page.tsx))**:
+     - Khay cuộn ngang Snap Carousel khi có từ 2 sự kiện hôm nay trở lên, mỗi thẻ có bộ màu gradient riêng, hé lộ mép thẻ tiếp theo trên mobile, bổ sung nút `<` `>` và dải chấm phân trang.
+  6. **Sửa viền ô nhập & Khôi phục Animation Lưu ([src/components/events/event-form-drawer.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-form-drawer.tsx), [src/components/ui/liquid-glass-button.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/ui/liquid-glass-button.tsx), [src/components/calendar/month-calendar-view.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/calendar/month-calendar-view.tsx))**:
+     - Bổ sung `focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20` xóa bỏ khoảng hở ở 4 góc viền ô nhập.
+     - Dùng `onSuccessDoneRef` và `onSuccessDone={onClose}` để bảo toàn vòng đời animation nén giọt nước $\rightarrow$ xoay spinner $\rightarrow$ checkmark xanh "Đã lưu!" của nút LiquidGlassButton.
+  7. **Căn thẳng trục lưới ngày trên Lịch ([src/components/calendar/month-calendar-view.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/calendar/month-calendar-view.tsx))**:
+     - Căn giữa đồng trục số ngày và cụm chấm tròn màu sắc bên dưới theo chuẩn thiết kế mobile.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi** (TypeScript sạch sẽ).
+  - `npm test`: **32/32 tests passed 100%**.
 
 
 
