@@ -4,6 +4,7 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import { EventWithMeta, EventGroup } from "@/types/events";
 import { EventCard } from "./event-card";
 import { CollapsibleMonthGroup } from "./collapsible-month-group";
+import { CollapsibleYearGroup } from "./collapsible-year-group";
 import { EmptyState } from "@/components/common/empty-state";
 import {
   Search,
@@ -68,16 +69,29 @@ export function EventListGrouped({
   const [tempMonth, setTempMonth] = useState<number>(() => now.getMonth() + 1);
   const [tempYear, setTempYear] = useState<number>(() => now.getFullYear());
 
-  // Quản lý trạng thái đóng/mở của từng tháng
-  const [expandedMonths, setExpandedMonths] = useState<Record<number, boolean>>({});
+  // Quản lý trạng thái đóng/mở của từng năm (mặc định mở năm hiện tại)
+  const [expandedYears, setExpandedYears] = useState<Record<number, boolean>>(() => {
+    return { [now.getFullYear()]: true };
+  });
+
+  // Quản lý trạng thái đóng/mở của từng tháng (key dạng `${year}-${month}`)
+  const [expandedMonths, setExpandedMonths] = useState<Record<string, boolean>>({});
 
   // Tự động mở rộng khi đang gõ tìm kiếm
   const isSearching = search.trim().length > 0;
 
-  const toggleMonth = (monthNum: number) => {
+  const toggleYear = (yearNum: number) => {
+    setExpandedYears((prev) => ({
+      ...prev,
+      [yearNum]: prev[yearNum] === undefined ? false : !prev[yearNum],
+    }));
+  };
+
+  const toggleMonth = (yearNum: number, monthNum: number) => {
+    const key = `${yearNum}-${monthNum}`;
     setExpandedMonths((prev) => ({
       ...prev,
-      [monthNum]: !prev[monthNum],
+      [key]: !prev[key],
     }));
   };
 
@@ -228,38 +242,66 @@ export function EventListGrouped({
       });
   }, [events, search, selectedGroup, sortBy, customMonth, customYear, pastMonth, pastMonthYear]);
 
-  // Gom nhóm theo tháng
-  const monthGroups = useMemo(() => {
-    const groupsMap = new Map<number, EventWithMeta[]>();
+  // Gom nhóm theo Năm, sau đó gom theo Tháng trong từng Năm
+  const yearGroups = useMemo(() => {
+    // Map<year, Map<month, EventWithMeta[]>>
+    const yearMap = new Map<number, Map<number, EventWithMeta[]>>();
 
     for (const ev of filteredEvents) {
+      let year: number;
       let month: number;
+
       if (sortBy === "custom_month_year") {
+        year = customYear;
         month = customMonth;
       } else if (sortBy === "past_month") {
+        year = pastMonthYear;
         month = pastMonth;
       } else {
+        year = ev.nextOccurrence ? ev.nextOccurrence.getFullYear() : (ev.event_year || now.getFullYear());
         month = ev.nextOccurrence ? ev.nextOccurrence.getMonth() + 1 : ev.event_month;
       }
 
-      const list = groupsMap.get(month) || [];
+      if (!yearMap.has(year)) {
+        yearMap.set(year, new Map<number, EventWithMeta[]>());
+      }
+      const monthMap = yearMap.get(year)!;
+      const list = monthMap.get(month) || [];
       list.push(ev);
-      groupsMap.set(month, list);
+      monthMap.set(month, list);
     }
 
-    return Array.from(groupsMap.entries());
-  }, [filteredEvents, sortBy, customMonth, pastMonth]);
+    // Sắp xếp các năm tăng dần (2026, 2027...)
+    const sortedYears = Array.from(yearMap.keys()).sort((a, b) => a - b);
+
+    return sortedYears.map((y) => {
+      const monthMap = yearMap.get(y)!;
+      // Sắp xếp các tháng trong năm tăng dần
+      const sortedMonths = Array.from(monthMap.entries()).sort(([m1], [m2]) => m1 - m2);
+      const total = sortedMonths.reduce((sum, [, evs]) => sum + evs.length, 0);
+      return {
+        year: y,
+        totalEvents: total,
+        monthGroups: sortedMonths,
+      };
+    });
+  }, [filteredEvents, sortBy, customMonth, customYear, pastMonth, pastMonthYear, now]);
 
   // Tự động mở rộng tất cả các tháng nếu defaultExpandAll = true (dành cho chế độ 7 ngày sắp tới)
   useEffect(() => {
-    if (defaultExpandAll && monthGroups.length > 0) {
-      const all: Record<number, boolean> = {};
-      monthGroups.forEach(([m]) => {
-        all[m] = true;
+    if (defaultExpandAll && yearGroups.length > 0) {
+      const allY: Record<number, boolean> = {};
+      const allM: Record<string, boolean> = {};
+      yearGroups.forEach((yg) => {
+        allY[yg.year] = true;
+        yg.monthGroups.forEach(([m]) => {
+          allM[`${yg.year}-${m}`] = true;
+        });
       });
-      setExpandedMonths(all);
+      setExpandedYears(allY);
+      setExpandedMonths(allM);
     }
-  }, [defaultExpandAll, monthGroups]);
+  }, [defaultExpandAll, yearGroups]);
 
   // Tiêu đề hiển thị trên nút dropdown
   const currentSortLabel = useMemo(() => {
@@ -269,22 +311,32 @@ export function EventListGrouped({
     return sortOptions.find((o) => o.value === sortBy)?.label || "Sắp xếp";
   }, [sortBy, customMonth, customYear]);
 
-  // Kiểm tra xem tất cả các tháng đang hiển thị có đang mở không
+  // Kiểm tra xem tất cả các năm và tháng có đang mở không
   const areAllExpanded = useMemo(() => {
-    if (monthGroups.length === 0) return false;
-    return monthGroups.every(([m]) => !!expandedMonths[m]);
-  }, [monthGroups, expandedMonths]);
+    if (yearGroups.length === 0) return false;
+    const allYearsOpen = yearGroups.every((yg) => expandedYears[yg.year] !== false);
+    const allMonthsOpen = yearGroups.every((yg) =>
+      yg.monthGroups.every(([m]) => !!expandedMonths[`${yg.year}-${m}`])
+    );
+    return allYearsOpen && allMonthsOpen;
+  }, [yearGroups, expandedYears, expandedMonths]);
 
   // Chuyển đổi giữa mở rộng tất cả và thu gọn tất cả
-  const toggleAllMonths = () => {
+  const toggleAll = () => {
     if (areAllExpanded) {
+      setExpandedYears({});
       setExpandedMonths({});
     } else {
-      const all: Record<number, boolean> = {};
-      monthGroups.forEach(([m]) => {
-        all[m] = true;
+      const allY: Record<number, boolean> = {};
+      const allM: Record<string, boolean> = {};
+      yearGroups.forEach((yg) => {
+        allY[yg.year] = true;
+        yg.monthGroups.forEach(([m]) => {
+          allM[`${yg.year}-${m}`] = true;
+        });
       });
-      setExpandedMonths(all);
+      setExpandedYears(allY);
+      setExpandedMonths(allM);
     }
   };
 
@@ -366,13 +418,13 @@ export function EventListGrouped({
               </button>
             )}
 
-            {/* Nút Mở rộng / Thu gọn tất cả các tháng */}
-            {monthGroups.length > 0 && !isSearching && (
+            {/* Nút Mở rộng / Thu gọn tất cả các năm & tháng */}
+            {yearGroups.length > 0 && !isSearching && (
               <button
                 type="button"
-                onClick={toggleAllMonths}
+                onClick={toggleAll}
                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold text-muted-foreground hover:text-foreground bg-secondary/60 hover:bg-secondary border border-border/50 transition-colors cursor-pointer select-none"
-                title={areAllExpanded ? "Thu gọn tất cả các tháng" : "Mở rộng tất cả các tháng"}
+                title={areAllExpanded ? "Thu gọn tất cả" : "Mở tất cả"}
               >
                 {areAllExpanded ? (
                   <>
@@ -614,26 +666,24 @@ export function EventListGrouped({
         />
       ) : (
         <div className="space-y-4">
-          {monthGroups.map(([monthNum, monthEvents]) => {
-            const isExpanded = isSearching || !!expandedMonths[monthNum];
-            const monthTitle =
-              sortBy === "custom_month_year"
-                ? `Tháng ${monthNum} năm ${customYear}`
-                : sortBy === "past_month"
-                ? `Tháng ${monthNum} (1 tháng trước)`
-                : `Tháng ${monthNum}`;
-
+          {yearGroups.map((yg) => {
+            const isYearExpanded = isSearching || expandedYears[yg.year] !== false;
             return (
-              <CollapsibleMonthGroup
-                key={monthNum}
-                monthNum={monthNum}
-                monthTitle={monthTitle}
-                monthEvents={monthEvents}
-                isExpanded={isExpanded}
-                onToggle={() => toggleMonth(monthNum)}
+              <CollapsibleYearGroup
+                key={yg.year}
+                year={yg.year}
+                totalEvents={yg.totalEvents}
+                monthGroups={yg.monthGroups}
+                isExpanded={isYearExpanded}
+                onToggle={() => toggleYear(yg.year)}
+                expandedMonths={expandedMonths}
+                onToggleMonth={toggleMonth}
                 onEdit={onEdit}
                 onDelete={onDelete}
                 onToggleEnabled={onToggleEnabled}
+                isSearching={isSearching}
+                sortBy={sortBy}
+                customYear={customYear}
               />
             );
           })}

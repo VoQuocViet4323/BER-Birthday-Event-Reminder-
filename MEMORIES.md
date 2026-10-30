@@ -3365,6 +3365,33 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
   - `npx tsc --noEmit`: **0 lỗi** (TypeScript sạch sẽ).
   - `npm test`: **32/32 tests passed 100%**.
 
+---
+
+### 📅 2026-10-30 15:58:00 | Gộp Danh Sách Tháng Vào Nút Xổ Xuống Năm & Tự Động Sinh Năm 2027 Khi Có Sự Kiện
+
+- **Yêu cầu của người dùng**:
+  - Gộp các tháng (Tháng 10, Tháng 11, Tháng 12...) vào 1 nút xổ xuống của năm 2026.
+  - Khi sang năm 2027 hoặc khi tạo sự kiện cho năm 2027 thì hệ thống sẽ tự động tạo thêm một nút xổ xuống riêng cho năm 2027.
+- **Nội dung đã triển khai**:
+  1. **Component Nhóm Năm Xổ Xuống ([src/components/events/collapsible-year-group.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/collapsible-year-group.tsx))**:
+     - Thiết kế giao diện hiện đại, bóng bẩy chuẩn dark mode: Badge năm to rõ nét gradient tím hồng (`gradient-brand`), nhãn nổi bật "Năm hiện tại ✨", hiển thị tổng số sự kiện và số tháng có sự kiện.
+     - Nút mũi tên xoay 180° kèm hiệu ứng Framer Motion mượt mà khi thu gọn / mở rộng.
+     - Tích hợp vùng chứa các nhóm tháng con (`CollapsibleMonthGroup`) thụt vào trong với đường viền mờ sang trọng.
+  2. **Tái cấu trúc Gom Nhóm 2 Tầng Động ([src/components/events/event-list-grouped.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-list-grouped.tsx))**:
+     - Phân tầng dữ liệu: Tầng 1 = Danh sách năm (`yearGroups`), Tầng 2 = Danh sách tháng trong từng năm (`monthGroups`), Tầng 3 = Danh sách sự kiện trong tháng.
+     - Xác định năm thông minh: Dựa vào `nextOccurrence` (năm sắp diễn ra của sự kiện) hoặc `event_year`. Bất kỳ khi nào người dùng tạo sự kiện có mốc thời gian ở năm 2027 (hoặc năm tương lai bất kỳ), hệ thống tự động sinh thêm block Năm 2027 mà không cần sửa code cứng (Dynamic Year Grouping).
+     - Quản lý trạng thái mở rộng độc lập: `expandedYears` (`Record<number, boolean>`) và `expandedMonths` phân tách theo key `${year}-${month}` (tránh xung đột tháng trùng tên giữa các năm).
+     - Đồng bộ nút điều khiển tổng "Mở tất cả / Thu gọn": Khi nhấn, tự động mở rộng hoặc thu gọn đồng loạt toàn bộ các năm và toàn bộ các tháng. Khi tìm kiếm từ khóa, tự động mở bung toàn bộ các năm và tháng có kết quả khớp.
+- **Danh sách file tạo / chỉnh sửa**:
+  - [src/components/events/collapsible-year-group.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/collapsible-year-group.tsx)
+  - [src/components/events/event-list-grouped.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/events/event-list-grouped.tsx)
+  - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi** (TypeScript sạch sẽ).
+  - `npm test`: **32/32 tests passed 100%**.
+- **Ghi chú định hướng tiếp theo**:
+  - Đẩy code lên GitHub repository và thông báo cho người dùng trải nghiệm giao diện nhóm theo năm mới.
+
 
 
 
