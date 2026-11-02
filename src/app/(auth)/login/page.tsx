@@ -209,6 +209,35 @@ export default function LoginPage() {
       console.error("Lỗi xác thực vai trò:", err);
     }
 
+    
+    // KIỂM TRA TÀI KHOẢN CÓ ĐANG BỊ CẤM (BAN) KHÔNG
+    try {
+      const { data: profileData } = await (supabase as any)
+        .from("profiles")
+        .select("banned_until, ban_reason")
+        .eq("id", data?.user?.id)
+        .maybeSingle();
+
+      if (profileData?.banned_until) {
+        const banDate = new Date(profileData.banned_until);
+        if (banDate.getTime() > Date.now()) {
+          // Lập tức hủy phiên đăng nhập
+          await supabase.auth.signOut();
+          setIsLoading(false);
+          const isPermanent = banDate.getFullYear() >= 2099;
+          const timeText = isPermanent ? "Vĩnh viễn" : ("đến hết " + banDate.toLocaleString("vi-VN"));
+          toast({
+            title: "Tài khoản của bạn đã bị khóa! 🚫",
+            description: "Tài khoản này đang bị cấm " + timeText + ". Lý do: " + (profileData.ban_reason || "Vi phạm quy định hệ thống") + ".",
+            variant: "error",
+          });
+          return;
+        }
+      }
+    } catch (banErr) {
+      console.warn("Kiểm tra ban status:", banErr);
+    }
+
     // Dọn dẹp cache profile cũ của phiên trước
     if (typeof window !== "undefined") {
       localStorage.removeItem("ber-user-profile");

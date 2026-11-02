@@ -1259,6 +1259,124 @@ NOTIFY pgrst, 'reload schema';`);
               </motion.div>
             </div>
           )}
+
+          {/* Modal Cấm (Ban) Người Dùng */}
+          {banningUser && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-card border border-rose-500/30 rounded-3xl p-6 max-w-md w-full shadow-card space-y-4"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-10 h-10 rounded-2xl bg-rose-500/15 text-rose-500 flex items-center justify-center border border-rose-500/30 shadow-xs">
+                      <Ban className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-extrabold text-foreground">Cấm (Khóa) tài khoản</h3>
+                      <p className="text-xs text-muted-foreground">Áp dụng cho @{banningUser.username || banningUser.display_name}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setBanningUser(null)}
+                    className="p-1.5 rounded-xl hover:bg-muted text-muted-foreground transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="space-y-3 pt-1">
+                  <div>
+                    <label className="text-xs font-bold text-foreground block mb-1.5">
+                      Chọn thời hạn cấm:
+                    </label>
+                    <select
+                      value={banDuration}
+                      onChange={(e) => setBanDuration(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-2xl bg-secondary/70 border border-border/70 text-xs font-bold text-foreground focus:ring-2 focus:ring-rose-500/30"
+                    >
+                      <option value="1h">1 Giờ (Cảnh cáo tạm thời)</option>
+                      <option value="24h">24 Giờ (1 Ngày)</option>
+                      <option value="3d">3 Ngày</option>
+                      <option value="7d">7 Ngày (1 Tuần)</option>
+                      <option value="30d">30 Ngày (1 Tháng)</option>
+                      <option value="permanent">Vĩnh viễn (Khóa hoàn toàn)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-foreground block mb-1.5">
+                      Lý do cấm (tùy chọn):
+                    </label>
+                    <input
+                      type="text"
+                      value={banReason}
+                      onChange={(e) => setBanReason(e.target.value)}
+                      placeholder="Nhập lý do cấm..."
+                      className="w-full px-3.5 py-2.5 rounded-2xl bg-secondary/70 border border-border/70 text-xs text-foreground focus:ring-2 focus:ring-rose-500/30"
+                    />
+                  </div>
+
+                  <div className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-[11px] text-rose-400 leading-relaxed">
+                    ⚠️ Khi bị cấm, tài khoản này sẽ hiển thị trạng thái cấm và bị hạn chế các quyền hạn trong ứng dụng cho đến khi hết thời hạn hoặc được Admin mở sớm.
+                  </div>
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setBanningUser(null)}
+                    disabled={isSubmittingBan}
+                    className="flex-1 py-2.5 rounded-2xl bg-secondary hover:bg-muted text-xs font-bold text-foreground transition-colors"
+                  >
+                    Hủy bỏ
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isSubmittingBan}
+                    onClick={async () => {
+                      setIsSubmittingBan(true);
+                      try {
+                        let untilDate = new Date();
+                        if (banDuration === "1h") untilDate.setHours(untilDate.getHours() + 1);
+                        else if (banDuration === "24h") untilDate.setDate(untilDate.getDate() + 1);
+                        else if (banDuration === "3d") untilDate.setDate(untilDate.getDate() + 3);
+                        else if (banDuration === "7d") untilDate.setDate(untilDate.getDate() + 7);
+                        else if (banDuration === "30d") untilDate.setDate(untilDate.getDate() + 30);
+                        else if (banDuration === "permanent") untilDate.setFullYear(2099, 11, 31);
+
+                        await banUserAsAdmin({
+                          userId: banningUser.id,
+                          bannedUntil: untilDate.toISOString(),
+                          reason: banReason,
+                        });
+                        setBanningUser(null);
+                      } catch (err: any) {
+                        toast({
+                          title: "Lỗi khi cấm người dùng",
+                          description: err.message,
+                          variant: "error",
+                        });
+                      } finally {
+                        setIsSubmittingBan(false);
+                      }
+                    }}
+                    className="flex-1 py-2.5 rounded-2xl bg-rose-500 hover:bg-rose-600 text-xs font-bold text-white transition-colors flex items-center justify-center gap-1.5 shadow-soft"
+                  >
+                    {isSubmittingBan ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Ban className="w-3.5 h-3.5" />
+                    )}
+                    <span>Xác nhận Cấm</span>
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+
         </AnimatePresence>
     </div>
   );

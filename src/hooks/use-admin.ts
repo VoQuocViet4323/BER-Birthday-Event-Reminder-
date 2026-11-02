@@ -214,9 +214,12 @@ export function useAdmin() {
                     username: item.profile.email ? item.profile.email.split("@")[0] : (isMasterAdmin ? "admin" : "user"),
                     email: item.profile.email,
                     timezone: item.profile.timezone || "Asia/Ho_Chi_Minh",
-                    role: isMasterAdmin ? "admin" : "user",
+                    role: isMasterAdmin ? "admin" : (item.profile.role || "user"),
                     onboarded: true,
                     created_at: new Date().toISOString(),
+                    last_seen_at: item.profile.last_seen_at || null,
+                    banned_until: item.profile.banned_until || null,
+                    ban_reason: item.profile.ban_reason || null,
                   };
 
                   if (existingIndex >= 0) {

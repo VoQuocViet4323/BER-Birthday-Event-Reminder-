@@ -80,6 +80,28 @@ export async function middleware(request: NextRequest) {
     url.pathname.startsWith("/onboarding") ||
     url.pathname.startsWith("/admin");
 
+
+  // Nếu đã đăng nhập, kiểm tra xem tài khoản có đang bị Ban không
+  if (session && isProtectedPage) {
+    try {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("banned_until")
+        .eq("id", session.user.id)
+        .maybeSingle();
+
+      if (profile?.banned_until && new Date(profile.banned_until).getTime() > Date.now()) {
+        // Đăng xuất và điều hướng về login kèm thông báo
+        await supabase.auth.signOut();
+        url.pathname = "/login";
+        url.searchParams.set("error", "account-banned");
+        return NextResponse.redirect(url);
+      }
+    } catch {
+      // Tiếp tục nếu lỗi mạng
+    }
+  }
+
   // Chưa đăng nhập mà vào trang bảo vệ -> Chuyển về /login
   if (!session && isProtectedPage) {
     url.pathname = "/login";
