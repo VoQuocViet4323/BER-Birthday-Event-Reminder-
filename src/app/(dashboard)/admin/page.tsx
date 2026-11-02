@@ -33,11 +33,47 @@ import {
   Eye,
   EyeOff,
   X,
+  Ban,
+  Unlock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useToast } from "@/components/ui/toast";
+
+
+function formatVietnameseTimeAgo(dateStr?: string | null): { text: string; isOnline: boolean } {
+  if (!dateStr) return { text: "Chưa hoạt động", isOnline: false };
+  const d = new Date(dateStr);
+  const now = new Date();
+  const diffSec = Math.floor((now.getTime() - d.getTime()) / 1000);
+  if (diffSec < 0) return { text: "Vừa xong", isOnline: true };
+  
+  // Dưới 3 phút coi là Đang hoạt động
+  if (diffSec < 180) {
+    return { text: "Đang hoạt động", isOnline: true };
+  }
+  
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) {
+    return { text: `Hoạt động ${diffMin} phút trước`, isOnline: false };
+  }
+  
+  const diffHours = Math.floor(diffMin / 60);
+  if (diffHours < 24) {
+    return { text: `Hoạt động ${diffHours} giờ trước`, isOnline: false };
+  }
+  
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays === 1) {
+    return { text: "Hoạt động hôm qua", isOnline: false };
+  }
+  if (diffDays < 7) {
+    return { text: `Hoạt động ${diffDays} ngày trước`, isOnline: false };
+  }
+  
+  return { text: d.toLocaleDateString("vi-VN"), isOnline: false };
+}
 
 export default function AdminPage() {
   const { profile } = useUserSettings();
@@ -53,6 +89,8 @@ export default function AdminPage() {
     toggleEventAsAdmin,
     deleteUserAsAdmin,
     resetUserPasswordAsAdmin,
+    banUserAsAdmin,
+    unbanUserAsAdmin,
     isUpdating,
     stats,
   } = useAdmin();
@@ -83,6 +121,13 @@ export default function AdminPage() {
   const [copied, setCopied] = useState(false);
   const [isSubmittingPassword, setIsSubmittingPassword] = useState(false);
   const [dbActivationNeeded, setDbActivationNeeded] = useState(false);
+  // Trạng thái modal Cấm (Ban) người dùng
+  const [banningUser, setBanningUser] = useState<AdminUserItem | null>(null);
+  const [banDuration, setBanDuration] = useState<string>("24h");
+  const [banReason, setBanReason] = useState<string>("Vi phạm quy định hệ thống");
+  const [isSubmittingBan, setIsSubmittingBan] = useState(false);
+  const [unbanningUserId, setUnbanningUserId] = useState<string | null>(null);
+
 
   // Kiểm tra quyền Admin
   const isAdmin = profile?.role === "admin";
@@ -587,7 +632,7 @@ export default function AdminPage() {
                   className={cn(
                     "px-3 py-1.5 rounded-xl transition-all",
                     userRoleFilter === "user"
-                      ? "bg-card text-foreground shadow-xs font-black"
+                      ? "bg-blue-500/15 text-blue-400 shadow-xs font-black"
                       : "text-muted-foreground hover:text-foreground"
                   )}
                 >
@@ -722,9 +767,40 @@ export default function AdminPage() {
                             )}
                           </td>
                           <td className="py-3.5 px-4 text-center">
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
-                              <CheckCircle2 className="w-3 h-3" /> Hoạt động
-                            </span>
+                            {(() => {
+                              const isBanned = u.banned_until && new Date(u.banned_until).getTime() > Date.now();
+                              if (isBanned) {
+                                const banDate = new Date(u.banned_until as string);
+                                const isPermanent = banDate.getFullYear() >= 2099;
+                                return (
+                                  <div className="flex flex-col items-center gap-0.5">
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-rose-500/15 text-rose-500 border border-rose-500/30">
+                                      <Ban className="w-3 h-3" /> Đang bị cấm
+                                    </span>
+                                    <span className="text-[9px] text-rose-400 font-medium">
+                                      {isPermanent ? "Vĩnh viễn" : `Đến ${banDate.toLocaleDateString("vi-VN")}`}
+                                    </span>
+                                  </div>
+                                );
+                              }
+
+                              const { text, isOnline } = formatVietnameseTimeAgo(u.last_seen_at);
+                              if (isOnline) {
+                                return (
+                                  <span className="inline-flex items-center gap-1.5 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-500 border border-emerald-500/30 animate-pulse">
+                                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                    <span>Đang hoạt động</span>
+                                  </span>
+                                );
+                              }
+
+                              return (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-secondary/80 text-muted-foreground border border-border/50">
+                                  <Clock className="w-3 h-3" />
+                                  <span>{text}</span>
+                                </span>
+                              );
+                            })()}
                           </td>
                           <td className="py-3.5 px-4 text-center">
                             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-secondary text-foreground">
@@ -763,13 +839,44 @@ export default function AdminPage() {
                               )}
 
                               {!isSelf && !isMasterAdmin && (
-                                <button
-                                  onClick={() => setDeletingUserId(u.id)}
-                                  className="p-1.5 rounded-xl text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
-                                  title="Admin: Xóa vĩnh viễn tài khoản người dùng này khỏi Database"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
+                                <>
+                                  {u.banned_until && new Date(u.banned_until).getTime() > Date.now() ? (
+                                    <button
+                                      onClick={async () => {
+                                        try {
+                                          await unbanUserAsAdmin(u.id);
+                                        } catch {
+                                          // Error handled in hook
+                                        }
+                                      }}
+                                      className="px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 border border-emerald-500/30 shadow-xs"
+                                      title="Admin: Mở khóa (Gỡ cấm) tài khoản người dùng này"
+                                    >
+                                      <Unlock className="w-3.5 h-3.5" />
+                                      <span>Mở cấm</span>
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => {
+                                        setBanningUser(u);
+                                        setBanDuration("24h");
+                                        setBanReason("Vi phạm quy định hệ thống");
+                                      }}
+                                      className="p-1.5 rounded-xl text-amber-500 hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
+                                      title="Admin: Cấm (Khóa) tài khoản này theo thời hạn"
+                                    >
+                                      <Ban className="w-4 h-4" />
+                                    </button>
+                                  )}
+
+                                  <button
+                                    onClick={() => setDeletingUserId(u.id)}
+                                    className="p-1.5 rounded-xl text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
+                                    title="Admin: Xóa vĩnh viễn tài khoản người dùng này khỏi Database"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </>
                               )}
                             </div>
                           </td>

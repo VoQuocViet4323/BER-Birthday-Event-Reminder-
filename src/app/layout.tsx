@@ -5,6 +5,7 @@ import { ThemeProvider } from "@/components/providers/theme-provider";
 import { AppQueryProvider } from "@/components/providers/query-provider";
 import { ToastProvider } from "@/components/ui/toast";
 import { NavigationProgress } from "@/components/common/navigation-progress";
+import { UserHeartbeatProvider } from "@/components/providers/user-heartbeat-provider";
 
 const beVietnamPro = Be_Vietnam_Pro({
   subsets: ["latin", "vietnamese"],
@@ -56,10 +57,12 @@ export default function RootLayout({
       <body className={`${beVietnamPro.className} min-h-screen bg-background text-foreground antialiased`}>
         <ThemeProvider>
           <AppQueryProvider>
-            <ToastProvider>
-              <NavigationProgress />
-              {children}
-            </ToastProvider>
+            <UserHeartbeatProvider>
+              <ToastProvider>
+                <NavigationProgress />
+                {children}
+              </ToastProvider>
+            </UserHeartbeatProvider>
           </AppQueryProvider>
         </ThemeProvider>
       </body>

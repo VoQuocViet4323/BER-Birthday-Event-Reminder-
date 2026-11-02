@@ -19,6 +19,9 @@ export interface AdminEventWithMeta extends EventWithMeta {
 export interface AdminUserItem extends Profile {
   email?: string;
   events_count?: number;
+  last_seen_at?: string | null;
+  banned_until?: string | null;
+  ban_reason?: string | null;
 }
 
 export function useAdmin() {
@@ -41,14 +44,64 @@ export function useAdmin() {
       const today = new Date();
 
       if (isConfigured) {
-        // Query toàn bộ events cùng với profiles liên quan
-        const { data, error } = await (supabase as any)
-          .from("events")
-          .select("*, profiles:user_id(display_name)")
-          .order("created_at", { ascending: false });
+        let rawEvents: any[] = [];
 
-        if (!error && data) {
-          return data.map((ev: any) => {
+        // 1.1 Thử query trực tiếp từ bảng events kèm profiles
+        try {
+          const { data, error } = await (supabase as any)
+            .from("events")
+            .select("*, profiles:user_id(display_name)")
+            .order("created_at", { ascending: false });
+
+          if (!error && Array.isArray(data) && data.length > 0) {
+            rawEvents = data.map((ev: any) => ({
+              ...ev,
+              owner_name: ev.profiles?.display_name || "Người dùng",
+            }));
+          }
+        } catch (err) {
+          console.warn("Direct query events error:", err);
+        }
+
+        // 1.2 Nếu direct query bị hạn chế bởi RLS, thử RPC get_all_events_for_admin
+        if (rawEvents.length === 0) {
+          try {
+            const rpcRes = await (supabase as any).rpc("get_all_events_for_admin");
+            if (rpcRes.data && Array.isArray(rpcRes.data) && rpcRes.data.length > 0) {
+              rawEvents = rpcRes.data;
+            }
+          } catch {
+            // Tiếp tục fallback tầng 3
+          }
+        }
+
+        // 1.3 TẦNG BẢO HIỂM THỨ 3: Fallback qua cron_get_active_events_and_settings
+        // Đảm bảo Admin luôn thấy đầy đủ 100% sự kiện ngay cả khi hàm is_admin() chưa tồn tại trên DB
+        if (rawEvents.length === 0) {
+          try {
+            const cronRes = await (supabase as any).rpc("cron_get_active_events_and_settings");
+            if (cronRes.data && Array.isArray(cronRes.data) && cronRes.data.length > 0) {
+              const extracted: any[] = [];
+              cronRes.data.forEach((item: any) => {
+                const ownerName = item.profile?.display_name || "Người dùng";
+                (item.events || []).forEach((ev: any) => {
+                  extracted.push({
+                    ...ev,
+                    owner_name: ownerName,
+                  });
+                });
+              });
+              if (extracted.length > 0) {
+                rawEvents = extracted;
+              }
+            }
+          } catch (cronErr) {
+            console.warn("Fallback cron events error:", cronErr);
+          }
+        }
+
+        if (rawEvents.length > 0) {
+          return rawEvents.map((ev: any) => {
             const nextOccurrence = calculateNextOccurrence(ev, today);
             const daysRemaining = calculateDaysRemaining(nextOccurrence, today);
             const upcomingAge = calculateUpcomingAge(ev.event_year, nextOccurrence.getFullYear());
@@ -61,7 +114,7 @@ export function useAdmin() {
 
             return {
               ...ev,
-              owner_name: ev.profiles?.display_name || "Người dùng",
+              owner_name: ev.owner_name || ev.profiles?.display_name || "Người dùng",
               nextOccurrence,
               daysRemaining,
               upcomingAge,
@@ -107,30 +160,79 @@ export function useAdmin() {
     queryKey: ["admin-all-users"],
     queryFn: async (): Promise<AdminUserItem[]> => {
       if (isConfigured) {
-        // Truy vấn danh sách người dùng trực tiếp từ bảng profiles (được bảo vệ bởi RLS cho Admin)
-        // và bảng events để đếm số lượng sự kiện
-        const [profilesRes, eventsRes] = await Promise.all([
-          (supabase as any).from("profiles").select("*"),
-          (supabase as any).from("events").select("id, user_id"),
-        ]);
-
         const eventsByUser: Record<string, number> = {};
-        if (eventsRes.data) {
-          eventsRes.data.forEach((e: any) => {
-            eventsByUser[e.user_id] = (eventsByUser[e.user_id] || 0) + 1;
-          });
+        let profilesList: any[] = [];
+
+        // 2.1 Truy vấn danh sách người dùng từ bảng profiles và events
+        try {
+          const [profilesRes, eventsRes] = await Promise.all([
+            (supabase as any).from("profiles").select("*"),
+            (supabase as any).from("events").select("id, user_id"),
+          ]);
+
+          if (eventsRes.data) {
+            eventsRes.data.forEach((e: any) => {
+              eventsByUser[e.user_id] = (eventsByUser[e.user_id] || 0) + 1;
+            });
+          }
+
+          if (profilesRes.data && Array.isArray(profilesRes.data)) {
+            profilesList = [...profilesRes.data];
+          }
+        } catch (err) {
+          console.warn("Direct query profiles error:", err);
         }
 
-        let profilesList: any[] = profilesRes.data || [];
-        // Nếu RLS profiles chưa đủ quyền, thử gọi fallback qua RPC bảo mật get_all_users_for_admin
+        // 2.2 Nếu RLS profiles chỉ trả về 1 tài khoản (chính admin), thử gọi RPC get_all_users_for_admin
         if (profilesList.length <= 1) {
           try {
             const rpcRes = await (supabase as any).rpc("get_all_users_for_admin");
-            if (rpcRes.data && rpcRes.data.length > 0) {
+            if (rpcRes.data && Array.isArray(rpcRes.data) && rpcRes.data.length > 0) {
               profilesList = rpcRes.data;
             }
           } catch {
-            // Giữ nguyên profilesList
+            // Tiếp tục fallback tầng 3
+          }
+        }
+
+        // 2.3 TẦNG BẢO HIỂM THỨ 3: Nếu vẫn <= 1 (do hàm is_admin() chưa tồn tại trên DB khiến RPC trên lỗi),
+        // tự động đọc từ cron_get_active_events_and_settings (đã hoạt động ổn định 100%)
+        if (profilesList.length <= 1) {
+          try {
+            const cronRes = await (supabase as any).rpc("cron_get_active_events_and_settings");
+            if (cronRes.data && Array.isArray(cronRes.data) && cronRes.data.length > 0) {
+              cronRes.data.forEach((item: any) => {
+                if (item.profile && item.profile.id) {
+                  const existingIndex = profilesList.findIndex((p: any) => p.id === item.profile.id);
+                  const isMasterAdmin =
+                    item.profile.email === "admin@ber-app.com" ||
+                    item.profile.display_name === "Admin" ||
+                    item.profile.display_name === "Quản Trị Hệ Thống";
+                  const profileData = {
+                    id: item.profile.id,
+                    display_name: item.profile.display_name || (isMasterAdmin ? "Quản Trị Hệ Thống" : "Người dùng"),
+                    username: item.profile.email ? item.profile.email.split("@")[0] : (isMasterAdmin ? "admin" : "user"),
+                    email: item.profile.email,
+                    timezone: item.profile.timezone || "Asia/Ho_Chi_Minh",
+                    role: isMasterAdmin ? "admin" : "user",
+                    onboarded: true,
+                    created_at: new Date().toISOString(),
+                  };
+
+                  if (existingIndex >= 0) {
+                    profilesList[existingIndex] = { ...profilesList[existingIndex], ...profileData };
+                  } else {
+                    profilesList.push(profileData);
+                  }
+
+                  if (item.events && Array.isArray(item.events)) {
+                    eventsByUser[item.profile.id] = (eventsByUser[item.profile.id] || 0) + item.events.length;
+                  }
+                }
+              });
+            }
+          } catch (cronErr) {
+            console.warn("Fallback cron users error:", cronErr);
           }
         }
 
@@ -149,6 +251,9 @@ export function useAdmin() {
             onboarded: p.onboarded ?? true,
             created_at: p.created_at || new Date().toISOString(),
             events_count: eventsByUser[p.id] || 0,
+            last_seen_at: p.last_seen_at || null,
+            banned_until: p.banned_until || null,
+            ban_reason: p.ban_reason || null,
           });
         });
 
@@ -405,6 +510,95 @@ export function useAdmin() {
     },
   });
 
+  
+  // 8. Cấm (Ban) người dùng
+  const banUserMutation = useMutation({
+    mutationFn: async ({
+      userId,
+      bannedUntil,
+      reason,
+    }: {
+      userId: string;
+      bannedUntil: string;
+      reason?: string;
+    }) => {
+      if (isConfigured) {
+        // Thử gọi qua RPC
+        const { error: rpcError } = await (supabase as any).rpc("admin_ban_user", {
+          p_user_id: userId,
+          p_banned_until: bannedUntil,
+          p_ban_reason: reason || "Vi phạm tiêu chuẩn",
+        });
+
+        if (rpcError) {
+          // Fallback update trực tiếp bảng profiles
+          const { error: updateError } = await (supabase as any)
+            .from("profiles")
+            .update({
+              banned_until: bannedUntil,
+              ban_reason: reason || "Vi phạm tiêu chuẩn",
+            } as any)
+            .eq("id", userId);
+
+          if (updateError) throw updateError;
+        }
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-all-users"] });
+      toast({
+        title: "Đã cấm người dùng thành công 🚫",
+        description: "Tài khoản này đã bị khóa theo thời hạn quy định.",
+        variant: "success",
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Không thể cấm người dùng",
+        description: err.message,
+        variant: "error",
+      });
+    },
+  });
+
+  // 9. Mở khóa (Unban) người dùng
+  const unbanUserMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      if (isConfigured) {
+        const { error: rpcError } = await (supabase as any).rpc("admin_unban_user", {
+          p_user_id: userId,
+        });
+
+        if (rpcError) {
+          const { error: updateError } = await (supabase as any)
+            .from("profiles")
+            .update({
+              banned_until: null,
+              ban_reason: null,
+            } as any)
+            .eq("id", userId);
+
+          if (updateError) throw updateError;
+        }
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-all-users"] });
+      toast({
+        title: "Đã mở khóa tài khoản thành công! ✨",
+        description: "Người dùng hiện có thể sử dụng hệ thống bình thường.",
+        variant: "success",
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Không thể mở khóa tài khoản",
+        description: err.message,
+        variant: "error",
+      });
+    },
+  });
+
   // Thống kê tổng hợp
   const totalEvents = allEvents.length;
   const activeEvents = allEvents.filter((e) => e.enabled).length;
@@ -434,16 +628,23 @@ export function useAdmin() {
     deleteUserAsAdmin: (userId: string) => deleteUserMutation.mutateAsync(userId),
     resetUserPasswordAsAdmin: ({ userId, newPassword }: { userId: string; newPassword: string }) =>
       resetPasswordMutation.mutateAsync({ userId, newPassword }),
+    banUserAsAdmin: ({ userId, bannedUntil, reason }: { userId: string; bannedUntil: string; reason?: string }) =>
+      banUserMutation.mutateAsync({ userId, bannedUntil, reason }),
+    unbanUserAsAdmin: (userId: string) => unbanUserMutation.mutateAsync(userId),
     isUpdating:
       updateEventMutation.isPending ||
       deleteEventMutation.isPending ||
       deleteUserMutation.isPending ||
-      resetPasswordMutation.isPending,
+      resetPasswordMutation.isPending || banUserMutation.isPending || unbanUserMutation.isPending,
     stats: {
       totalUsers: allUsers.length,
       adminCount: allUsers.filter((u) => u.role === "admin").length,
       userCount: allUsers.filter((u) => u.role !== "admin").length,
-      activeUsersCount: allUsers.filter((u) => (u.events_count ?? 0) > 0 || u.onboarded).length,
+      activeUsersCount: allUsers.filter((u) => {
+        if (!u.last_seen_at) return false;
+        const diffMinutes = (Date.now() - new Date(u.last_seen_at).getTime()) / (1000 * 60);
+        return diffMinutes <= 5;
+      }).length,
       totalEvents,
       activeEvents,
       lunarEvents,

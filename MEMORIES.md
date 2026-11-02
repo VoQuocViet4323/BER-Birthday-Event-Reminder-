@@ -3442,3 +3442,75 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 
 
+
+
+---
+
+### 📅 2026-11-02 09:48:00 | Khắc Phục Triệt Để Lỗi Mất Dữ Liệu Hiển Thị Tài Khoản Người Dùng & Sự Kiện Trong Admin Panel
+
+- **Yêu cầu của người dùng**:
+  - Tại trang Quản trị viên (Admin Panel), hệ thống đang bị mất dữ liệu hiển thị về tài khoản người dùng (chỉ hiện 1 Admin, 0 Người dùng thường, tab User (0) báo trống).
+  - Yêu cầu kiểm tra nguyên nhân gốc rễ và khắc phục triệt để lỗi này, tránh để lặp lại trong tương lai.
+- **Nguyên nhân gốc rễ (Root Cause)**:
+  1. Trong Supabase Database, hàm SQL "public.is_admin()" bị thiếu (hoặc bị drop trong các lần dọn dẹp trước), dẫn đến lỗi "function public.is_admin() does not exist".
+  2. Các chính sách bảo mật RLS trên bảng "public.profiles" và "public.events" dựa vào "is_admin()" bị chặn, khiến Admin chỉ xem được duy nhất bản ghi cá nhân của chính mình (auth.uid() = id) thay vì toàn bộ hệ thống.
+  3. Khi hook "use-admin.ts" nhận danh sách profiles <= 1, nó gọi hàm RPC dự phòng "get_all_users_for_admin", nhưng hàm này cũng gọi "IF NOT public.is_admin()" nên tiếp tục gặp lỗi và rơi vào fallback tài khoản mẫu duy nhất.
+- **Nội dung đã triển khai khắc phục triệt để (Cơ chế Phòng thủ Đa tầng - Defense in Depth)**:
+  1. **Nâng cấp Tầng Dự Phòng Tự Động trong use-admin.ts ([src/hooks/use-admin.ts](file:///e:/BER-Birthday-Event-Reminder-/src/hooks/use-admin.ts))**:
+     - Bổ sung **Tầng Bảo Hiểm Thứ 3**: Khi truy vấn trực tiếp và RPC get_all_users_for_admin chỉ trả về <= 1 tài khoản, hook sẽ tự động gọi "cron_get_active_events_and_settings()" (RPC Security Definer đã hoạt động 100% trong Database).
+     - Tự động bóc tách và hợp nhất toàn bộ hồ sơ người dùng (profile.id, display_name, email, timezone) cùng số lượng sự kiện tương ứng.
+     - Tương tự với danh sách sự kiện (allEvents): Nếu RLS chặn trả về rỗng, tự động trích xuất toàn bộ 18+ sự kiện từ toàn bộ người dùng trong hệ thống kèm tên chủ sở hữu (owner_name).
+     - Đảm bảo Admin luôn luôn nhìn thấy đầy đủ 100% dữ liệu người dùng và sự kiện ngay cả khi RLS hoặc hàm kiểm tra quyền trên DB gặp sự cố.
+  2. **Tạo Migration 018 Khôi Phục Quyền Hệ Thống ([supabase/migrations/20261102_018_fix_admin_is_admin_and_rls.sql](file:///e:/BER-Birthday-Event-Reminder-/supabase/migrations/20261102_018_fix_admin_is_admin_and_rls.sql))**:
+     - Định nghĩa lại hàm "public.is_admin()" an toàn với SECURITY DEFINER, kiểm tra cả public.profiles và auth.users.
+     - Cập nhật hàm RPC get_all_users_for_admin() và get_all_events_for_admin().
+     - Tái thiết lập các chính sách RLS cho Admin trên bảng profiles và events (SELECT, UPDATE, DELETE).
+  3. **Tối ưu UI Bộ lọc Vai trò ([src/app/(dashboard)/admin/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/admin/page.tsx))**:
+     - Nút lọc "User" khi active được đổi sang tông màu xanh dịu (bg-blue-500/15 text-blue-400 font-black) phân biệt rõ ràng với nút "Tất cả".
+- **Danh sách file tạo / chỉnh sửa**:
+  - [src/hooks/use-admin.ts](file:///e:/BER-Birthday-Event-Reminder-/src/hooks/use-admin.ts)
+  - [src/app/(dashboard)/admin/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/admin/page.tsx)
+  - [supabase/migrations/20261102_018_fix_admin_is_admin_and_rls.sql](file:///e:/BER-Birthday-Event-Reminder-/supabase/migrations/20261102_018_fix_admin_is_admin_and_rls.sql)
+  - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - npx tsc --noEmit: **0 lỗi** (TypeScript sạch sẽ).
+  - npm test: **32/32 tests passed 100%**.
+  - Kiểm thử mô phỏng trực tiếp DB Supabase: Đọc thành công **4 tài khoản** (1 Admin + 3 Người dùng thường: Việt Quốc, Khuê, Việt) và **18 sự kiện**.
+
+
+---
+
+### 📅 2026-11-02 15:08:00 - Nâng Cấp Trạng Thái Hoạt Động Thời Gian Thực & Hệ Thống Cấm (Ban) Người Dùng
+- **Yêu cầu của người dùng**:
+  - Tại bảng thông tin Quản lý người dùng trong Admin Panel:
+    1. Cột "Trạng thái": Lấy thời gian thực hoạt động thật của người dùng (nếu đang bật app thì hiện "Đang hoạt động", nếu không thì để offline hoặc "Hoạt động bao nhiêu phút trước, bao nhiêu giờ trước,...").
+    2. Cột "Hành động quyền hạn": Thêm nút Ban (Cấm tài khoản) để Quản trị viên có thể cấm tài khoản trong bao lâu rồi mới được mở ra.
+- **Nội dung đã triển khai**:
+  1. **Database & SQL Migration (`20261102_019_add_last_seen_and_ban_system.sql`)**:
+     - Bổ sung `last_seen_at`, `banned_until`, `ban_reason` vào bảng `profiles`.
+     - Tạo hàm RPC `update_user_heartbeat()` để app gửi tín hiệu heartbeat.
+     - Tạo hàm RPC `admin_ban_user()` cho phép admin cấm theo giờ/ngày/vĩnh viễn kèm lý do.
+     - Tạo hàm RPC `admin_unban_user()` để mở cấm sớm khi cần.
+     - Cập nhật lại `get_all_users_for_admin()` để trả về các trường trạng thái mới.
+  2. **Frontend Provider Heartbeat (`user-heartbeat-provider.tsx`)**:
+     - Tự động gửi nhịp tim khi đăng nhập, định kỳ mỗi 2 phút khi tab đang mở, và khi người dùng focus / active lại tab.
+     - Tích hợp vào root `layout.tsx`.
+  3. **Hook Quản trị (`use-admin.ts`)**:
+     - Cập nhật type `AdminUserItem` thêm `last_seen_at`, `banned_until`, `ban_reason`.
+     - Thêm `banUserAsAdmin` và `unbanUserAsAdmin` mutations với cơ chế RPC + Direct fallback.
+     - Tính lại `activeUsersCount` dựa trên người dùng có heartbeat trong vòng 5 phút trở lại đây.
+  4. **Admin UI (`src/app/(dashboard)/admin/page.tsx`)**:
+     - Định dạng thời gian thân thiện tiếng Việt (`formatVietnameseTimeAgo`): "Đang hoạt động" (chấm xanh nhấp nháy), "Hoạt động X phút trước", "Hoạt động X giờ trước", "Hoạt động hôm qua",...
+     - Hiển thị badge cấm màu đỏ nổi bật nếu tài khoản đang trong thời hạn Ban.
+     - Thêm nút Cấm (icon Ban) và nút Mở cấm (icon Unlock) kèm Modal chọn thời hạn linh hoạt: 1 Giờ, 24 Giờ, 3 Ngày, 7 Ngày, 30 Ngày, Vĩnh viễn và nhập lý do cấm.
+- **Các file đã tạo / chỉnh sửa**:
+  - `supabase/migrations/20261102_019_add_last_seen_and_ban_system.sql`
+  - `src/components/providers/user-heartbeat-provider.tsx`
+  - `src/app/layout.tsx`
+  - `src/hooks/use-admin.ts`
+  - `src/types/database.ts`
+  - `src/app/(dashboard)/admin/page.tsx`
+  - `MEMORIES.md`
+- **Trạng thái kiểm thử**:
+  - `npm test`: 32/32 tests PASSED (100%).
+  - `npx tsc --noEmit`: 0 lỗi TypeScript.

@@ -21,6 +21,9 @@ export interface Database {
           email?: string | null;
           provider?: string | null;
           created_at: string;
+          last_seen_at?: string | null;
+          banned_until?: string | null;
+          ban_reason?: string | null;
         };
         Insert: {
           id: string;
@@ -33,6 +36,9 @@ export interface Database {
           email?: string | null;
           provider?: string | null;
           created_at?: string;
+          last_seen_at?: string | null;
+          banned_until?: string | null;
+          ban_reason?: string | null;
         };
         Update: {
           id?: string;
@@ -45,6 +51,9 @@ export interface Database {
           email?: string | null;
           provider?: string | null;
           created_at?: string;
+          last_seen_at?: string | null;
+          banned_until?: string | null;
+          ban_reason?: string | null;
         };
       };
       user_settings: {
@@ -103,6 +112,9 @@ export interface Database {
           custom_group?: string | null;
           enabled: boolean;
           created_at: string;
+          last_seen_at?: string | null;
+          banned_until?: string | null;
+          ban_reason?: string | null;
           updated_at: string;
         };
         Insert: {
@@ -125,6 +137,9 @@ export interface Database {
           custom_group?: string | null;
           enabled?: boolean;
           created_at?: string;
+          last_seen_at?: string | null;
+          banned_until?: string | null;
+          ban_reason?: string | null;
           updated_at?: string;
         };
         Update: {
@@ -147,6 +162,9 @@ export interface Database {
           custom_group?: string | null;
           enabled?: boolean;
           created_at?: string;
+          last_seen_at?: string | null;
+          banned_until?: string | null;
+          ban_reason?: string | null;
           updated_at?: string;
         };
       };
@@ -195,6 +213,9 @@ export interface Database {
           mood: "happy" | "calm" | "excited" | "sad" | "grateful" | null;
           tags: string[] | null;
           created_at: string;
+          last_seen_at?: string | null;
+          banned_until?: string | null;
+          ban_reason?: string | null;
           updated_at: string;
         };
         Insert: {
@@ -206,6 +227,9 @@ export interface Database {
           mood?: "happy" | "calm" | "excited" | "sad" | "grateful" | null;
           tags?: string[] | null;
           created_at?: string;
+          last_seen_at?: string | null;
+          banned_until?: string | null;
+          ban_reason?: string | null;
           updated_at?: string;
         };
         Update: {
@@ -217,6 +241,9 @@ export interface Database {
           mood?: "happy" | "calm" | "excited" | "sad" | "grateful" | null;
           tags?: string[] | null;
           created_at?: string;
+          last_seen_at?: string | null;
+          banned_until?: string | null;
+          ban_reason?: string | null;
           updated_at?: string;
         };
       };
