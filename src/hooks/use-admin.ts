@@ -46,32 +46,32 @@ export function useAdmin() {
       if (isConfigured) {
         let rawEvents: any[] = [];
 
-        // 1.1 Thử query trực tiếp từ bảng events kèm profiles
+        // 1.1 Ưu tiên gọi RPC get_all_events_for_admin (Security Definer - Lấy 100% sự kiện toàn hệ thống)
         try {
-          const { data, error } = await (supabase as any)
-            .from("events")
-            .select("*, profiles:user_id(display_name)")
-            .order("created_at", { ascending: false });
-
-          if (!error && Array.isArray(data) && data.length > 0) {
-            rawEvents = data.map((ev: any) => ({
-              ...ev,
-              owner_name: ev.profiles?.display_name || "Người dùng",
-            }));
+          const rpcRes = await (supabase as any).rpc("get_all_events_for_admin");
+          if (rpcRes.data && Array.isArray(rpcRes.data) && rpcRes.data.length > 0) {
+            rawEvents = rpcRes.data;
           }
-        } catch (err) {
-          console.warn("Direct query events error:", err);
+        } catch {
+          // Tiếp tục fallback tầng 2
         }
 
-        // 1.2 Nếu direct query bị hạn chế bởi RLS, thử RPC get_all_events_for_admin
+        // 1.2 Nếu RPC chưa có, thử query trực tiếp từ bảng events kèm profiles
         if (rawEvents.length === 0) {
           try {
-            const rpcRes = await (supabase as any).rpc("get_all_events_for_admin");
-            if (rpcRes.data && Array.isArray(rpcRes.data) && rpcRes.data.length > 0) {
-              rawEvents = rpcRes.data;
+            const { data, error } = await (supabase as any)
+              .from("events")
+              .select("*, profiles:user_id(display_name)")
+              .order("created_at", { ascending: false });
+
+            if (!error && Array.isArray(data) && data.length > 0) {
+              rawEvents = data.map((ev: any) => ({
+                ...ev,
+                owner_name: ev.profiles?.display_name || "Người dùng",
+              }));
             }
-          } catch {
-            // Tiếp tục fallback tầng 3
+          } catch (err) {
+            console.warn("Direct query events error:", err);
           }
         }
 
@@ -288,33 +288,52 @@ export function useAdmin() {
     },
   });
 
-  // 3. Sửa sự kiện (Admin Action)
+  // 3. Sửa sự kiện (Admin Action - Có Optimistic UI + RPC Security Definer)
   const updateEventMutation = useMutation({
     mutationFn: async ({ id, values }: { id: string; values: EventFormValues }) => {
-      if (isConfigured) {
-        const { data, error } = await (supabase as any)
-          .from("events")
-          .update({
-            name: values.name,
-            event_type: values.event_type,
-            event_day: values.event_day,
-            event_month: values.event_month,
-            event_year: values.event_year || null,
-            is_lunar: values.is_lunar,
-            group_name: values.group_name,
-            note: values.note || null,
-            gift_idea: values.gift_idea || null,
-            avatar_url: values.avatar_url || null,
-            repeat_yearly: values.repeat_yearly,
-            remind_days: values.remind_days || null,
-            enabled: values.enabled,
-          } as any)
-          .eq("id", id)
-          .select()
-          .single();
+      const payload = {
+        name: values.name,
+        event_type: values.event_type,
+        event_day: values.event_day,
+        event_month: values.event_month,
+        event_year: values.event_year || null,
+        is_lunar: values.is_lunar,
+        group_name: values.group_name,
+        note: values.note || null,
+        gift_idea: values.gift_idea || null,
+        avatar_url: values.avatar_url || null,
+        repeat_yearly: values.repeat_yearly,
+        remind_days: values.remind_days || [0],
+        remind_time: values.remind_time || "08:00",
+        custom_type: values.custom_type || null,
+        custom_group: values.custom_group || null,
+        enabled: values.enabled,
+      };
 
-        if (error) throw error;
-        return data;
+      if (isConfigured) {
+        // Ưu tiên 1: Gọi RPC admin_update_event (Security Definer vượt RLS)
+        const { error: rpcError } = await (supabase as any).rpc("admin_update_event", {
+          p_event_id: id,
+          p_payload: payload,
+        });
+
+        if (rpcError) {
+          // Ưu tiên 2: Direct update trên bảng events (không dùng .single() để tránh PGRST116)
+          const { data: updatedRows, error: updateError } = await (supabase as any)
+            .from("events")
+            .update(payload as any)
+            .eq("id", id)
+            .select();
+
+          if (updateError) throw updateError;
+          if (!updatedRows || updatedRows.length === 0) {
+            throw new Error(
+              "Chưa kích hoạt quyền sửa sự kiện cho Admin trên Database. Vui lòng chạy file SQL Migration 020 trong Supabase SQL Editor!"
+            );
+          }
+          return updatedRows[0];
+        }
+        return { id, ...payload };
       }
 
       // Local storage
@@ -324,8 +343,7 @@ export function useAdmin() {
         e.id === id
           ? {
               ...e,
-              ...values,
-              event_year: values.event_year || null,
+              ...payload,
               updated_at: new Date().toISOString(),
             }
           : e
@@ -335,6 +353,47 @@ export function useAdmin() {
       }
       return updated.find((e) => e.id === id);
     },
+    onMutate: async ({ id, values }) => {
+      await queryClient.cancelQueries({ queryKey: ["admin-all-events"] });
+      const prevEvents = queryClient.getQueryData<AdminEventWithMeta[]>(["admin-all-events"]);
+      if (prevEvents) {
+        const today = new Date();
+        queryClient.setQueryData<AdminEventWithMeta[]>(
+          ["admin-all-events"],
+          prevEvents.map((ev) => {
+            if (ev.id !== id) return ev;
+            const merged = { ...ev, ...values, event_year: values.event_year || null };
+            const nextOccurrence = calculateNextOccurrence(merged as any, today);
+            const daysRemaining = calculateDaysRemaining(nextOccurrence, today);
+            const upcomingAge = calculateUpcomingAge(merged.event_year, nextOccurrence.getFullYear());
+            const displayDate = formatEventDateDisplay(
+              merged.event_day,
+              merged.event_month,
+              merged.event_year,
+              merged.is_lunar
+            );
+            return {
+              ...merged,
+              nextOccurrence,
+              daysRemaining,
+              upcomingAge,
+              displayDate,
+            };
+          })
+        );
+      }
+      return { prevEvents };
+    },
+    onError: (err: any, _vars, context) => {
+      if (context?.prevEvents) {
+        queryClient.setQueryData(["admin-all-events"], context.prevEvents);
+      }
+      toast({
+        title: "Không thể cập nhật sự kiện",
+        description: err.message,
+        variant: "error",
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-all-events"] });
       queryClient.invalidateQueries({ queryKey: ["events"] });
@@ -343,21 +402,32 @@ export function useAdmin() {
         variant: "success",
       });
     },
-    onError: (err: any) => {
-      toast({
-        title: "Lỗi cập nhật sự kiện",
-        description: err.message,
-        variant: "error",
-      });
-    },
   });
 
-  // 4. Xóa sự kiện (Admin Action)
+  // 4. Xóa sự kiện (Admin Action - Có Optimistic UI + RPC Security Definer)
   const deleteEventMutation = useMutation({
     mutationFn: async (id: string) => {
       if (isConfigured) {
-        const { error } = await (supabase as any).from("events").delete().eq("id", id);
-        if (error) throw error;
+        // Ưu tiên 1: Gọi RPC admin_delete_event (Security Definer vượt RLS)
+        const { error: rpcError } = await (supabase as any).rpc("admin_delete_event", {
+          p_event_id: id,
+        });
+
+        if (rpcError) {
+          // Ưu tiên 2: Direct delete kèm .select() để kiểm tra số dòng thực sự bị xóa
+          const { data: deletedRows, error: delError } = await (supabase as any)
+            .from("events")
+            .delete()
+            .eq("id", id)
+            .select();
+
+          if (delError) throw delError;
+          if (!deletedRows || deletedRows.length === 0) {
+            throw new Error(
+              "Chưa kích hoạt quyền xóa sự kiện cho Admin trên Database. Vui lòng chạy file SQL Migration 020 trong Supabase SQL Editor!"
+            );
+          }
+        }
         return id;
       }
 
@@ -369,8 +439,30 @@ export function useAdmin() {
       }
       return id;
     },
+    onMutate: async (id: string) => {
+      await queryClient.cancelQueries({ queryKey: ["admin-all-events"] });
+      const prevEvents = queryClient.getQueryData<AdminEventWithMeta[]>(["admin-all-events"]);
+      if (prevEvents) {
+        queryClient.setQueryData<AdminEventWithMeta[]>(
+          ["admin-all-events"],
+          prevEvents.filter((ev) => ev.id !== id)
+        );
+      }
+      return { prevEvents };
+    },
+    onError: (err: any, _id, context) => {
+      if (context?.prevEvents) {
+        queryClient.setQueryData(["admin-all-events"], context.prevEvents);
+      }
+      toast({
+        title: "Không thể xóa sự kiện",
+        description: err.message,
+        variant: "error",
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-all-events"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-all-users"] });
       queryClient.invalidateQueries({ queryKey: ["events"] });
       toast({
         title: "Admin: Đã xóa sự kiện khỏi hệ thống! 🗑️",
@@ -379,11 +471,27 @@ export function useAdmin() {
     },
   });
 
-  // 5. Bật / Tắt sự kiện (Admin Action)
+  // 5. Bật / Tắt sự kiện (Admin Action - Có Optimistic UI + RPC Security Definer)
   const toggleEventMutation = useMutation({
     mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
       if (isConfigured) {
-        await (supabase as any).from("events").update({ enabled } as any).eq("id", id);
+        const { error: rpcError } = await (supabase as any).rpc("admin_toggle_event", {
+          p_event_id: id,
+          p_enabled: enabled,
+        });
+
+        if (rpcError) {
+          const { data: updatedRows, error: updateError } = await (supabase as any)
+            .from("events")
+            .update({ enabled } as any)
+            .eq("id", id)
+            .select();
+
+          if (updateError) throw updateError;
+          if (!updatedRows || updatedRows.length === 0) {
+            throw new Error("Cần chạy SQL Migration 020 để Admin bật/tắt sự kiện của người dùng khác.");
+          }
+        }
       } else {
         const raw = typeof window !== "undefined" ? localStorage.getItem("ber-local-events") : null;
         const list: EventRow[] = raw ? JSON.parse(raw) : initialMockEvents;
@@ -393,9 +501,34 @@ export function useAdmin() {
         }
       }
     },
-    onSuccess: () => {
+    onMutate: async ({ id, enabled }) => {
+      await queryClient.cancelQueries({ queryKey: ["admin-all-events"] });
+      const prevEvents = queryClient.getQueryData<AdminEventWithMeta[]>(["admin-all-events"]);
+      if (prevEvents) {
+        queryClient.setQueryData<AdminEventWithMeta[]>(
+          ["admin-all-events"],
+          prevEvents.map((ev) => (ev.id === id ? { ...ev, enabled } : ev))
+        );
+      }
+      return { prevEvents };
+    },
+    onError: (err: any, _vars, context) => {
+      if (context?.prevEvents) {
+        queryClient.setQueryData(["admin-all-events"], context.prevEvents);
+      }
+      toast({
+        title: "Không thể thay đổi trạng thái sự kiện",
+        description: err.message,
+        variant: "error",
+      });
+    },
+    onSuccess: (_data, { enabled }) => {
       queryClient.invalidateQueries({ queryKey: ["admin-all-events"] });
       queryClient.invalidateQueries({ queryKey: ["events"] });
+      toast({
+        title: enabled ? "Đã bật nhắc nhở sự kiện 🔔" : "Đã tắt nhắc nhở sự kiện 🔕",
+        variant: "success",
+      });
     },
   });
 
