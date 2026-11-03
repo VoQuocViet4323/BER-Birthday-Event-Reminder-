@@ -23,7 +23,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "Nhắc Sinh Nhật & Sự Kiện (BER) | Ghi nhớ ngày quan trọng",
+  title: "Ber",
   description:
     "Ứng dụng lưu trữ và tự động nhắc nhở sinh nhật, ngày kỷ niệm, ngày giỗ của người thân, bạn bè qua email với giao diện trẻ trung, hỗ trợ cả âm lịch và dương lịch.",
   manifest: "/manifest.json",
@@ -40,7 +40,7 @@ export const metadata: Metadata = {
     shortcut: "/favicon.ico",
   },
   openGraph: {
-    title: "Nhắc Sinh Nhật & Sự Kiện (BER)",
+    title: "Ber",
     description: "Không bao giờ bỏ lỡ sinh nhật của những người bạn yêu thương",
     type: "website",
     locale: "vi_VN",
