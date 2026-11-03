@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { IosTimePicker } from "@/components/ui/ios-time-picker";
 import { IosDatePicker } from "@/components/ui/ios-date-picker";
 import { RemindDaysPicker } from "@/components/events/remind-days-picker";
+import { MultiOffsetTimePicker } from "@/components/events/multi-offset-time-picker";
 import { LiquidGlassButton } from "@/components/ui/liquid-glass-button";
 
 interface EventFormDrawerProps {
@@ -505,11 +506,12 @@ export function EventFormDrawer({
                     onChange={(days) => setValue("remind_days", days)}
                   />
 
-                  {/* Thời gian gửi lời nhắc qua email (Chỉ mở con lăn khi bấm vào) */}
+                  {/* Thời gian gửi lời nhắc qua email (Hỗ trợ cấu hình riêng cho từng mốc) */}
                   <div className="pt-1">
-                    <IosTimePicker
+                    <MultiOffsetTimePicker
+                      remindDays={remindDays}
                       value={remindTime}
-                      onChange={(t) => setValue("remind_time", t)}
+                      onChange={(t) => setValue("remind_time", t, { shouldValidate: true, shouldDirty: true })}
                     />
                   </div>
 

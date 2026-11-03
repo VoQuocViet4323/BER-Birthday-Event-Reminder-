@@ -3514,3 +3514,28 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npm test`: 32/32 tests PASSED (100%).
   - `npx tsc --noEmit`: 0 lỗi TypeScript.
+
+
+---
+
+### 📅 2026-11-03 11:18:00 - Cấu Hình Giờ Nhắc Riêng Biệt Cho Từng Mốc Ngày
+- **Yêu cầu của người dùng**:
+  - Khi sự kiện có từ 2 mốc nhắc nhở trở lên (ví dụ: *Trước 1 ngày* và *Đúng ngày*), cho phép người dùng chọn thời gian gửi lời nhắc riêng theo từng mốc chứ không để chung 1 mốc giờ như trước.
+- **Nội dung đã triển khai**:
+  1. **Thư viện tiện ích (`src/lib/reminder-time-utils.ts`)**:
+     - Thiết kế định dạng lưu trữ tương thích ngược 100%:
+       - Đơn giản: `"08:00"` (khi chỉ có 1 mốc hoặc các mốc cùng giờ).
+       - Nâng cao: `"08:00|1:08:30,0:21:00"` (mỗi mốc ngày mang một giờ gửi độc lập).
+     - Cung cấp các hàm `parseRemindTime`, `serializeRemindTime`, `getTimeForOffset`.
+  2. **Component Giao Diện Mới (`src/components/events/multi-offset-time-picker.tsx`)**:
+     - Nếu chỉ có 1 mốc: Hiển thị bộ chọn giờ con lăn iOS đơn giản như cũ.
+     - Nếu có $\ge 2$ mốc: Tự động hiển thị thanh Tabs trực quan hiển thị từng mốc (*Trước 1 ngày - 08:30*, *Đúng ngày - 21:00*). Bấm vào tab nào sẽ chỉnh giờ riêng cho mốc đó, có thêm nút "Áp dụng giờ này cho mọi mốc".
+  3. **Tích hợp vào Form Drawer (`src/components/events/event-form-drawer.tsx`)**:
+     - Thay thế `IosTimePicker` bằng `MultiOffsetTimePicker`.
+  4. **Cập nhật Cron Job Scheduler (`src/app/api/cron/check-reminders/route.ts`)**:
+     - Thêm hàm `resolveEventRemindTime(rawTime, daysRemaining, defaultTime)` để giải mã chính xác giờ hẹn của mốc ngày hôm đó khi kiểm tra gửi email.
+  5. **Kiểm thử tự động (`src/tests/multi-offset-time.test.ts`)**:
+     - Bổ sung unit tests cho việc phân giải, đóng gói và tính giờ.
+- **Trạng thái kiểm thử**:
+  - `npm test`: **35/35 tests PASSED**.
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.

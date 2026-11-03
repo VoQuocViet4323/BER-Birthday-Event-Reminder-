@@ -1,3 +1,26 @@
+
+function resolveEventRemindTime(rawTime: string | null | undefined, offset: number, defaultTime: string = "08:00"): string {
+  if (!rawTime || typeof rawTime !== "string") return defaultTime;
+  const trimmed = rawTime.trim();
+  if (!trimmed.includes("|")) {
+    return trimmed;
+  }
+  const [baseTime, mapString] = trimmed.split("|");
+  if (mapString) {
+    const pairs = mapString.split(",");
+    for (const pair of pairs) {
+      const colonIdx = pair.indexOf(":");
+      if (colonIdx > 0) {
+        const off = parseInt(pair.substring(0, colonIdx), 10);
+        if (off === offset) {
+          return pair.substring(colonIdx + 1).trim();
+        }
+      }
+    }
+  }
+  return baseTime || defaultTime;
+}
+
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -109,7 +132,7 @@ async function handleCheckReminders(request: Request) {
       }
 
       // Giờ nhắc của sự kiện (ưu tiên giờ riêng của sự kiện, fallback về giờ mặc định)
-      const eventTime = ev.remind_time || defaultRemindTime;
+      const eventTime = resolveEventRemindTime(ev.remind_time, daysRemaining, defaultRemindTime);
 
       // Chuẩn hóa định dạng "HH:mm" để tránh sai lệch khi Postgres trả về "HH:mm:ss"
       const normalizeTime = (t: string | null | undefined) => {
@@ -314,7 +337,7 @@ async function handleGlobalCronCheck(admin: any, currentTimeStr: string, now: Da
 
         if (!eventOffsets.includes(daysRemaining)) continue;
 
-        const eventTime = ev.remind_time || defaultRemindTime;
+        const eventTime = resolveEventRemindTime(ev.remind_time, daysRemaining, defaultRemindTime);
         const normalizeTime = (t: string | null | undefined) => {
           if (!t) return "08:00";
           const parts = t.trim().split(":");
@@ -459,7 +482,7 @@ async function handleGlobalCronCheckViaRpc(client: any, currentTimeStr: string, 
 
         if (!eventOffsets.includes(daysRemaining)) continue;
 
-        const eventTime = ev.remind_time || defaultRemindTime;
+        const eventTime = resolveEventRemindTime(ev.remind_time, daysRemaining, defaultRemindTime);
         const normalizeTime = (t: string | null | undefined) => {
           if (!t) return "08:00";
           const parts = t.trim().split(":");
