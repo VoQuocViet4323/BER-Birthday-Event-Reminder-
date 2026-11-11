@@ -354,14 +354,6 @@ export function generateReminderEmailHtml(params: {
           <!-- Header tinh giản, đồng nhất màu nền, không bao giờ bị vỡ dòng trên điện thoại -->
           <tr>
             <td style="padding: 20px 16px 12px 16px; text-align: center; font-family: ${EMAIL_FONT_STACK};">
-              <div style="margin-bottom: 6px;">
-                <span style="font-family: ${EMAIL_FONT_STACK}; font-size: 11px; font-weight: 800; color: #4f46e5; letter-spacing: 0.8px; text-transform: uppercase;">
-                  🎂 BER • NHẮC SỰ KIỆN
-                </span>
-              </div>
-              <h1 class="header-title" style="margin: 0 0 8px 0; font-family: ${EMAIL_FONT_STACK}; font-size: 19px; font-weight: 800; color: #0f172a; letter-spacing: -0.2px;">
-                Nhắc Nhở Sự Kiện
-              </h1>
               <div>
                 <span style="font-family: ${EMAIL_FONT_STACK}; display: inline-block; background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; font-size: 11.5px; font-weight: 700; padding: 3px 12px; border-radius: 9999px;">
                   ${headline}

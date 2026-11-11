@@ -94,3 +94,42 @@ function isValidTimeFormat(t?: string): boolean {
   return /^([01]\d|2[0-3]):([0-5]\d)$/.test(t.trim());
 }
 
+
+/**
+ * Định dạng hiển thị giờ thân thiện cho người dùng trên giao diện
+ * - Nếu chỉ có 1 mốc hoặc dùng chung: trả về "18:30"
+ * - Nếu có các mốc khác nhau: trả về giờ của mốc gần nhất hoặc tóm tắt dễ đọc
+ */
+export function formatRemindTimeDisplay(
+  rawTime?: string | null,
+  activeOffsets: number[] = [],
+  currentOffset?: number
+): string {
+  if (!rawTime || typeof rawTime !== "string") return "08:00";
+  const { defaultTime, offsetTimes } = parseRemindTime(rawTime);
+
+  // 1. Nếu người dùng truyền currentOffset cụ thể (ví dụ đang xem sự kiện hôm nay = offset 0)
+  if (currentOffset !== undefined && offsetTimes[currentOffset]) {
+    return offsetTimes[currentOffset];
+  }
+
+  // 2. Nếu không có mốc riêng nào, trả về defaultTime ("18:00")
+  const keys = Object.keys(offsetTimes).map(Number);
+  if (keys.length === 0) {
+    return defaultTime;
+  }
+
+  // 3. Nếu chỉ có 1 mốc duy nhất trong activeOffsets
+  if (activeOffsets.length === 1 && offsetTimes[activeOffsets[0]]) {
+    return offsetTimes[activeOffsets[0]];
+  }
+
+  // 4. Nếu có mốc offset 0 (Đúng ngày)
+  if (offsetTimes[0]) {
+    return offsetTimes[0];
+  }
+
+  // 5. Lấy giờ của mốc đầu tiên
+  const firstOffset = activeOffsets[0] ?? keys[0];
+  return offsetTimes[firstOffset] || defaultTime;
+}

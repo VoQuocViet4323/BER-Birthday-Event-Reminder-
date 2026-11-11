@@ -3,29 +3,26 @@
 import { useEffect, useState, useRef, Suspense } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { Loader2 } from "lucide-react";
+import { LottieLoading } from "@/components/ui/lottie-loading";
 
 function NavigationProgressContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
   const [isLoading, setIsLoading] = useState(false);
-  const [showSpinner, setShowSpinner] = useState(false);
   const [progress, setProgress] = useState(0);
 
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const safetyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Khi pathname hoặc searchParams thay đổi -> Hoàn thành quá trình chuyển tab
+  // Khi pathname hoặc searchParams thay đổi -> Hoàn thành quá trình chuyển tab và tắt hiệu ứng loading
   useEffect(() => {
     if (isLoading) {
       setProgress(100);
       const hideTimeout = setTimeout(() => {
         setIsLoading(false);
-        setShowSpinner(false);
         setProgress(0);
-      }, 200);
+      }, 250);
 
       return () => clearTimeout(hideTimeout);
     }
@@ -69,19 +66,13 @@ function NavigationProgressContent() {
           return;
         }
 
-        // Bắt đầu hiệu ứng loading
+        // Bắt đầu hiệu ứng loading ngay khi click
         setIsLoading(true);
         setProgress(25);
 
         // Hủy các timer cũ nếu có
-        if (timerRef.current) clearTimeout(timerRef.current);
         if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
         if (safetyTimeoutRef.current) clearTimeout(safetyTimeoutRef.current);
-
-        // Nếu mạng lag hoặc thiết bị chậm quá 180ms -> Bật xoay spinner thương hiệu BER
-        timerRef.current = setTimeout(() => {
-          setShowSpinner(true);
-        }, 180);
 
         // Tăng dần thanh progress bar
         progressIntervalRef.current = setInterval(() => {
@@ -89,12 +80,11 @@ function NavigationProgressContent() {
             if (prev >= 85) return prev;
             return prev + Math.random() * 12;
           });
-        }, 150);
+        }, 120);
 
         // Timeout an toàn sau 8 giây tự tắt nếu có lỗi kết nối
         safetyTimeoutRef.current = setTimeout(() => {
           setIsLoading(false);
-          setShowSpinner(false);
           setProgress(0);
         }, 8000);
       } catch {
@@ -106,7 +96,6 @@ function NavigationProgressContent() {
 
     return () => {
       document.removeEventListener("click", handleLinkClick, true);
-      if (timerRef.current) clearTimeout(timerRef.current);
       if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
       if (safetyTimeoutRef.current) clearTimeout(safetyTimeoutRef.current);
     };
@@ -133,28 +122,17 @@ function NavigationProgressContent() {
         </div>
       )}
 
-      {/* 2. Hiệu ứng Loading xoay tròn thương hiệu khi chuyển trang bị lag / mạng chậm */}
+      {/* 2. Hiệu ứng chữ loading Lottie chính giữa màn hình (Không viền, Không chữ phụ) */}
       <AnimatePresence>
-        {showSpinner && (
+        {isLoading && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
+            initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-[9998] flex items-center justify-center pointer-events-none bg-background/30 backdrop-blur-[2px]"
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.15 }}
+            className="fixed inset-0 z-[9998] flex items-center justify-center pointer-events-none bg-background/25 backdrop-blur-[2px]"
           >
-            <div className="bg-card/95 border border-primary/20 shadow-2xl rounded-2xl p-4 flex flex-col items-center gap-2.5 min-w-[140px] text-center backdrop-blur-md">
-              {/* Vòng xoay spinner */}
-              <div className="relative flex items-center justify-center w-8 h-8">
-                <div className="absolute inset-0 rounded-full bg-primary/25 blur-md animate-pulse" />
-                <Loader2 className="w-7 h-7 text-primary animate-spin stroke-[2.5] relative" />
-              </div>
-
-              {/* Thông điệp tải trang */}
-              <p className="text-xs font-bold text-foreground tracking-tight">
-                Đang chuyển trang...
-              </p>
-            </div>
+            <LottieLoading size="lg" />
           </motion.div>
         )}
       </AnimatePresence>

@@ -34,6 +34,7 @@ import { EventFormDrawer } from "@/components/events/event-form-drawer";
 import { useEvents } from "@/hooks/use-events";
 import { isLeapYear } from "@/lib/date-utils";
 import { convertLunar2Solar } from "@/lib/lunar/amlich";
+import { formatRemindTimeDisplay, getTimeForOffset } from "@/lib/reminder-time-utils";
 
 interface MonthCalendarViewProps {
   events?: EventWithMeta[];
@@ -1342,7 +1343,11 @@ export function MonthCalendarView({
                     Giờ thông báo email
                   </span>
                   <p className="text-sm font-bold text-foreground">
-                    {viewingEvent.remind_time || "08:00"}
+                    {formatRemindTimeDisplay(
+                      viewingEvent.remind_time,
+                      remindDaysList,
+                      viewingEvent.daysRemaining
+                    )}
                   </p>
                 </div>
               </div>
@@ -1351,21 +1356,27 @@ export function MonthCalendarView({
               <div className="p-3 rounded-2xl bg-secondary/40 border border-border/70 space-y-2">
                 <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5">
                   <Bell className="w-3.5 h-3.5 text-primary" />
-                  Mốc nhắc nhở trước
+                  Mốc nhắc nhở trước & Giờ thông báo
                 </span>
                 <div className="flex flex-wrap gap-1.5">
                   {remindDaysList.length > 0 ? (
                     remindDaysList
                       .slice()
-                      .sort((a, b) => a - b)
-                      .map((d) => (
-                        <span
-                          key={d}
-                          className="px-2.5 py-1 rounded-xl bg-card border border-border text-xs font-semibold text-foreground"
-                        >
-                          {d === 0 ? "Đúng ngày" : `Trước ${d} ngày`}
-                        </span>
-                      ))
+                      .sort((a, b) => b - a)
+                      .map((d) => {
+                        const specificTime = getTimeForOffset(viewingEvent.remind_time, d);
+                        return (
+                          <span
+                            key={d}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-card border border-border text-xs font-semibold text-foreground shadow-2xs"
+                          >
+                            <span>{d === 0 ? "Đúng ngày" : `Trước ${d} ngày`}</span>
+                            <span className="font-mono text-[11px] font-bold text-primary bg-primary/10 px-1.5 py-0.2 rounded-md">
+                              {specificTime}
+                            </span>
+                          </span>
+                        );
+                      })
                   ) : (
                     <span className="text-xs text-muted-foreground">Nhắc đúng ngày diễn ra</span>
                   )}

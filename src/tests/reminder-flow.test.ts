@@ -149,7 +149,7 @@ describe("Real Reminder Engine & Notification Flow Verification", () => {
       expect(html).toContain("https://ber-birthday-event-reminder.vercel.app/dashboard");
       expect(html).toContain("https://ber-birthday-event-reminder.vercel.app/calendar");
       expect(html).toContain("https://ber-birthday-event-reminder.vercel.app/settings");
-      expect(html).toContain("Nhắc Nhở Sự Kiện");
+      expect(html).toContain("Hôm nay có sự kiện đặc biệt!");
       expect(html).toContain("• Loại sự kiện:");
       expect(html).toContain("• Thời gian:");
     });
