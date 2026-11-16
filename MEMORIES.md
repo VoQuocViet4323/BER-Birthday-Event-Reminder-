@@ -7481,3 +7481,41 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
      - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
      - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
      - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+
+---
+
+### 📅 2026-11-16 09:54:00 - Chuẩn Hóa Gợi Ý Tài Khoản Đã Lưu (Chrome Password Manager) Ngay Tại Ô Nhập Tên Tài Khoản
+- **Yêu cầu của người dùng**:
+  - Khi bấm vào ô nhập Tên tài khoản hoặc Email ở trang Đăng nhập, trình duyệt hiện ngay danh sách gợi ý các tài khoản đã lưu (`vietvq`, `admin`, `mkhue`...), thay vì phải bấm xuống ô Mật khẩu mới hiện.
+- **Nguyên nhân cốt lõi**:
+  1. Thẻ `<form>` trước đó đặt `autoComplete="off"` và chèn 2 thẻ decoy ẩn (`fakeusernameremembered`, `fakepasswordremembered`), làm trình quản lý mật khẩu của Chrome gán nhầm trường tài khoản vào thẻ ẩn.
+  2. Ô nhập tên tài khoản đặt `autoComplete="off"`, `name="login_username"`.
+  3. Ô mật khẩu lại đặt `autoComplete="new-password"` (khiến Chrome hiểu lầm là form đăng ký và hiện thêm dòng *"Suggest strong password..."*).
+  4. `setTimeout(..., 80)` xóa trắng state input sau khi mount gây xung đột autofill.
+- **Nội dung đã triển khai**:
+  - Tại `src/app/(auth)/login/page.tsx`:
+    - Bật `autoComplete="on"` trên `<form>`, gỡ bỏ hoàn toàn 2 thẻ decoy ẩn và timer xóa input.
+    - Chuẩn hóa ô Tên tài khoản: `id="username"`, `name="username"`, `autoComplete="username"` kèm `htmlFor="username"`.
+    - Chuẩn hóa ô Mật khẩu: `id="password"`, `name="password"`, `autoComplete="current-password"` kèm `htmlFor="password"`.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+
+---
+
+### 📅 2026-11-16 10:03:50 - Chặn Tự Điền Sẵn Khi Chưa Tích Ghi Nhớ Nhưng Vẫn Hiện Gợi Ý Khi Click Vào Ô Tài Khoản
+- **Yêu cầu của người dùng**:
+  - Khi không tích "Ghi nhớ tài khoản", đăng xuất ra trang `/login` thì 2 ô phải trống trơn (không được tự điền sẵn `Admin` / mật khẩu), chỉ khi người dùng chủ động bấm vào ô Tên tài khoản thì mới hiện bảng gợi ý các tài khoản đã lưu của trình duyệt.
+- **Nguyên nhân cốt lõi**:
+  - Chrome Password Manager có cơ chế *eager autofill on page load*: khi thấy `<input autocomplete="username">` + `<input autocomplete="current-password">` không bị khóa `readOnly` lúc tải trang, Chrome lập tức tự điền tài khoản đầu tiên vào 2 ô và phủ nền trắng xanh `:-webkit-autofill`.
+- **Cách khắc phục triệt để**:
+  1. Tại `src/app/(auth)/login/page.tsx`:
+     - Nếu `ber_remember_me !== "true"`, giữ `readOnly={true}` trên 2 thẻ input lúc vừa load trang (khiến Chrome không tự điền sẵn khi đăng xuất ra).
+     - Ngay khoảnh khắc người dùng nhấp chuột / chạm tay vào ô (`onPointerDown` / `onMouseDown` / `onTouchStart` / `onFocus`), dùng `flushSync` gỡ `readOnly` đồng bộ ngay trước khi trình duyệt hoàn tất `focus`/`click`, giúp Chrome mở ngay danh sách tài khoản gợi ý dưới ô Tên tài khoản ngay từ cú bấm đầu tiên.
+  2. Tại `src/app/globals.css`:
+     - Bổ sung CSS `input:-webkit-autofill` giữ nguyên tông màu nền Dark/Light mode của hệ thống thay vì bị đổi sang màu trắng chói mắt khi chọn gợi ý.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.

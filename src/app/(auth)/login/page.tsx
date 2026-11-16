@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { flushSync } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -12,10 +13,21 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  // Khóa autofill tự động khi vừa tải trang (nếu không bật Ghi nhớ tài khoản),
+  // chỉ mở khóa tức thì khi người dùng bấm/chạm vào ô nhập để hiện danh sách gợi ý của trình duyệt
+  const [isAutofillUnlocked, setIsAutofillUnlocked] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
   const supabase = createClient();
+
+  const unlockAutofill = () => {
+    if (!isAutofillUnlocked) {
+      flushSync(() => {
+        setIsAutofillUnlocked(true);
+      });
+    }
+  };
 
   // Tự động điền tài khoản & mật khẩu nếu đã được ghi nhớ ở máy (nếu không ghi nhớ thì xóa sạch)
   useEffect(() => {
@@ -49,19 +61,12 @@ export default function LoginPage() {
           }
         }
         setRememberMe(true);
+        setIsAutofillUnlocked(true);
       } else {
         setUsername("");
         setPassword("");
         setRememberMe(false);
-        // Ngăn chặn Chrome autofill tự động inject sau render khi không bật ghi nhớ
-        const timer = setTimeout(() => {
-          const stillRemembered = localStorage.getItem("ber_remember_me") === "true";
-          if (!stillRemembered) {
-            setUsername("");
-            setPassword("");
-          }
-        }, 80);
-        return () => clearTimeout(timer);
+        setIsAutofillUnlocked(false);
       }
     } catch (err) {
       console.error("Không thể tải thông tin ghi nhớ tài khoản:", err);
@@ -348,24 +353,28 @@ export default function LoginPage() {
           </div>
 
           {/* Form Đăng nhập bằng Tên tài khoản hoặc Email */}
-          <form onSubmit={handleLogin} autoComplete="off" className="space-y-4">
-            {/* Decoy hidden inputs ngăn chặn Chrome tự động inject thông tin cũ */}
-            <input type="text" name="fakeusernameremembered" style={{ display: "none" }} tabIndex={-1} aria-hidden="true" autoComplete="off" />
-            <input type="password" name="fakepasswordremembered" style={{ display: "none" }} tabIndex={-1} aria-hidden="true" autoComplete="off" />
-
+          <form onSubmit={handleLogin} autoComplete="on" className="space-y-4">
             <div>
-              <label className="block text-xs font-bold text-muted-foreground uppercase mb-1">
+              <label
+                htmlFor="username"
+                className="block text-xs font-bold text-muted-foreground uppercase mb-1"
+              >
                 Tên tài khoản hoặc Email
               </label>
               <div className="relative">
                 <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-purple-500" />
                 <input
                   type="text"
-                  name="login_username"
-                  id="login_username"
-                  autoComplete="off"
+                  name="username"
+                  id="username"
+                  autoComplete="username"
                   autoCapitalize="none"
                   autoCorrect="off"
+                  readOnly={!isAutofillUnlocked}
+                  onPointerDown={unlockAutofill}
+                  onMouseDown={unlockAutofill}
+                  onTouchStart={unlockAutofill}
+                  onFocus={unlockAutofill}
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="admin, tên tài khoản hoặc email..."
@@ -375,16 +384,24 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-muted-foreground uppercase mb-1">
+              <label
+                htmlFor="password"
+                className="block text-xs font-bold text-muted-foreground uppercase mb-1"
+              >
                 Mật khẩu
               </label>
               <div className="relative">
                 <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <input
                   type={showPassword ? "text" : "password"}
-                  name="login_password"
-                  id="login_password"
-                  autoComplete="new-password"
+                  name="password"
+                  id="password"
+                  autoComplete="current-password"
+                  readOnly={!isAutofillUnlocked}
+                  onPointerDown={unlockAutofill}
+                  onMouseDown={unlockAutofill}
+                  onTouchStart={unlockAutofill}
+                  onFocus={unlockAutofill}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
