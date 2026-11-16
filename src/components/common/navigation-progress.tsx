@@ -82,11 +82,11 @@ function NavigationProgressContent() {
           });
         }, 120);
 
-        // Timeout an toàn sau 8 giây tự tắt nếu có lỗi kết nối
+        // Timeout an toàn: Tự động tắt loading sau tối đa 1.8 giây để tránh bị treo che màn hình nếu mạng chậm
         safetyTimeoutRef.current = setTimeout(() => {
           setIsLoading(false);
           setProgress(0);
-        }, 8000);
+        }, 1800);
       } catch {
         // Bỏ qua nếu URL không hợp lệ
       }

@@ -75,13 +75,19 @@ export function EventCard({
     }
     if (bg) {
       bg.style.setProperty("--k", "0.6");
+      bg.style.opacity = "0";
     }
   };
 
   // Kích hoạt xóa sự kiện với thanh thông báo Hoàn tác (Prompt #071)
   const triggerDeleteWithUndo = () => {
     const row = rowRef.current;
+    const bg = bgRef.current;
     if (!row) return;
+
+    if (bg) {
+      bg.style.opacity = "1";
+    }
 
     if (typeof navigator !== "undefined" && navigator.vibrate) {
       try {
@@ -159,6 +165,7 @@ export function EventCard({
       const bg = bgRef.current;
       if (!row || !bg) return;
 
+      bg.style.opacity = "1";
       deltaXRef.current = diffX;
       const dx = Math.min(0, diffX);
       const finalX = dx < -100 ? -100 + (dx + 100) * 0.6 : dx;
@@ -194,7 +201,10 @@ export function EventCard({
         triggerDeleteWithUndo();
       } else {
         if (row) row.style.setProperty("--x", "0px");
-        if (bg) bg.style.setProperty("--k", "0.6");
+        if (bg) {
+          bg.style.setProperty("--k", "0.6");
+          bg.style.opacity = "0";
+        }
       }
       // Khóa click trong 200ms để không bị nhảy vào modal sau khi thả vuốt
       setTimeout(() => {
@@ -203,7 +213,10 @@ export function EventCard({
     } else {
       suppressClickRef.current = false;
       if (row) row.style.setProperty("--x", "0px");
-      if (bg) bg.style.setProperty("--k", "0.6");
+      if (bg) {
+        bg.style.setProperty("--k", "0.6");
+        bg.style.opacity = "0";
+      }
     }
   };
 
@@ -226,6 +239,7 @@ export function EventCard({
     }
     if (bg) {
       bg.style.setProperty("--k", "0.6");
+      bg.style.opacity = "0";
     }
   };
 
@@ -269,6 +283,7 @@ export function EventCard({
           transition: grid-template-rows 0.4s var(--ux-ease), opacity 0.3s;
           box-sizing: border-box;
           width: 100%;
+          height: 100%;
         }
 
         :global(.dark) .u071-it {
@@ -294,12 +309,13 @@ export function EventCard({
           min-height: 0;
           overflow: hidden;
           border-radius: 24px;
+          height: 100%;
         }
 
         /* Lớp nền màu đỏ xuất hiện khi vuốt sang trái */
         .u071-bg {
           position: absolute;
-          inset: 2px;
+          inset: 0;
           border-radius: 24px;
           background: var(--ux-danger);
           display: flex;
@@ -309,6 +325,9 @@ export function EventCard({
           color: #ffffff;
           z-index: 0;
           user-select: none;
+          opacity: 0;
+          pointer-events: none;
+          transition: opacity 0.15s ease;
         }
 
         .u071-bg svg {
@@ -327,6 +346,10 @@ export function EventCard({
         .u071-row {
           position: relative;
           z-index: 1;
+          height: 100%;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
           border-radius: 24px;
           background: var(--ux-surface);
           border: 1px solid var(--ux-line);

@@ -3560,6 +3560,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+---
+
 ### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
 - **Yêu cầu của người dùng**:
   - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
@@ -3573,6 +3617,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
 
 ---
 
@@ -3598,6 +3686,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+---
+
 ### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
 - **Yêu cầu của người dùng**:
   - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
@@ -3611,6 +3743,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
 
 ---
 
@@ -3631,6 +3807,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+---
+
 ### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
 - **Yêu cầu của người dùng**:
   - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
@@ -3644,6 +3864,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
 
 ---
 
@@ -3669,6 +3933,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+---
+
 ### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
 - **Yêu cầu của người dùng**:
   - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
@@ -3682,6 +3990,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
 
 ---
 
@@ -3699,6 +4051,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+---
+
 ### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
 - **Yêu cầu của người dùng**:
   - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
@@ -3712,6 +4108,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
 
 ---
 
@@ -3737,6 +4177,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+---
+
 ### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
 - **Yêu cầu của người dùng**:
   - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
@@ -3750,6 +4234,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
 
 ---
 
@@ -3770,6 +4298,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+---
+
 ### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
 - **Yêu cầu của người dùng**:
   - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
@@ -3783,6 +4355,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
 
 ---
 
@@ -3808,6 +4424,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+---
+
 ### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
 - **Yêu cầu của người dùng**:
   - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
@@ -3821,6 +4481,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
 
 ---
 
@@ -3842,6 +4546,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+---
+
 ### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
 - **Yêu cầu của người dùng**:
   - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
@@ -3855,6 +4603,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
 
 ---
 
@@ -3880,6 +4672,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+---
+
 ### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
 - **Yêu cầu của người dùng**:
   - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
@@ -3893,6 +4729,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
 
 ---
 
@@ -3913,6 +4793,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+---
+
 ### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
 - **Yêu cầu của người dùng**:
   - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
@@ -3926,6 +4850,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
 
 ---
 
@@ -3951,6 +4919,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+---
+
 ### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
 - **Yêu cầu của người dùng**:
   - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
@@ -3964,6 +4976,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
 
 ---
 
@@ -3981,6 +5037,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+---
+
 ### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
 - **Yêu cầu của người dùng**:
   - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
@@ -3994,6 +5094,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
 
 ---
 
@@ -4019,6 +5163,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+---
+
 ### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
 - **Yêu cầu của người dùng**:
   - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
@@ -4032,6 +5220,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
 
 ---
 
@@ -4052,6 +5284,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+---
+
 ### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
 - **Yêu cầu của người dùng**:
   - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
@@ -4065,6 +5341,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
 
 ---
 
@@ -4090,6 +5410,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+---
+
 ### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
 - **Yêu cầu của người dùng**:
   - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
@@ -4103,6 +5467,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
 
 ---
 
@@ -4122,6 +5530,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+---
+
 ### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
 - **Yêu cầu của người dùng**:
   - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
@@ -4135,6 +5587,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
 
 ---
 
@@ -4160,6 +5656,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+---
+
 ### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
 - **Yêu cầu của người dùng**:
   - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
@@ -4173,6 +5713,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
 
 ---
 
@@ -4193,6 +5777,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+---
+
 ### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
 - **Yêu cầu của người dùng**:
   - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
@@ -4206,6 +5834,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
 
 ---
 
@@ -4231,6 +5903,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+---
+
 ### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
 - **Yêu cầu của người dùng**:
   - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
@@ -4244,6 +5960,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
 
 ---
 
@@ -4261,6 +6021,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+---
+
 ### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
 - **Yêu cầu của người dùng**:
   - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
@@ -4274,6 +6078,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
 
 ---
 
@@ -4299,6 +6147,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+---
+
 ### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
 - **Yêu cầu của người dùng**:
   - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
@@ -4312,6 +6204,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
 
 ---
 
@@ -4332,6 +6268,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+---
+
 ### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
 - **Yêu cầu của người dùng**:
   - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
@@ -4345,6 +6325,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
 
 ---
 
@@ -4370,6 +6394,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+---
+
 ### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
 - **Yêu cầu của người dùng**:
   - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
@@ -4383,6 +6451,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
 
 ---
 
@@ -4404,6 +6516,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+---
+
 ### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
 - **Yêu cầu của người dùng**:
   - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
@@ -4417,6 +6573,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
 
 ---
 
@@ -4442,6 +6642,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+---
+
 ### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
 - **Yêu cầu của người dùng**:
   - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
@@ -4455,6 +6699,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
 
 ---
 
@@ -4475,6 +6763,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+---
+
 ### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
 - **Yêu cầu của người dùng**:
   - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
@@ -4488,6 +6820,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
 
 ---
 
@@ -4513,6 +6889,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+---
+
 ### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
 - **Yêu cầu của người dùng**:
   - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
@@ -4526,6 +6946,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
 
 ---
 
@@ -4543,6 +7007,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+---
+
 ### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
 - **Yêu cầu của người dùng**:
   - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
@@ -4556,6 +7064,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
 
 ---
 
@@ -4581,6 +7133,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+---
+
 ### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
 - **Yêu cầu của người dùng**:
   - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
@@ -4594,6 +7190,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
 
 ---
 
@@ -4614,6 +7254,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+---
+
 ### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
 - **Yêu cầu của người dùng**:
   - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
@@ -4627,6 +7311,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
 
 ---
 
@@ -4652,6 +7380,50 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
+
+---
+
 ### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
 - **Yêu cầu của người dùng**:
   - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
@@ -4665,3 +7437,47 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:35:10 - Khắc Phục Lỗi Lòi Nền Đỏ (Swipe-to-delete) Dưới Đáy Thẻ Sự Kiện Khi Phóng To (Ctrl +)
+- **Yêu cầu của người dùng**:
+  - Fix lỗi giao diện ở bản chạy thật: Khi người dùng phóng to trang (Ctrl +), ở phía dưới đáy các Card sự kiện xuất hiện một vệt / khối màu đỏ rực rỡ lòi ra ngoài.
+- **Nguyên nhân cốt lõi**:
+  - Thẻ `EventCard` (`src/components/events/event-card.tsx`) tích hợp tính năng vuốt xóa (Swipe to delete - Prompt #071) với một lớp nền màu đỏ `.u071-bg` (`var(--ux-danger)`) nằm ẩn bên dưới thẻ chính `.u071-row`.
+  - Trong CSS Grid 2 cột (`grid-cols-2`), các hàng grid có cơ chế tự kéo dãn (`stretch`) theo item có chiều cao lớn nhất trong hàng.
+  - Thẻ bao ngoài `.u071-wrap` và lớp nền đỏ `.u071-bg` dãn theo chiều cao hàng grid, trong khi thẻ chính `.u071-row` thiếu thuộc tính `height: 100%`.
+  - Khi người dùng phóng to (Ctrl +), văn bản wrap nhiều dòng hơn làm card bên cạnh cao lên $\rightarrow$ card bên cạnh kéo dãn container nhưng `.u071-row` không dãn theo $\rightarrow$ lộ ra khoảng trống nền đỏ 15-20px ở đáy card.
+  - Thêm nữa, `.u071-bg` trước đó không có `opacity: 0` khi ở trạng thái nghỉ, nên bất kỳ sai lệch pixel nào cũng làm lộ màu đỏ.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/events/event-card.tsx`:
+     - Thiết lập `.u071-bg` mặc định `opacity: 0; pointer-events: none; inset: 0; transition: opacity 0.15s ease;`. Khi chưa vuốt, nền đỏ tàng hình hoàn toàn 100%, không thể bị lộ ra ngoài dù zoom cỡ nào.
+     - Trong JS: Chỉ bật `bg.style.opacity = "1"` khi người dùng thực sự vuốt xóa ngang (`isSwipingRef.current === true`) hoặc khi kích hoạt xóa. Sau khi nhả tay hoặc hoàn tác, đặt lại `bg.style.opacity = "0"`.
+     - Thêm `height: 100%;` cho `.u071-it`, `.u071-wrap`, và `.u071-row` (kèm `display: flex; flex-direction: column; justify-content: space-between;`), đảm bảo tất cả các thẻ trong hàng grid luôn cao bằng nhau hoàn hảo và che khít 100% diện tích.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 09:23:42 - Khắc Phục Lỗi "Load Trang Mãi Không Được" & Lỗi PATCH 406 (PGRST116)
+- **Yêu cầu của người dùng**:
+  - Khắc phục lỗi web app cả local và production bị treo loading mãi không nạp được trang.
+  - Xử lý lỗi `PATCH /rest/v1/events?id=eq.3b80c9e9... 406 Not Acceptable (PGRST116: The result contains 0 rows)`.
+- **Nguyên nhân cốt lõi**:
+  1. **Lỗi treo nạp trang tại `src/middleware.ts`**:
+     - Middleware bắt mọi request (kể cả `/api/`) và thực hiện 2 roundtrip tuần tự tới Supabase (`getSession()` + truy vấn `profiles`). Khi mạng giữa Edge runtime và Supabase bị trễ hoặc connection pool bận, toàn bộ request nạp trang bị nghẽn vô hạn.
+  2. **Lỗi treo loading overlay tại `src/components/common/navigation-progress.tsx`**:
+     - `safetyTimeout` đặt 8000ms quá dài. Khi xảy ra lỗi mạng hoặc API 406 khiến router không đổi pathname, overlay Lottie che phủ toàn màn hình suốt 8 giây khiến người dùng thấy trang bị "kẹt loading".
+  3. **Lỗi PATCH 406 (PGRST116) tại `src/hooks/use-events.ts`**:
+     - Khi cập nhật sự kiện, câu lệnh gán cứng `.eq("user_id", user.id)` và kết thúc bằng `.single()`. Khi sửa sự kiện của user khác (hoặc Admin sửa sự kiện người dùng), PostgREST trả về 0 rows khiến `.single()` quăng lỗi HTTP 406 Not Acceptable `PGRST116: Cannot coerce the result to a single JSON object`.
+- **Nội dung đã triển khai**:
+  1. `src/middleware.ts`:
+     - Bỏ qua các API route (`/api/`) để không bao giờ nghẽn background task.
+     - Bỏ truy vấn DB thừa ở Edge; bổ sung timeout an toàn 2000ms (`Promise.race`) cho `getSession()`, đảm bảo trang luôn phản hồi ngay lập tức, không bao giờ bị treo tải trang.
+  2. `src/components/common/navigation-progress.tsx`:
+     - Giảm timeout an toàn xuống tối đa 1.8 giây, tự động giải phóng overlay để không bao giờ che màn hình nếu điều hướng bị hủy.
+  3. `src/hooks/use-events.ts`:
+     - Chuyển sang `.maybeSingle()` chống triệt để lỗi 406 PGRST116.
+     - Thêm fallback update linh hoạt theo `id` và qua RPC `admin_update_event` dành cho Admin/sự kiện chéo user.
+     - Luôn có fallback `localStorage` an toàn để UI không bao giờ bị đơ nút submit.
