@@ -24,6 +24,9 @@ import {
   Users,
   LogIn,
   LogOut,
+  Phone,
+  MessageCircle,
+  ExternalLink,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/common/theme-toggle";
 import { createClient } from "@/lib/supabase/client";
@@ -53,6 +56,7 @@ const navItems = [
   { id: "features", label: "Tính năng", icon: Calendar },
   { id: "workflow", label: "Hướng dẫn 3 bước", icon: ListChecks },
   { id: "faq", label: "Giải đáp", icon: HelpCircle },
+  { id: "contact", label: "Liên hệ", icon: MessageCircle },
 ] as const;
 
 export default function HomePage() {
@@ -150,7 +154,7 @@ export default function HomePage() {
   };
 
   useEffect(() => {
-    const sectionIds = ["benefits", "features", "workflow", "faq"];
+    const sectionIds = ["benefits", "features", "workflow", "faq", "contact"];
 
     const handleScroll = () => {
       const y = window.scrollY;
@@ -515,11 +519,11 @@ export default function HomePage() {
 
         <div className="hidden sm:block absolute bottom-10 right-6 md:right-12 text-right z-10">
           <a
-            href="#features"
-            onClick={(e) => scrollToSection(e, "features")}
-            className="text-xs font-bold uppercase tracking-widest text-foreground hover:text-pink-500 transition-colors border-b-2 border-primary/60 hover:border-pink-500 pb-1 cursor-pointer"
+            href="mailto:voviet4323@gmail.com"
+            className="text-xs font-bold tracking-wider text-foreground hover:text-pink-500 transition-colors border-b-2 border-primary/60 hover:border-pink-500 pb-1 cursor-pointer flex items-center gap-1.5 justify-end"
           >
-            Âm & Dương Lịch • Nhắc Hẹn 24/7
+            <span>voviet4323@gmail.com</span>
+            <ArrowUpRight className="w-3.5 h-3.5 text-primary" />
           </a>
         </div>
       </header>
@@ -1018,45 +1022,145 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* 8. MINIMAL FOOTER */}
-      <footer className="py-10 pb-28 md:pb-32 px-5 md:px-10 border-t border-border/60">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4 text-muted-foreground text-[11px] font-bold uppercase tracking-widest">
-          <p>&copy; 2026 BER &bull; Nhắc Sinh Nhật & Sự Kiện Thông Minh.</p>
-          <div className="flex flex-wrap items-center justify-center gap-6">
+      {/* 8. LIÊN HỆ & KẾT NỐI (CONTACT SECTION) */}
+      <section id="contact" className="py-14 sm:py-20 md:py-32 px-4 sm:px-6 md:px-10 max-w-6xl mx-auto">
+        <div className="text-center max-w-2xl mx-auto mb-8 sm:mb-10 md:mb-14">
+          <div className="inline-flex items-center gap-1.5 md:gap-2 px-3 md:px-3.5 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-[10px] md:text-[11px] font-extrabold tracking-widest uppercase mb-3 md:mb-4">
+            <MessageCircle className="w-3 h-3 md:w-3.5 md:h-3.5" />
+            <span>KẾT NỐI & HỖ TRỢ TRỰC TIẾP</span>
+          </div>
+          <h2 className="text-2xl sm:text-4xl md:text-5xl font-black tracking-tight text-foreground leading-[1.15]">
+            Liên hệ với chúng tôi
+          </h2>
+          <p className="mt-2.5 md:mt-4 text-xs sm:text-base text-muted-foreground leading-relaxed font-medium">
+            Chúng tôi luôn sẵn sàng lắng nghe mọi góp ý, hỗ trợ bạn thiết lập lịch nhắc hẹn và giải đáp mọi thắc mắc 24/7.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-6">
+          {/* Card 1: Facebook */}
+          <a
+            href="https://www.facebook.com/quocviet43"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group relative p-4 sm:p-5 md:p-8 rounded-2xl md:rounded-3xl bg-card/70 hover:bg-card border border-border/80 hover:border-blue-500/50 shadow-card hover:shadow-2xl transition-all duration-300 flex flex-col justify-between overflow-hidden"
+          >
+            <div className="absolute -top-12 -right-12 w-28 md:w-32 h-28 md:h-32 bg-blue-500/10 rounded-full blur-2xl group-hover:bg-blue-500/20 transition-all pointer-events-none" />
+            <div>
+              <div className="w-10 h-10 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-500 flex items-center justify-center text-lg md:text-2xl mb-3 md:mb-6 group-hover:scale-110 group-hover:bg-blue-500 group-hover:text-white transition-all shadow-sm">
+                <svg className="w-5 h-5 md:w-7 md:h-7 fill-current" viewBox="0 0 24 24">
+                  <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                </svg>
+              </div>
+              <span className="text-[10px] md:text-[11px] font-extrabold uppercase tracking-widest text-blue-500">Mạng xã hội</span>
+              <h3 className="text-base sm:text-lg md:text-xl font-black text-foreground mt-0.5 md:mt-1 mb-1 md:mb-2 group-hover:text-blue-500 transition-colors">
+                Facebook
+              </h3>
+              <p className="text-[11px] md:text-xs text-muted-foreground leading-normal md:leading-relaxed">
+                Nhắn tin trực tiếp qua trang cá nhân Facebook để được hỗ trợ nhanh nhất.
+              </p>
+            </div>
+            <div className="mt-3 md:mt-8 pt-3 md:pt-4 border-t border-border/60 flex items-center justify-between text-[11px] md:text-xs font-bold text-foreground group-hover:text-blue-500">
+              <span className="truncate">facebook.com/quocviet43</span>
+              <ExternalLink className="w-3.5 h-3.5 md:w-4 md:h-4 shrink-0 transition-transform group-hover:translate-x-1 group-hover:-translate-y-1" />
+            </div>
+          </a>
+
+          {/* Card 2: SĐT / Zalo */}
+          <div className="group relative p-4 sm:p-5 md:p-8 rounded-2xl md:rounded-3xl bg-card/70 hover:bg-card border border-border/80 hover:border-emerald-500/50 shadow-card hover:shadow-2xl transition-all duration-300 flex flex-col justify-between overflow-hidden">
+            <div className="absolute -top-12 -right-12 w-28 md:w-32 h-28 md:h-32 bg-emerald-500/10 rounded-full blur-2xl group-hover:bg-emerald-500/20 transition-all pointer-events-none" />
+            <div>
+              <div className="w-10 h-10 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 flex items-center justify-center text-lg md:text-2xl mb-3 md:mb-6 group-hover:scale-110 group-hover:bg-emerald-500 group-hover:text-white transition-all shadow-sm">
+                <Phone className="w-5 h-5 md:w-7 md:h-7" />
+              </div>
+              <span className="text-[10px] md:text-[11px] font-extrabold uppercase tracking-widest text-emerald-500">Điện thoại & Zalo</span>
+              <h3 className="text-base sm:text-lg md:text-xl font-black text-foreground mt-0.5 md:mt-1 mb-1 md:mb-2 group-hover:text-emerald-500 transition-colors">
+                0367 020 403
+              </h3>
+              <p className="text-[11px] md:text-xs text-muted-foreground leading-normal md:leading-relaxed">
+                Kết nối trực tiếp qua Zalo hoặc gọi hotline khi cần hỗ trợ tức thì.
+              </p>
+            </div>
+            <div className="mt-3 md:mt-8 pt-3 md:pt-4 border-t border-border/60 flex items-center gap-2">
+              <a
+                href="https://zalo.me/0367020403"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 py-2 md:py-2.5 px-2.5 md:px-3 rounded-lg md:rounded-xl bg-emerald-500/10 hover:bg-emerald-500 text-emerald-500 hover:text-white text-[11px] md:text-xs font-bold text-center transition-all flex items-center justify-center gap-1"
+              >
+                <span>Nhắn Zalo</span>
+                <ArrowUpRight className="w-3 h-3 md:w-3.5 md:h-3.5" />
+              </a>
+              <a
+                href="tel:0367020403"
+                className="flex-1 py-2 md:py-2.5 px-2.5 md:px-3 rounded-lg md:rounded-xl bg-secondary hover:bg-emerald-500 hover:text-white text-foreground text-[11px] md:text-xs font-bold text-center transition-all flex items-center justify-center gap-1"
+              >
+                <span>Gọi điện</span>
+                <Phone className="w-3 h-3 md:w-3.5 md:h-3.5" />
+              </a>
+            </div>
+          </div>
+
+          {/* Card 3: Email */}
+          <a
+            href="mailto:voviet4323@gmail.com"
+            className="group relative p-4 sm:p-5 md:p-8 rounded-2xl md:rounded-3xl bg-card/70 hover:bg-card border border-border/80 hover:border-pink-500/50 shadow-card hover:shadow-2xl transition-all duration-300 flex flex-col justify-between overflow-hidden"
+          >
+            <div className="absolute -top-12 -right-12 w-28 md:w-32 h-28 md:h-32 bg-pink-500/10 rounded-full blur-2xl group-hover:bg-pink-500/20 transition-all pointer-events-none" />
+            <div>
+              <div className="w-10 h-10 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-pink-500/10 border border-pink-500/20 text-pink-500 flex items-center justify-center text-lg md:text-2xl mb-3 md:mb-6 group-hover:scale-110 group-hover:bg-pink-500 group-hover:text-white transition-all shadow-sm">
+                <Mail className="w-5 h-5 md:w-7 md:h-7" />
+              </div>
+              <span className="text-[10px] md:text-[11px] font-extrabold uppercase tracking-widest text-pink-500">Hộp thư điện tử</span>
+              <h3 className="text-base sm:text-lg md:text-xl font-black text-foreground mt-0.5 md:mt-1 mb-1 md:mb-2 group-hover:text-pink-500 transition-colors">
+                Email Hỗ Trợ
+              </h3>
+              <p className="text-[11px] md:text-xs text-muted-foreground leading-normal md:leading-relaxed">
+                Gửi góp ý, phản hồi kỹ thuật hoặc đề xuất tính năng mới cho BER.
+              </p>
+            </div>
+            <div className="mt-3 md:mt-8 pt-3 md:pt-4 border-t border-border/60 flex items-center justify-between text-[11px] md:text-xs font-bold text-foreground group-hover:text-pink-500">
+              <span className="truncate">voviet4323@gmail.com</span>
+              <ArrowUpRight className="w-3.5 h-3.5 md:w-4 md:h-4 shrink-0 transition-transform group-hover:translate-x-1 group-hover:-translate-y-1" />
+            </div>
+          </a>
+        </div>
+      </section>
+
+      {/* 9. MINIMAL EDITORIAL FOOTER */}
+      <footer className="py-10 pb-28 md:pb-24 px-5 md:px-10 border-t border-border/60">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4 text-xs font-medium text-muted-foreground">
+          <p className="tracking-tight text-center sm:text-left">
+            &copy; 2026 <strong className="text-foreground font-bold">Nhắc Sự Kiện (BER)</strong>. Gìn giữ kết nối yêu thương cho mọi gia đình.
+          </p>
+
+          <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2">
+            {[
+              { id: "benefits", label: "Giá trị" },
+              { id: "features", label: "Tính năng" },
+              { id: "workflow", label: "3 Bước" },
+              { id: "faq", label: "Giải đáp" },
+              { id: "contact", label: "Liên hệ" },
+            ].map((item) => (
+              <a
+                key={item.id}
+                href={`#${item.id}`}
+                onClick={(e) => scrollToSection(e, item.id)}
+                className="px-3 py-1.5 rounded-lg hover:bg-secondary hover:text-foreground transition-all cursor-pointer text-xs"
+              >
+                {item.label}
+              </a>
+            ))}
+
+            <div className="w-px h-3.5 bg-border mx-1 hidden sm:block" />
+
             <a
               href="#top"
               onClick={(e) => scrollToSection(e, "top")}
-              className="hover:text-foreground transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-card hover:bg-primary/10 border border-border/80 hover:border-primary/40 text-foreground hover:text-primary transition-all font-semibold cursor-pointer shadow-2xs active:scale-95"
             >
-              Đầu trang ↑
-            </a>
-            <a
-              href="#benefits"
-              onClick={(e) => scrollToSection(e, "benefits")}
-              className="hover:text-foreground transition-colors cursor-pointer"
-            >
-              Giá trị
-            </a>
-            <a
-              href="#features"
-              onClick={(e) => scrollToSection(e, "features")}
-              className="hover:text-foreground transition-colors cursor-pointer"
-            >
-              Tính năng
-            </a>
-            <a
-              href="#workflow"
-              onClick={(e) => scrollToSection(e, "workflow")}
-              className="hover:text-foreground transition-colors cursor-pointer"
-            >
-              3 Bước
-            </a>
-            <a
-              href="#faq"
-              onClick={(e) => scrollToSection(e, "faq")}
-              className="hover:text-foreground transition-colors cursor-pointer"
-            >
-              Hỏi đáp
+              <span>Đầu trang</span>
+              <span className="text-primary font-bold">↑</span>
             </a>
           </div>
         </div>

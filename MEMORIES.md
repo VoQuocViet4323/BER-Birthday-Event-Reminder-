@@ -7633,3 +7633,102 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+
+---
+
+### 📅 2026-11-16 14:37:35 - Tích Hợp Mục Liên Hệ & Hỗ Trợ Đa Kênh (Facebook, Zalo/SĐT, Email) Vào Trang Giới Thiệu
+- **Yêu cầu của người dùng**:
+  - Thêm phần thông tin liên hệ bao gồm:
+    - Facebook: `https://www.facebook.com/quocviet43`
+    - SĐT / Zalo: `0367020403`
+    - Email: `voviet4323@gmail.com`
+- **Nội dung đã triển khai**:
+  - Tại [src/app/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/page.tsx):
+    1. **Section Liên Hệ Chuyên Biệt (`#contact`)**:
+       - Thiết kế 3 thẻ Contact Card phong cách Midnight Editorial kính mờ (`bg-card/70 border border-border/80 shadow-card hover:shadow-2xl`):
+         - **Facebook**: Icon mạng xã hội, dẫn trực tiếp đến `https://www.facebook.com/quocviet43` (mở tab mới an toàn).
+         - **Điện thoại & Zalo (0367 020 403)**: Tích hợp 2 nút hành động nhanh: nút nhắn Zalo (`https://zalo.me/0367020403`) và nút gọi điện thoại trực tiếp (`tel:0367020403`).
+         - **Hộp thư điện tử**: Gửi email hỗ trợ trực tiếp đến `mailto:voviet4323@gmail.com`.
+    2. **Đồng Bộ Hệ Thống Điều Hướng**:
+       - Bổ sung mục **Liên hệ** vào `navItems` (icon `MessageCircle`), tự động xuất hiện trên:
+         - Top Navigation Bar (có active pill)
+         - Desktop Floating Bottom Dock
+         - Mobile Compact Right-Side Dock (căn giữa trục dọc)
+         - Hàng liên kết Footer
+       - Tất cả đều cuộn mượt bằng animation `scrollToSection(e, "contact")`.
+    3. **Hero & Footer**:
+       - Góc dưới bên phải Hero hiển thị email `voviet4323@gmail.com` phong cách Editorial.
+       - Dải chân trang Footer hiển thị chi tiết: `Hotline/Zalo: 0367 020 403 • Email: voviet4323@gmail.com`.
+- **Danh sách file tạo / chỉnh sửa**:
+  - [src/app/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/page.tsx)
+  - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+
+---
+
+### 📅 2026-11-16 14:39:45 - Nâng Cấp Giao Diện Chân Trang (Premium Editorial Footer) Sang Trọng & Hiện Đại
+- **Yêu cầu của người dùng**:
+  - Tùy biến (custom) lại dải footer ở đáy trang vốn đang bị dồn tất cả thông tin liên hệ và các liên kết điều hướng vào một hàng chữ thô đơn điệu.
+- **Nội dung đã triển khai**:
+  - Tại [src/app/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/page.tsx):
+    - Thiết kế lại toàn diện Footer theo cấu trúc **Premium Editorial Style 2 tầng**:
+      1. **Tầng 1 (Brand & Liên hệ nhanh)**:
+         - Cột trái: Mini Logo BER với hiệu ứng đổ bóng phát sáng `shadow-glow`, thông điệp sứ mệnh thương hiệu và badge trạng thái hệ thống hoạt động 24/7 nhấp nháy xanh ngọc bích.
+         - Cột phải: 3 nút Badge liên hệ nhanh dạng kính mờ bo góc (`Facebook`, `Zalo: 0367 020 403`, `voviet4323@gmail.com`) với icon tương ứng, viền đổi màu theo nhận diện thương hiệu và mũi tên trỏ `ArrowUpRight`.
+      2. **Tầng 2 (Bản quyền & Menu điều hướng tinh gọn)**:
+         - Dòng bản quyền rõ ràng: `© 2026 Nhắc Sự Kiện (BER). Phát triển vì yêu thương và kết nối gia đình.`
+         - Menu điều hướng dạng nút bấm nhẹ (`Giá trị`, `Tính năng`, `3 Bước`, `Giải đáp`, `Liên hệ`) kèm nút cuộn nhanh `Đầu trang ↑` có viền nổi bật.
+- **Danh sách file tạo / chỉnh sửa**:
+  - [src/app/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/page.tsx)
+  - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+
+---
+
+### 📅 2026-11-16 14:42:05 - Tối Ưu Thu Nhỏ Kích Thước Các Thẻ Panel Liên Hệ Trên Giao Diện Mobile
+- **Yêu cầu của người dùng**:
+  - Thu nhỏ kích thước các panel thẻ liên hệ (`Facebook`, `Zalo/Hotline`, `Email`) trên giao diện mobile để tránh chiếm trọn màn hình và hài hòa với thanh dock nổi bên phải.
+- **Nội dung đã triển khai**:
+  - Tại [src/app/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/page.tsx#L1025-L1130):
+    1. **Thu nhỏ Padding & Bo góc**: Chuyển từ `p-8 rounded-3xl` cố định thành `p-4 sm:p-5 md:p-8 rounded-2xl md:rounded-3xl`.
+    2. **Thu nhỏ Khối Icon**: Chuyển từ `w-14 h-14 text-2xl mb-6` sang `w-10 h-10 md:w-14 md:h-14 text-lg md:text-2xl mb-3 md:mb-6` với icon bên trong `w-5 h-5 md:w-7 md:h-7`.
+    3. **Tối ưu Typography**:
+       - Badge danh mục: `text-[10px] md:text-[11px]`.
+       - Tiêu đề kênh: `text-base sm:text-lg md:text-xl font-black mt-0.5 md:mt-1 mb-1 md:mb-2`.
+       - Đoạn mô tả: `text-[11px] md:text-xs leading-normal md:leading-relaxed`.
+    4. **Thu gọn Dải chân & Nút hành động**:
+       - Khoảng cách trên chân thẻ: `mt-3 md:mt-8 pt-3 md:pt-4`.
+       - Cặp nút Nhắn Zalo & Gọi điện: `py-2 md:py-2.5 px-2.5 md:px-3 text-[11px] md:text-xs rounded-lg md:rounded-xl`.
+    5. **Tối ưu Khoảng cách Section & Grid**: Khoảng cách giữa các thẻ trên mobile giảm từ `gap-6` xuống `gap-3 md:gap-6`, padding dọc section từ `py-24` thành `py-14 sm:py-20 md:py-32`.
+- **Danh sách file tạo / chỉnh sửa**:
+  - [src/app/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/page.tsx)
+  - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+
+---
+
+### 📅 2026-11-16 14:44:40 - Lược Bỏ Khối Thương Hiệu & Nút Liên Hệ Trùng Lặp Ở Chân Trang (Minimal Footer)
+- **Yêu cầu của người dùng**:
+  - Bỏ khối thương hiệu (Logo, mô tả, badge 24/7) và các nút liên hệ lặp lại ở chân trang để giao diện gọn gàng, tinh tế và không bị trùng lặp với Section Liên hệ phía trên.
+- **Nội dung đã triển khai**:
+  - Tại [src/app/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/page.tsx#L1130-L1170):
+    - Đã xóa bỏ hoàn toàn khối Main Footer Row chứa logo BER, mô tả và 3 nút badge liên hệ nhanh.
+    - Chuyển dải chân trang thành **Minimal Editorial Footer** siêu gọn:
+      - Bên trái: `© 2026 Nhắc Sự Kiện (BER). Gìn giữ kết nối yêu thương cho mọi gia đình.`
+      - Bên phải: Danh sách liên kết điều hướng mượt mà (`Giá trị`, `Tính năng`, `3 Bước`, `Giải đáp`, `Liên hệ`) và nút `Đầu trang ↑` dạng viên nang có viền nổi bật.
+- **Danh sách file tạo / chỉnh sửa**:
+  - [src/app/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/page.tsx)
+  - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
