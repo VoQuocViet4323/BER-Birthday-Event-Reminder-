@@ -7519,3 +7519,77 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+
+---
+
+### 📅 2026-11-16 10:13:00 - Bổ Sung Thời Gian Chi Tiết Ngay Bên Cạnh Mốc Nhắc Nhở Trong Popup Lịch
+- **Yêu cầu của người dùng**:
+  - Giữ bố cục đã xóa ô "Giờ thông báo email" thừa ở trên, đồng thời ở khối **Mốc nhắc nhở trước**, cập nhật thêm thời gian nhắc tương ứng ngay bên cạnh từng nhãn mốc ngày (`Đúng ngày`, `Trước 1 ngày`...) để xem chi tiết thông tin trực quan.
+- **Nội dung đã triển khai**:
+  - Tại `src/components/calendar/month-calendar-view.tsx`:
+    - Sử dụng `getTimeForOffset(viewingEvent.remind_time, d)` từ `@/lib/reminder-time-utils` để hiển thị giờ thông báo ngay bên phải mỗi mốc nhắc (kèm icon `Clock` gọn đẹp, ví dụ: `[Đúng ngày  🕒 18:30]`, `[Trước 1 ngày  🕒 21:00]`).
+    - Hỗ trợ đầy đủ cả khi sự kiện chỉ có 1 mốc, nhiều mốc giờ riêng biệt, hoặc fallback mặc định `Đúng ngày`.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+
+---
+
+### 📅 2026-11-16 10:42:45 - Thiết Kế Lại Trang Giới Thiệu (Landing Page) Theo Phong Cách Midnight Editorial Style
+- **Yêu cầu của người dùng**:
+  - Thiết kế lại trang giới thiệu (`src/app/page.tsx`) dựa trên kiến trúc tham khảo **Midnight Editorial Style**, giữ nguyên bảng màu thương hiệu cũ của BER (Midnight Dark + Gradient Tím Neon / Hồng Thạch Anh / Đỏ Hồng), làm hiện đại đúng ngữ cảnh ứng dụng và bổ sung các phần còn thiếu.
+- **Nội dung đã triển khai**:
+  - Tái thiết kế toàn diện `src/app/page.tsx`:
+    1. **Top Editorial Navigation**: Cố định trên cùng với hiệu ứng kính mờ khi cuộn, menu điều hướng mượt tới từng phân đoạn, tích hợp `ThemeToggle`, tự động nhận diện phiên đăng nhập để hiện CTA phù hợp.
+    2. **Floating Bottom Glass Dock**: Thanh dock kính mờ nổi ở đáy màn hình chuẩn Midnight Editorial giúp nhảy nhanh giữa các mục kèm nút `Trải nghiệm ngay`.
+    3. **Hero Section**: Typography Editorial cỡ lớn, ánh sáng radial-gradient thương hiệu, cụm social proof góc trái & chỉ báo hệ thống 24/7 góc phải.
+    4. **Bento Value Proposition & Live App Mockup**: Cột trái trình bày các mốc nhắc đa khung giờ (`08:00`, `21:00`, `07:00`); cột phải đặt cửa sổ mô phỏng trực tiếp giao diện BER trên nền `gradient-brand`.
+    5. **Editorial Staggered Feature Gallery**: Lưới 2 cột so le (`md:mt-20`) minh họa 4 tính năng chuyên sâu của BER (Âm lịch Hồ Ngọc Đức, Email đa mốc & gửi bù, Nhật ký & quà tặng, Phân nhóm & bảo mật RLS).
+    6. **Bổ sung phần Quy trình 3 bước (`#workflow`) & FAQ Accordion (`#faq`)**: Giải quyết điểm thiếu của trang cũ (trước đó nút "Xem hướng dẫn 3 bước" trỏ vào `/onboarding` bị chặn đăng nhập), bổ sung giải đáp thắc mắc tương tác mượt mà và Grand Editorial Footer (`TRỌN VẸN YÊU THƯƠNG.`).
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+
+---
+
+### 📅 2026-11-16 10:57:40 - Chuyển Đổi Linh Hoạt Nút Đăng Nhập / Đăng Xuất Trên Thanh Header Trang Giới Thiệu
+- **Yêu cầu của người dùng**:
+  - Thay đổi cụm nút góc trên phải của thanh điều hướng trang giới thiệu (`src/app/page.tsx`) thành nút **Đăng nhập** hoặc **Đăng xuất** tự động thay đổi theo trạng thái phiên hiện tại.
+- **Nội dung đã triển khai**:
+  - Tại `src/app/page.tsx`:
+    - Lắng nghe thời gian thực `supabase.auth.getSession()` và `supabase.auth.onAuthStateChange`.
+    - Khi **đã đăng nhập**: Hiển thị nút **Đăng xuất** (icon `LogOut`), thực hiện `signOut()`, dọn dẹp cache phiên cá nhân, tôn trọng tùy chọn `ber_remember_me` và hiển thị toast thông báo tức thì.
+    - Khi **chưa đăng nhập / đã đăng xuất**: Hiển thị nút **Đăng nhập** (`gradient-brand`, icon `LogIn`) dẫn tới `/login`.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+
+---
+
+### 📅 2026-11-16 11:09:00 - Tinh Giản Chân Trang (Footer) Trên Trang Giới Thiệu
+- **Yêu cầu của người dùng**:
+  - Loại bỏ khối CTA chữ lớn (`TRỌN VẸN YÊU THƯƠNG.` cùng 2 cột liên kết) ở cuối trang giới thiệu vì không cần thiết.
+- **Nội dung đã triển khai**:
+  - Tại `src/app/page.tsx`: Xóa bỏ phần Grand Statement CTA và giữ lại thanh Footer tối giản, gọn gàng ở đáy trang.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+
+---
+
+### 📅 2026-11-16 11:24:45 - Bổ Sung Animation Cuộn Mượt (`easeInOutCubic`) & Active Pill Cho Toàn Bộ Nút Điều Hướng Trang Giới Thiệu
+- **Yêu cầu của người dùng**:
+  - Tạo hiệu ứng cuộn mượt mà (smooth scroll animation) khi bấm vào các mục trên thanh menu và kiểm tra đồng bộ cho tất cả các nút trên toàn bộ trang giới thiệu.
+- **Nội dung đã triển khai**:
+  - Tại `src/app/page.tsx`:
+    1. Xây dựng bộ máy cuộn tùy chỉnh `scrollToSection` dùng `requestAnimationFrame` + đường cong gia tốc `easeInOutCubic` (tự động bù trừ chiều cao thanh header `76px` và tự nhường quyền nếu người dùng lăn chuột giữa chừng).
+    2. Tích hợp **Active Section Spy** & hiệu ứng viên nang trượt mượt (`layoutId="topNavActivePill"` và `layoutId="bottomDockActivePill"` của Framer Motion) theo sát từng mục đang xem.
+    3. Áp dụng đồng bộ 100% cho toàn bộ các nút trên trang: Logo `#top`, 4 nút trên Top Nav, 5 nút trên Floating Bottom Dock, nút `Xem hướng dẫn 3 bước`, liên kết góc phải Hero (`Âm & Dương Lịch • Nhắc Hẹn 24/7`) và 5 liên kết ở Footer dưới cùng.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.

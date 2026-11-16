@@ -34,6 +34,7 @@ import { EventFormDrawer } from "@/components/events/event-form-drawer";
 import { useEvents } from "@/hooks/use-events";
 import { isLeapYear } from "@/lib/date-utils";
 import { convertLunar2Solar } from "@/lib/lunar/amlich";
+import { getTimeForOffset } from "@/lib/reminder-time-utils";
 
 interface MonthCalendarViewProps {
   events?: EventWithMeta[];
@@ -1346,16 +1347,29 @@ export function MonthCalendarView({
                     remindDaysList
                       .slice()
                       .sort((a, b) => b - a)
-                      .map((d) => (
-                        <span
-                          key={d}
-                          className="inline-flex items-center px-2.5 py-1 rounded-xl bg-card border border-border text-xs font-semibold text-foreground shadow-2xs"
-                        >
-                          {d === 0 ? "Đúng ngày" : `Trước ${d} ngày`}
-                        </span>
-                      ))
+                      .map((d) => {
+                        const specificTime = getTimeForOffset(viewingEvent.remind_time, d);
+                        return (
+                          <span
+                            key={d}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-card border border-border text-xs font-semibold text-foreground shadow-2xs"
+                          >
+                            <span>{d === 0 ? "Đúng ngày" : `Trước ${d} ngày`}</span>
+                            <span className="inline-flex items-center gap-1 font-mono text-[11px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded-md">
+                              <Clock className="w-3 h-3" />
+                              {specificTime}
+                            </span>
+                          </span>
+                        );
+                      })
                   ) : (
-                    <span className="text-xs text-muted-foreground">Nhắc đúng ngày diễn ra</span>
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-card border border-border text-xs font-semibold text-foreground shadow-2xs">
+                      <span>Đúng ngày</span>
+                      <span className="inline-flex items-center gap-1 font-mono text-[11px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded-md">
+                        <Clock className="w-3 h-3" />
+                        {getTimeForOffset(viewingEvent.remind_time, 0)}
+                      </span>
+                    </span>
                   )}
                 </div>
               </div>
