@@ -3560,6 +3560,22 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
+- **Yêu cầu của người dùng**:
+  - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
+  - Phần mốc nhắc nhở trước chỉ cần hiển thị mốc trước bao nhiêu ngày là đủ, không cần gắn giờ kèm theo.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/calendar/month-calendar-view.tsx`:
+     - Xóa bỏ hoàn toàn card "Giờ thông báo email" và icon `Clock` đi kèm trong modal chi tiết sự kiện.
+     - Đổi tiêu đề khối mốc nhắc nhở từ `"Mốc nhắc nhở trước & Giờ thông báo"` thành `"Mốc nhắc nhở trước"`.
+     - Tối giản các chip mốc ngày thành dạng thẻ gọn gàng: `[Đúng ngày]`, `[Trước 1 ngày]`, `[Trước X ngày]`, loại bỏ các nhãn giờ kỹ thuật thừa (`07:00`, `21:00`).
+     - Dọn dẹp các import không còn sử dụng: `formatRemindTimeDisplay`, `getTimeForOffset`.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
 ### 📅 2026-11-11 08:07:58 - Khôi Phục & Hoàn Thiện Hiệu Ứng Chữ Loading Lottie Khi Chuyển Tab
 - **Yêu cầu của người dùng**:
   - Khôi phục lại hiệu ứng chữ "loading" uốn lượn khi chuyển tab (người dùng phản ánh "sao lại mất hiệu ứng chữ loading rồi").
@@ -3576,6 +3592,22 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
      - Kích hoạt mượt mà ngay khi click tab và tự mờ dần biến mất khi trang tải xong.
   3. `src/app/(dashboard)/loading.tsx`:
      - Tối giản thành placeholder rỗng để đảm bảo không bao giờ bị double loading.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
+- **Yêu cầu của người dùng**:
+  - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
+  - Phần mốc nhắc nhở trước chỉ cần hiển thị mốc trước bao nhiêu ngày là đủ, không cần gắn giờ kèm theo.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/calendar/month-calendar-view.tsx`:
+     - Xóa bỏ hoàn toàn card "Giờ thông báo email" và icon `Clock` đi kèm trong modal chi tiết sự kiện.
+     - Đổi tiêu đề khối mốc nhắc nhở từ `"Mốc nhắc nhở trước & Giờ thông báo"` thành `"Mốc nhắc nhở trước"`.
+     - Tối giản các chip mốc ngày thành dạng thẻ gọn gàng: `[Đúng ngày]`, `[Trước 1 ngày]`, `[Trước X ngày]`, loại bỏ các nhãn giờ kỹ thuật thừa (`07:00`, `21:00`).
+     - Dọn dẹp các import không còn sử dụng: `formatRemindTimeDisplay`, `getTimeForOffset`.
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
@@ -3599,6 +3631,22 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
+- **Yêu cầu của người dùng**:
+  - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
+  - Phần mốc nhắc nhở trước chỉ cần hiển thị mốc trước bao nhiêu ngày là đủ, không cần gắn giờ kèm theo.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/calendar/month-calendar-view.tsx`:
+     - Xóa bỏ hoàn toàn card "Giờ thông báo email" và icon `Clock` đi kèm trong modal chi tiết sự kiện.
+     - Đổi tiêu đề khối mốc nhắc nhở từ `"Mốc nhắc nhở trước & Giờ thông báo"` thành `"Mốc nhắc nhở trước"`.
+     - Tối giản các chip mốc ngày thành dạng thẻ gọn gàng: `[Đúng ngày]`, `[Trước 1 ngày]`, `[Trước X ngày]`, loại bỏ các nhãn giờ kỹ thuật thừa (`07:00`, `21:00`).
+     - Dọn dẹp các import không còn sử dụng: `formatRemindTimeDisplay`, `getTimeForOffset`.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
 ### 📅 2026-11-11 08:07:58 - Khôi Phục & Hoàn Thiện Hiệu Ứng Chữ Loading Lottie Khi Chuyển Tab
 - **Yêu cầu của người dùng**:
   - Khôi phục lại hiệu ứng chữ "loading" uốn lượn khi chuyển tab (người dùng phản ánh "sao lại mất hiệu ứng chữ loading rồi").
@@ -3615,6 +3663,22 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
      - Kích hoạt mượt mà ngay khi click tab và tự mờ dần biến mất khi trang tải xong.
   3. `src/app/(dashboard)/loading.tsx`:
      - Tối giản thành placeholder rỗng để đảm bảo không bao giờ bị double loading.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
+- **Yêu cầu của người dùng**:
+  - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
+  - Phần mốc nhắc nhở trước chỉ cần hiển thị mốc trước bao nhiêu ngày là đủ, không cần gắn giờ kèm theo.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/calendar/month-calendar-view.tsx`:
+     - Xóa bỏ hoàn toàn card "Giờ thông báo email" và icon `Clock` đi kèm trong modal chi tiết sự kiện.
+     - Đổi tiêu đề khối mốc nhắc nhở từ `"Mốc nhắc nhở trước & Giờ thông báo"` thành `"Mốc nhắc nhở trước"`.
+     - Tối giản các chip mốc ngày thành dạng thẻ gọn gàng: `[Đúng ngày]`, `[Trước 1 ngày]`, `[Trước X ngày]`, loại bỏ các nhãn giờ kỹ thuật thừa (`07:00`, `21:00`).
+     - Dọn dẹp các import không còn sử dụng: `formatRemindTimeDisplay`, `getTimeForOffset`.
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
@@ -3635,6 +3699,22 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
+- **Yêu cầu của người dùng**:
+  - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
+  - Phần mốc nhắc nhở trước chỉ cần hiển thị mốc trước bao nhiêu ngày là đủ, không cần gắn giờ kèm theo.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/calendar/month-calendar-view.tsx`:
+     - Xóa bỏ hoàn toàn card "Giờ thông báo email" và icon `Clock` đi kèm trong modal chi tiết sự kiện.
+     - Đổi tiêu đề khối mốc nhắc nhở từ `"Mốc nhắc nhở trước & Giờ thông báo"` thành `"Mốc nhắc nhở trước"`.
+     - Tối giản các chip mốc ngày thành dạng thẻ gọn gàng: `[Đúng ngày]`, `[Trước 1 ngày]`, `[Trước X ngày]`, loại bỏ các nhãn giờ kỹ thuật thừa (`07:00`, `21:00`).
+     - Dọn dẹp các import không còn sử dụng: `formatRemindTimeDisplay`, `getTimeForOffset`.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
 ### 📅 2026-11-11 08:07:58 - Khôi Phục & Hoàn Thiện Hiệu Ứng Chữ Loading Lottie Khi Chuyển Tab
 - **Yêu cầu của người dùng**:
   - Khôi phục lại hiệu ứng chữ "loading" uốn lượn khi chuyển tab (người dùng phản ánh "sao lại mất hiệu ứng chữ loading rồi").
@@ -3651,6 +3731,22 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
      - Kích hoạt mượt mà ngay khi click tab và tự mờ dần biến mất khi trang tải xong.
   3. `src/app/(dashboard)/loading.tsx`:
      - Tối giản thành placeholder rỗng để đảm bảo không bao giờ bị double loading.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
+- **Yêu cầu của người dùng**:
+  - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
+  - Phần mốc nhắc nhở trước chỉ cần hiển thị mốc trước bao nhiêu ngày là đủ, không cần gắn giờ kèm theo.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/calendar/month-calendar-view.tsx`:
+     - Xóa bỏ hoàn toàn card "Giờ thông báo email" và icon `Clock` đi kèm trong modal chi tiết sự kiện.
+     - Đổi tiêu đề khối mốc nhắc nhở từ `"Mốc nhắc nhở trước & Giờ thông báo"` thành `"Mốc nhắc nhở trước"`.
+     - Tối giản các chip mốc ngày thành dạng thẻ gọn gàng: `[Đúng ngày]`, `[Trước 1 ngày]`, `[Trước X ngày]`, loại bỏ các nhãn giờ kỹ thuật thừa (`07:00`, `21:00`).
+     - Dọn dẹp các import không còn sử dụng: `formatRemindTimeDisplay`, `getTimeForOffset`.
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
@@ -3674,6 +3770,22 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
+- **Yêu cầu của người dùng**:
+  - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
+  - Phần mốc nhắc nhở trước chỉ cần hiển thị mốc trước bao nhiêu ngày là đủ, không cần gắn giờ kèm theo.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/calendar/month-calendar-view.tsx`:
+     - Xóa bỏ hoàn toàn card "Giờ thông báo email" và icon `Clock` đi kèm trong modal chi tiết sự kiện.
+     - Đổi tiêu đề khối mốc nhắc nhở từ `"Mốc nhắc nhở trước & Giờ thông báo"` thành `"Mốc nhắc nhở trước"`.
+     - Tối giản các chip mốc ngày thành dạng thẻ gọn gàng: `[Đúng ngày]`, `[Trước 1 ngày]`, `[Trước X ngày]`, loại bỏ các nhãn giờ kỹ thuật thừa (`07:00`, `21:00`).
+     - Dọn dẹp các import không còn sử dụng: `formatRemindTimeDisplay`, `getTimeForOffset`.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
 ### 📅 2026-11-11 08:07:58 - Khôi Phục & Hoàn Thiện Hiệu Ứng Chữ Loading Lottie Khi Chuyển Tab
 - **Yêu cầu của người dùng**:
   - Khôi phục lại hiệu ứng chữ "loading" uốn lượn khi chuyển tab (người dùng phản ánh "sao lại mất hiệu ứng chữ loading rồi").
@@ -3690,6 +3802,22 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
      - Kích hoạt mượt mà ngay khi click tab và tự mờ dần biến mất khi trang tải xong.
   3. `src/app/(dashboard)/loading.tsx`:
      - Tối giản thành placeholder rỗng để đảm bảo không bao giờ bị double loading.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
+- **Yêu cầu của người dùng**:
+  - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
+  - Phần mốc nhắc nhở trước chỉ cần hiển thị mốc trước bao nhiêu ngày là đủ, không cần gắn giờ kèm theo.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/calendar/month-calendar-view.tsx`:
+     - Xóa bỏ hoàn toàn card "Giờ thông báo email" và icon `Clock` đi kèm trong modal chi tiết sự kiện.
+     - Đổi tiêu đề khối mốc nhắc nhở từ `"Mốc nhắc nhở trước & Giờ thông báo"` thành `"Mốc nhắc nhở trước"`.
+     - Tối giản các chip mốc ngày thành dạng thẻ gọn gàng: `[Đúng ngày]`, `[Trước 1 ngày]`, `[Trước X ngày]`, loại bỏ các nhãn giờ kỹ thuật thừa (`07:00`, `21:00`).
+     - Dọn dẹp các import không còn sử dụng: `formatRemindTimeDisplay`, `getTimeForOffset`.
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
@@ -3714,6 +3842,22 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
+- **Yêu cầu của người dùng**:
+  - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
+  - Phần mốc nhắc nhở trước chỉ cần hiển thị mốc trước bao nhiêu ngày là đủ, không cần gắn giờ kèm theo.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/calendar/month-calendar-view.tsx`:
+     - Xóa bỏ hoàn toàn card "Giờ thông báo email" và icon `Clock` đi kèm trong modal chi tiết sự kiện.
+     - Đổi tiêu đề khối mốc nhắc nhở từ `"Mốc nhắc nhở trước & Giờ thông báo"` thành `"Mốc nhắc nhở trước"`.
+     - Tối giản các chip mốc ngày thành dạng thẻ gọn gàng: `[Đúng ngày]`, `[Trước 1 ngày]`, `[Trước X ngày]`, loại bỏ các nhãn giờ kỹ thuật thừa (`07:00`, `21:00`).
+     - Dọn dẹp các import không còn sử dụng: `formatRemindTimeDisplay`, `getTimeForOffset`.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
 ### 📅 2026-11-11 08:07:58 - Khôi Phục & Hoàn Thiện Hiệu Ứng Chữ Loading Lottie Khi Chuyển Tab
 - **Yêu cầu của người dùng**:
   - Khôi phục lại hiệu ứng chữ "loading" uốn lượn khi chuyển tab (người dùng phản ánh "sao lại mất hiệu ứng chữ loading rồi").
@@ -3730,6 +3874,22 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
      - Kích hoạt mượt mà ngay khi click tab và tự mờ dần biến mất khi trang tải xong.
   3. `src/app/(dashboard)/loading.tsx`:
      - Tối giản thành placeholder rỗng để đảm bảo không bao giờ bị double loading.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
+- **Yêu cầu của người dùng**:
+  - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
+  - Phần mốc nhắc nhở trước chỉ cần hiển thị mốc trước bao nhiêu ngày là đủ, không cần gắn giờ kèm theo.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/calendar/month-calendar-view.tsx`:
+     - Xóa bỏ hoàn toàn card "Giờ thông báo email" và icon `Clock` đi kèm trong modal chi tiết sự kiện.
+     - Đổi tiêu đề khối mốc nhắc nhở từ `"Mốc nhắc nhở trước & Giờ thông báo"` thành `"Mốc nhắc nhở trước"`.
+     - Tối giản các chip mốc ngày thành dạng thẻ gọn gàng: `[Đúng ngày]`, `[Trước 1 ngày]`, `[Trước X ngày]`, loại bỏ các nhãn giờ kỹ thuật thừa (`07:00`, `21:00`).
+     - Dọn dẹp các import không còn sử dụng: `formatRemindTimeDisplay`, `getTimeForOffset`.
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
@@ -3753,6 +3913,22 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
+- **Yêu cầu của người dùng**:
+  - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
+  - Phần mốc nhắc nhở trước chỉ cần hiển thị mốc trước bao nhiêu ngày là đủ, không cần gắn giờ kèm theo.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/calendar/month-calendar-view.tsx`:
+     - Xóa bỏ hoàn toàn card "Giờ thông báo email" và icon `Clock` đi kèm trong modal chi tiết sự kiện.
+     - Đổi tiêu đề khối mốc nhắc nhở từ `"Mốc nhắc nhở trước & Giờ thông báo"` thành `"Mốc nhắc nhở trước"`.
+     - Tối giản các chip mốc ngày thành dạng thẻ gọn gàng: `[Đúng ngày]`, `[Trước 1 ngày]`, `[Trước X ngày]`, loại bỏ các nhãn giờ kỹ thuật thừa (`07:00`, `21:00`).
+     - Dọn dẹp các import không còn sử dụng: `formatRemindTimeDisplay`, `getTimeForOffset`.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
 ### 📅 2026-11-11 08:07:58 - Khôi Phục & Hoàn Thiện Hiệu Ứng Chữ Loading Lottie Khi Chuyển Tab
 - **Yêu cầu của người dùng**:
   - Khôi phục lại hiệu ứng chữ "loading" uốn lượn khi chuyển tab (người dùng phản ánh "sao lại mất hiệu ứng chữ loading rồi").
@@ -3769,6 +3945,22 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
      - Kích hoạt mượt mà ngay khi click tab và tự mờ dần biến mất khi trang tải xong.
   3. `src/app/(dashboard)/loading.tsx`:
      - Tối giản thành placeholder rỗng để đảm bảo không bao giờ bị double loading.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
+- **Yêu cầu của người dùng**:
+  - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
+  - Phần mốc nhắc nhở trước chỉ cần hiển thị mốc trước bao nhiêu ngày là đủ, không cần gắn giờ kèm theo.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/calendar/month-calendar-view.tsx`:
+     - Xóa bỏ hoàn toàn card "Giờ thông báo email" và icon `Clock` đi kèm trong modal chi tiết sự kiện.
+     - Đổi tiêu đề khối mốc nhắc nhở từ `"Mốc nhắc nhở trước & Giờ thông báo"` thành `"Mốc nhắc nhở trước"`.
+     - Tối giản các chip mốc ngày thành dạng thẻ gọn gàng: `[Đúng ngày]`, `[Trước 1 ngày]`, `[Trước X ngày]`, loại bỏ các nhãn giờ kỹ thuật thừa (`07:00`, `21:00`).
+     - Dọn dẹp các import không còn sử dụng: `formatRemindTimeDisplay`, `getTimeForOffset`.
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
@@ -3789,6 +3981,22 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
+- **Yêu cầu của người dùng**:
+  - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
+  - Phần mốc nhắc nhở trước chỉ cần hiển thị mốc trước bao nhiêu ngày là đủ, không cần gắn giờ kèm theo.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/calendar/month-calendar-view.tsx`:
+     - Xóa bỏ hoàn toàn card "Giờ thông báo email" và icon `Clock` đi kèm trong modal chi tiết sự kiện.
+     - Đổi tiêu đề khối mốc nhắc nhở từ `"Mốc nhắc nhở trước & Giờ thông báo"` thành `"Mốc nhắc nhở trước"`.
+     - Tối giản các chip mốc ngày thành dạng thẻ gọn gàng: `[Đúng ngày]`, `[Trước 1 ngày]`, `[Trước X ngày]`, loại bỏ các nhãn giờ kỹ thuật thừa (`07:00`, `21:00`).
+     - Dọn dẹp các import không còn sử dụng: `formatRemindTimeDisplay`, `getTimeForOffset`.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
 ### 📅 2026-11-11 08:07:58 - Khôi Phục & Hoàn Thiện Hiệu Ứng Chữ Loading Lottie Khi Chuyển Tab
 - **Yêu cầu của người dùng**:
   - Khôi phục lại hiệu ứng chữ "loading" uốn lượn khi chuyển tab (người dùng phản ánh "sao lại mất hiệu ứng chữ loading rồi").
@@ -3805,6 +4013,22 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
      - Kích hoạt mượt mà ngay khi click tab và tự mờ dần biến mất khi trang tải xong.
   3. `src/app/(dashboard)/loading.tsx`:
      - Tối giản thành placeholder rỗng để đảm bảo không bao giờ bị double loading.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
+- **Yêu cầu của người dùng**:
+  - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
+  - Phần mốc nhắc nhở trước chỉ cần hiển thị mốc trước bao nhiêu ngày là đủ, không cần gắn giờ kèm theo.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/calendar/month-calendar-view.tsx`:
+     - Xóa bỏ hoàn toàn card "Giờ thông báo email" và icon `Clock` đi kèm trong modal chi tiết sự kiện.
+     - Đổi tiêu đề khối mốc nhắc nhở từ `"Mốc nhắc nhở trước & Giờ thông báo"` thành `"Mốc nhắc nhở trước"`.
+     - Tối giản các chip mốc ngày thành dạng thẻ gọn gàng: `[Đúng ngày]`, `[Trước 1 ngày]`, `[Trước X ngày]`, loại bỏ các nhãn giờ kỹ thuật thừa (`07:00`, `21:00`).
+     - Dọn dẹp các import không còn sử dụng: `formatRemindTimeDisplay`, `getTimeForOffset`.
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
@@ -3828,6 +4052,22 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
+- **Yêu cầu của người dùng**:
+  - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
+  - Phần mốc nhắc nhở trước chỉ cần hiển thị mốc trước bao nhiêu ngày là đủ, không cần gắn giờ kèm theo.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/calendar/month-calendar-view.tsx`:
+     - Xóa bỏ hoàn toàn card "Giờ thông báo email" và icon `Clock` đi kèm trong modal chi tiết sự kiện.
+     - Đổi tiêu đề khối mốc nhắc nhở từ `"Mốc nhắc nhở trước & Giờ thông báo"` thành `"Mốc nhắc nhở trước"`.
+     - Tối giản các chip mốc ngày thành dạng thẻ gọn gàng: `[Đúng ngày]`, `[Trước 1 ngày]`, `[Trước X ngày]`, loại bỏ các nhãn giờ kỹ thuật thừa (`07:00`, `21:00`).
+     - Dọn dẹp các import không còn sử dụng: `formatRemindTimeDisplay`, `getTimeForOffset`.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
 ### 📅 2026-11-11 08:07:58 - Khôi Phục & Hoàn Thiện Hiệu Ứng Chữ Loading Lottie Khi Chuyển Tab
 - **Yêu cầu của người dùng**:
   - Khôi phục lại hiệu ứng chữ "loading" uốn lượn khi chuyển tab (người dùng phản ánh "sao lại mất hiệu ứng chữ loading rồi").
@@ -3844,6 +4084,22 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
      - Kích hoạt mượt mà ngay khi click tab và tự mờ dần biến mất khi trang tải xong.
   3. `src/app/(dashboard)/loading.tsx`:
      - Tối giản thành placeholder rỗng để đảm bảo không bao giờ bị double loading.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
+- **Yêu cầu của người dùng**:
+  - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
+  - Phần mốc nhắc nhở trước chỉ cần hiển thị mốc trước bao nhiêu ngày là đủ, không cần gắn giờ kèm theo.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/calendar/month-calendar-view.tsx`:
+     - Xóa bỏ hoàn toàn card "Giờ thông báo email" và icon `Clock` đi kèm trong modal chi tiết sự kiện.
+     - Đổi tiêu đề khối mốc nhắc nhở từ `"Mốc nhắc nhở trước & Giờ thông báo"` thành `"Mốc nhắc nhở trước"`.
+     - Tối giản các chip mốc ngày thành dạng thẻ gọn gàng: `[Đúng ngày]`, `[Trước 1 ngày]`, `[Trước X ngày]`, loại bỏ các nhãn giờ kỹ thuật thừa (`07:00`, `21:00`).
+     - Dọn dẹp các import không còn sử dụng: `formatRemindTimeDisplay`, `getTimeForOffset`.
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
@@ -3866,6 +4122,22 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
+- **Yêu cầu của người dùng**:
+  - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
+  - Phần mốc nhắc nhở trước chỉ cần hiển thị mốc trước bao nhiêu ngày là đủ, không cần gắn giờ kèm theo.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/calendar/month-calendar-view.tsx`:
+     - Xóa bỏ hoàn toàn card "Giờ thông báo email" và icon `Clock` đi kèm trong modal chi tiết sự kiện.
+     - Đổi tiêu đề khối mốc nhắc nhở từ `"Mốc nhắc nhở trước & Giờ thông báo"` thành `"Mốc nhắc nhở trước"`.
+     - Tối giản các chip mốc ngày thành dạng thẻ gọn gàng: `[Đúng ngày]`, `[Trước 1 ngày]`, `[Trước X ngày]`, loại bỏ các nhãn giờ kỹ thuật thừa (`07:00`, `21:00`).
+     - Dọn dẹp các import không còn sử dụng: `formatRemindTimeDisplay`, `getTimeForOffset`.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
 ### 📅 2026-11-11 08:07:58 - Khôi Phục & Hoàn Thiện Hiệu Ứng Chữ Loading Lottie Khi Chuyển Tab
 - **Yêu cầu của người dùng**:
   - Khôi phục lại hiệu ứng chữ "loading" uốn lượn khi chuyển tab (người dùng phản ánh "sao lại mất hiệu ứng chữ loading rồi").
@@ -3882,6 +4154,22 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
      - Kích hoạt mượt mà ngay khi click tab và tự mờ dần biến mất khi trang tải xong.
   3. `src/app/(dashboard)/loading.tsx`:
      - Tối giản thành placeholder rỗng để đảm bảo không bao giờ bị double loading.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
+- **Yêu cầu của người dùng**:
+  - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
+  - Phần mốc nhắc nhở trước chỉ cần hiển thị mốc trước bao nhiêu ngày là đủ, không cần gắn giờ kèm theo.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/calendar/month-calendar-view.tsx`:
+     - Xóa bỏ hoàn toàn card "Giờ thông báo email" và icon `Clock` đi kèm trong modal chi tiết sự kiện.
+     - Đổi tiêu đề khối mốc nhắc nhở từ `"Mốc nhắc nhở trước & Giờ thông báo"` thành `"Mốc nhắc nhở trước"`.
+     - Tối giản các chip mốc ngày thành dạng thẻ gọn gàng: `[Đúng ngày]`, `[Trước 1 ngày]`, `[Trước X ngày]`, loại bỏ các nhãn giờ kỹ thuật thừa (`07:00`, `21:00`).
+     - Dọn dẹp các import không còn sử dụng: `formatRemindTimeDisplay`, `getTimeForOffset`.
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
@@ -3905,6 +4193,22 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
+- **Yêu cầu của người dùng**:
+  - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
+  - Phần mốc nhắc nhở trước chỉ cần hiển thị mốc trước bao nhiêu ngày là đủ, không cần gắn giờ kèm theo.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/calendar/month-calendar-view.tsx`:
+     - Xóa bỏ hoàn toàn card "Giờ thông báo email" và icon `Clock` đi kèm trong modal chi tiết sự kiện.
+     - Đổi tiêu đề khối mốc nhắc nhở từ `"Mốc nhắc nhở trước & Giờ thông báo"` thành `"Mốc nhắc nhở trước"`.
+     - Tối giản các chip mốc ngày thành dạng thẻ gọn gàng: `[Đúng ngày]`, `[Trước 1 ngày]`, `[Trước X ngày]`, loại bỏ các nhãn giờ kỹ thuật thừa (`07:00`, `21:00`).
+     - Dọn dẹp các import không còn sử dụng: `formatRemindTimeDisplay`, `getTimeForOffset`.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
 ### 📅 2026-11-11 08:07:58 - Khôi Phục & Hoàn Thiện Hiệu Ứng Chữ Loading Lottie Khi Chuyển Tab
 - **Yêu cầu của người dùng**:
   - Khôi phục lại hiệu ứng chữ "loading" uốn lượn khi chuyển tab (người dùng phản ánh "sao lại mất hiệu ứng chữ loading rồi").
@@ -3921,6 +4225,22 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
      - Kích hoạt mượt mà ngay khi click tab và tự mờ dần biến mất khi trang tải xong.
   3. `src/app/(dashboard)/loading.tsx`:
      - Tối giản thành placeholder rỗng để đảm bảo không bao giờ bị double loading.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
+- **Yêu cầu của người dùng**:
+  - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
+  - Phần mốc nhắc nhở trước chỉ cần hiển thị mốc trước bao nhiêu ngày là đủ, không cần gắn giờ kèm theo.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/calendar/month-calendar-view.tsx`:
+     - Xóa bỏ hoàn toàn card "Giờ thông báo email" và icon `Clock` đi kèm trong modal chi tiết sự kiện.
+     - Đổi tiêu đề khối mốc nhắc nhở từ `"Mốc nhắc nhở trước & Giờ thông báo"` thành `"Mốc nhắc nhở trước"`.
+     - Tối giản các chip mốc ngày thành dạng thẻ gọn gàng: `[Đúng ngày]`, `[Trước 1 ngày]`, `[Trước X ngày]`, loại bỏ các nhãn giờ kỹ thuật thừa (`07:00`, `21:00`).
+     - Dọn dẹp các import không còn sử dụng: `formatRemindTimeDisplay`, `getTimeForOffset`.
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
@@ -3941,6 +4261,22 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
+- **Yêu cầu của người dùng**:
+  - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
+  - Phần mốc nhắc nhở trước chỉ cần hiển thị mốc trước bao nhiêu ngày là đủ, không cần gắn giờ kèm theo.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/calendar/month-calendar-view.tsx`:
+     - Xóa bỏ hoàn toàn card "Giờ thông báo email" và icon `Clock` đi kèm trong modal chi tiết sự kiện.
+     - Đổi tiêu đề khối mốc nhắc nhở từ `"Mốc nhắc nhở trước & Giờ thông báo"` thành `"Mốc nhắc nhở trước"`.
+     - Tối giản các chip mốc ngày thành dạng thẻ gọn gàng: `[Đúng ngày]`, `[Trước 1 ngày]`, `[Trước X ngày]`, loại bỏ các nhãn giờ kỹ thuật thừa (`07:00`, `21:00`).
+     - Dọn dẹp các import không còn sử dụng: `formatRemindTimeDisplay`, `getTimeForOffset`.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
 ### 📅 2026-11-11 08:07:58 - Khôi Phục & Hoàn Thiện Hiệu Ứng Chữ Loading Lottie Khi Chuyển Tab
 - **Yêu cầu của người dùng**:
   - Khôi phục lại hiệu ứng chữ "loading" uốn lượn khi chuyển tab (người dùng phản ánh "sao lại mất hiệu ứng chữ loading rồi").
@@ -3957,6 +4293,22 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
      - Kích hoạt mượt mà ngay khi click tab và tự mờ dần biến mất khi trang tải xong.
   3. `src/app/(dashboard)/loading.tsx`:
      - Tối giản thành placeholder rỗng để đảm bảo không bao giờ bị double loading.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
+- **Yêu cầu của người dùng**:
+  - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
+  - Phần mốc nhắc nhở trước chỉ cần hiển thị mốc trước bao nhiêu ngày là đủ, không cần gắn giờ kèm theo.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/calendar/month-calendar-view.tsx`:
+     - Xóa bỏ hoàn toàn card "Giờ thông báo email" và icon `Clock` đi kèm trong modal chi tiết sự kiện.
+     - Đổi tiêu đề khối mốc nhắc nhở từ `"Mốc nhắc nhở trước & Giờ thông báo"` thành `"Mốc nhắc nhở trước"`.
+     - Tối giản các chip mốc ngày thành dạng thẻ gọn gàng: `[Đúng ngày]`, `[Trước 1 ngày]`, `[Trước X ngày]`, loại bỏ các nhãn giờ kỹ thuật thừa (`07:00`, `21:00`).
+     - Dọn dẹp các import không còn sử dụng: `formatRemindTimeDisplay`, `getTimeForOffset`.
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
@@ -3980,6 +4332,22 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
+- **Yêu cầu của người dùng**:
+  - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
+  - Phần mốc nhắc nhở trước chỉ cần hiển thị mốc trước bao nhiêu ngày là đủ, không cần gắn giờ kèm theo.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/calendar/month-calendar-view.tsx`:
+     - Xóa bỏ hoàn toàn card "Giờ thông báo email" và icon `Clock` đi kèm trong modal chi tiết sự kiện.
+     - Đổi tiêu đề khối mốc nhắc nhở từ `"Mốc nhắc nhở trước & Giờ thông báo"` thành `"Mốc nhắc nhở trước"`.
+     - Tối giản các chip mốc ngày thành dạng thẻ gọn gàng: `[Đúng ngày]`, `[Trước 1 ngày]`, `[Trước X ngày]`, loại bỏ các nhãn giờ kỹ thuật thừa (`07:00`, `21:00`).
+     - Dọn dẹp các import không còn sử dụng: `formatRemindTimeDisplay`, `getTimeForOffset`.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
 ### 📅 2026-11-11 08:07:58 - Khôi Phục & Hoàn Thiện Hiệu Ứng Chữ Loading Lottie Khi Chuyển Tab
 - **Yêu cầu của người dùng**:
   - Khôi phục lại hiệu ứng chữ "loading" uốn lượn khi chuyển tab (người dùng phản ánh "sao lại mất hiệu ứng chữ loading rồi").
@@ -3996,6 +4364,22 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
      - Kích hoạt mượt mà ngay khi click tab và tự mờ dần biến mất khi trang tải xong.
   3. `src/app/(dashboard)/loading.tsx`:
      - Tối giản thành placeholder rỗng để đảm bảo không bao giờ bị double loading.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
+- **Yêu cầu của người dùng**:
+  - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
+  - Phần mốc nhắc nhở trước chỉ cần hiển thị mốc trước bao nhiêu ngày là đủ, không cần gắn giờ kèm theo.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/calendar/month-calendar-view.tsx`:
+     - Xóa bỏ hoàn toàn card "Giờ thông báo email" và icon `Clock` đi kèm trong modal chi tiết sự kiện.
+     - Đổi tiêu đề khối mốc nhắc nhở từ `"Mốc nhắc nhở trước & Giờ thông báo"` thành `"Mốc nhắc nhở trước"`.
+     - Tối giản các chip mốc ngày thành dạng thẻ gọn gàng: `[Đúng ngày]`, `[Trước 1 ngày]`, `[Trước X ngày]`, loại bỏ các nhãn giờ kỹ thuật thừa (`07:00`, `21:00`).
+     - Dọn dẹp các import không còn sử dụng: `formatRemindTimeDisplay`, `getTimeForOffset`.
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
@@ -4020,6 +4404,22 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
+- **Yêu cầu của người dùng**:
+  - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
+  - Phần mốc nhắc nhở trước chỉ cần hiển thị mốc trước bao nhiêu ngày là đủ, không cần gắn giờ kèm theo.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/calendar/month-calendar-view.tsx`:
+     - Xóa bỏ hoàn toàn card "Giờ thông báo email" và icon `Clock` đi kèm trong modal chi tiết sự kiện.
+     - Đổi tiêu đề khối mốc nhắc nhở từ `"Mốc nhắc nhở trước & Giờ thông báo"` thành `"Mốc nhắc nhở trước"`.
+     - Tối giản các chip mốc ngày thành dạng thẻ gọn gàng: `[Đúng ngày]`, `[Trước 1 ngày]`, `[Trước X ngày]`, loại bỏ các nhãn giờ kỹ thuật thừa (`07:00`, `21:00`).
+     - Dọn dẹp các import không còn sử dụng: `formatRemindTimeDisplay`, `getTimeForOffset`.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
 ### 📅 2026-11-11 08:07:58 - Khôi Phục & Hoàn Thiện Hiệu Ứng Chữ Loading Lottie Khi Chuyển Tab
 - **Yêu cầu của người dùng**:
   - Khôi phục lại hiệu ứng chữ "loading" uốn lượn khi chuyển tab (người dùng phản ánh "sao lại mất hiệu ứng chữ loading rồi").
@@ -4036,6 +4436,22 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
      - Kích hoạt mượt mà ngay khi click tab và tự mờ dần biến mất khi trang tải xong.
   3. `src/app/(dashboard)/loading.tsx`:
      - Tối giản thành placeholder rỗng để đảm bảo không bao giờ bị double loading.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
+- **Yêu cầu của người dùng**:
+  - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
+  - Phần mốc nhắc nhở trước chỉ cần hiển thị mốc trước bao nhiêu ngày là đủ, không cần gắn giờ kèm theo.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/calendar/month-calendar-view.tsx`:
+     - Xóa bỏ hoàn toàn card "Giờ thông báo email" và icon `Clock` đi kèm trong modal chi tiết sự kiện.
+     - Đổi tiêu đề khối mốc nhắc nhở từ `"Mốc nhắc nhở trước & Giờ thông báo"` thành `"Mốc nhắc nhở trước"`.
+     - Tối giản các chip mốc ngày thành dạng thẻ gọn gàng: `[Đúng ngày]`, `[Trước 1 ngày]`, `[Trước X ngày]`, loại bỏ các nhãn giờ kỹ thuật thừa (`07:00`, `21:00`).
+     - Dọn dẹp các import không còn sử dụng: `formatRemindTimeDisplay`, `getTimeForOffset`.
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
@@ -4059,6 +4475,22 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
+- **Yêu cầu của người dùng**:
+  - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
+  - Phần mốc nhắc nhở trước chỉ cần hiển thị mốc trước bao nhiêu ngày là đủ, không cần gắn giờ kèm theo.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/calendar/month-calendar-view.tsx`:
+     - Xóa bỏ hoàn toàn card "Giờ thông báo email" và icon `Clock` đi kèm trong modal chi tiết sự kiện.
+     - Đổi tiêu đề khối mốc nhắc nhở từ `"Mốc nhắc nhở trước & Giờ thông báo"` thành `"Mốc nhắc nhở trước"`.
+     - Tối giản các chip mốc ngày thành dạng thẻ gọn gàng: `[Đúng ngày]`, `[Trước 1 ngày]`, `[Trước X ngày]`, loại bỏ các nhãn giờ kỹ thuật thừa (`07:00`, `21:00`).
+     - Dọn dẹp các import không còn sử dụng: `formatRemindTimeDisplay`, `getTimeForOffset`.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
 ### 📅 2026-11-11 08:07:58 - Khôi Phục & Hoàn Thiện Hiệu Ứng Chữ Loading Lottie Khi Chuyển Tab
 - **Yêu cầu của người dùng**:
   - Khôi phục lại hiệu ứng chữ "loading" uốn lượn khi chuyển tab (người dùng phản ánh "sao lại mất hiệu ứng chữ loading rồi").
@@ -4075,6 +4507,22 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
      - Kích hoạt mượt mà ngay khi click tab và tự mờ dần biến mất khi trang tải xong.
   3. `src/app/(dashboard)/loading.tsx`:
      - Tối giản thành placeholder rỗng để đảm bảo không bao giờ bị double loading.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
+- **Yêu cầu của người dùng**:
+  - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
+  - Phần mốc nhắc nhở trước chỉ cần hiển thị mốc trước bao nhiêu ngày là đủ, không cần gắn giờ kèm theo.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/calendar/month-calendar-view.tsx`:
+     - Xóa bỏ hoàn toàn card "Giờ thông báo email" và icon `Clock` đi kèm trong modal chi tiết sự kiện.
+     - Đổi tiêu đề khối mốc nhắc nhở từ `"Mốc nhắc nhở trước & Giờ thông báo"` thành `"Mốc nhắc nhở trước"`.
+     - Tối giản các chip mốc ngày thành dạng thẻ gọn gàng: `[Đúng ngày]`, `[Trước 1 ngày]`, `[Trước X ngày]`, loại bỏ các nhãn giờ kỹ thuật thừa (`07:00`, `21:00`).
+     - Dọn dẹp các import không còn sử dụng: `formatRemindTimeDisplay`, `getTimeForOffset`.
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
@@ -4095,6 +4543,22 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
+- **Yêu cầu của người dùng**:
+  - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
+  - Phần mốc nhắc nhở trước chỉ cần hiển thị mốc trước bao nhiêu ngày là đủ, không cần gắn giờ kèm theo.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/calendar/month-calendar-view.tsx`:
+     - Xóa bỏ hoàn toàn card "Giờ thông báo email" và icon `Clock` đi kèm trong modal chi tiết sự kiện.
+     - Đổi tiêu đề khối mốc nhắc nhở từ `"Mốc nhắc nhở trước & Giờ thông báo"` thành `"Mốc nhắc nhở trước"`.
+     - Tối giản các chip mốc ngày thành dạng thẻ gọn gàng: `[Đúng ngày]`, `[Trước 1 ngày]`, `[Trước X ngày]`, loại bỏ các nhãn giờ kỹ thuật thừa (`07:00`, `21:00`).
+     - Dọn dẹp các import không còn sử dụng: `formatRemindTimeDisplay`, `getTimeForOffset`.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
 ### 📅 2026-11-11 08:07:58 - Khôi Phục & Hoàn Thiện Hiệu Ứng Chữ Loading Lottie Khi Chuyển Tab
 - **Yêu cầu của người dùng**:
   - Khôi phục lại hiệu ứng chữ "loading" uốn lượn khi chuyển tab (người dùng phản ánh "sao lại mất hiệu ứng chữ loading rồi").
@@ -4111,6 +4575,22 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
      - Kích hoạt mượt mà ngay khi click tab và tự mờ dần biến mất khi trang tải xong.
   3. `src/app/(dashboard)/loading.tsx`:
      - Tối giản thành placeholder rỗng để đảm bảo không bao giờ bị double loading.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
+- **Yêu cầu của người dùng**:
+  - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
+  - Phần mốc nhắc nhở trước chỉ cần hiển thị mốc trước bao nhiêu ngày là đủ, không cần gắn giờ kèm theo.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/calendar/month-calendar-view.tsx`:
+     - Xóa bỏ hoàn toàn card "Giờ thông báo email" và icon `Clock` đi kèm trong modal chi tiết sự kiện.
+     - Đổi tiêu đề khối mốc nhắc nhở từ `"Mốc nhắc nhở trước & Giờ thông báo"` thành `"Mốc nhắc nhở trước"`.
+     - Tối giản các chip mốc ngày thành dạng thẻ gọn gàng: `[Đúng ngày]`, `[Trước 1 ngày]`, `[Trước X ngày]`, loại bỏ các nhãn giờ kỹ thuật thừa (`07:00`, `21:00`).
+     - Dọn dẹp các import không còn sử dụng: `formatRemindTimeDisplay`, `getTimeForOffset`.
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
@@ -4134,6 +4614,22 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 
 ---
 
+### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
+- **Yêu cầu của người dùng**:
+  - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
+  - Phần mốc nhắc nhở trước chỉ cần hiển thị mốc trước bao nhiêu ngày là đủ, không cần gắn giờ kèm theo.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/calendar/month-calendar-view.tsx`:
+     - Xóa bỏ hoàn toàn card "Giờ thông báo email" và icon `Clock` đi kèm trong modal chi tiết sự kiện.
+     - Đổi tiêu đề khối mốc nhắc nhở từ `"Mốc nhắc nhở trước & Giờ thông báo"` thành `"Mốc nhắc nhở trước"`.
+     - Tối giản các chip mốc ngày thành dạng thẻ gọn gàng: `[Đúng ngày]`, `[Trước 1 ngày]`, `[Trước X ngày]`, loại bỏ các nhãn giờ kỹ thuật thừa (`07:00`, `21:00`).
+     - Dọn dẹp các import không còn sử dụng: `formatRemindTimeDisplay`, `getTimeForOffset`.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
 ### 📅 2026-11-11 08:07:58 - Khôi Phục & Hoàn Thiện Hiệu Ứng Chữ Loading Lottie Khi Chuyển Tab
 - **Yêu cầu của người dùng**:
   - Khôi phục lại hiệu ứng chữ "loading" uốn lượn khi chuyển tab (người dùng phản ánh "sao lại mất hiệu ứng chữ loading rồi").
@@ -4150,6 +4646,22 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
      - Kích hoạt mượt mà ngay khi click tab và tự mờ dần biến mất khi trang tải xong.
   3. `src/app/(dashboard)/loading.tsx`:
      - Tối giản thành placeholder rỗng để đảm bảo không bao giờ bị double loading.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+---
+
+### 📅 2026-11-16 08:55:01 - Tối Giản Popup Chi Tiết Sự Kiện (Xóa Giờ Thông Báo Email, Chỉ Giữ Mốc Ngày)
+- **Yêu cầu của người dùng**:
+  - Xóa bỏ ô hiển thị "Giờ thông báo email" vì thừa thãi trong popup xem chi tiết sự kiện trên Lịch.
+  - Phần mốc nhắc nhở trước chỉ cần hiển thị mốc trước bao nhiêu ngày là đủ, không cần gắn giờ kèm theo.
+- **Nội dung đã triển khai**:
+  1. Trong `src/components/calendar/month-calendar-view.tsx`:
+     - Xóa bỏ hoàn toàn card "Giờ thông báo email" và icon `Clock` đi kèm trong modal chi tiết sự kiện.
+     - Đổi tiêu đề khối mốc nhắc nhở từ `"Mốc nhắc nhở trước & Giờ thông báo"` thành `"Mốc nhắc nhở trước"`.
+     - Tối giản các chip mốc ngày thành dạng thẻ gọn gàng: `[Đúng ngày]`, `[Trước 1 ngày]`, `[Trước X ngày]`, loại bỏ các nhãn giờ kỹ thuật thừa (`07:00`, `21:00`).
+     - Dọn dẹp các import không còn sử dụng: `formatRemindTimeDisplay`, `getTimeForOffset`.
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
