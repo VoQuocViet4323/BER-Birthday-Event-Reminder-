@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Mail, ArrowLeft, ArrowRight, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
@@ -10,6 +11,7 @@ export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const router = useRouter();
   const { toast } = useToast();
   const supabase = createClient();
 
@@ -50,7 +52,25 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+    <div className="relative min-h-screen bg-background flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+      {/* Nút Quay lại */}
+      <button
+        type="button"
+        onClick={() => {
+          if (typeof window !== "undefined" && window.history.length > 1) {
+            router.back();
+          } else {
+            router.push("/login");
+          }
+        }}
+        className="fixed top-4 left-4 sm:top-6 sm:left-6 z-30 inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-card/85 dark:bg-[#12121a]/85 backdrop-blur-xl border border-border/80 text-xs font-bold text-muted-foreground hover:text-foreground hover:border-primary/40 transition-all shadow-md hover:scale-105 active:scale-95 group cursor-pointer"
+        aria-label="Quay lại"
+        title="Quay lại"
+      >
+        <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-0.5" />
+        <span>Quay lại</span>
+      </button>
+
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center px-4">
         <Link href="/" className="inline-flex items-center gap-2 mb-6 group">
           <div className="w-12 h-12 rounded-2xl gradient-brand flex items-center justify-center text-white text-2xl shadow-glow">

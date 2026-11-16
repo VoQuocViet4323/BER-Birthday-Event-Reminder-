@@ -325,7 +325,7 @@ export default function HomePage() {
         </div>
       </nav>
 
-      {/* 2. FLOATING BOTTOM EDITORIAL GLASS DOCK */}
+      {/* 2A. DESKTOP FLOATING BOTTOM EDITORIAL GLASS DOCK */}
       <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 hidden md:flex items-center gap-2 p-2 rounded-2xl bg-card/85 dark:bg-[#12121a]/85 backdrop-blur-xl border border-border/80 shadow-2xl">
         <div className="flex items-center gap-1 pr-3 border-r border-border">
           {[
@@ -367,6 +367,50 @@ export default function HomePage() {
         </Link>
       </div>
 
+      {/* 2B. MOBILE COMPACT RIGHT-SIDE GLASS DOCK */}
+      <div className="fixed right-2.5 top-1/2 -translate-y-1/2 z-50 flex md:hidden flex-col items-center gap-1 p-1.5 rounded-2xl bg-card/85 dark:bg-[#12121a]/85 backdrop-blur-xl border border-border/80 shadow-2xl">
+        {[
+          { id: "top", title: "Đầu trang", icon: Sparkles },
+          ...navItems.map((n) => ({ id: n.id, title: n.label, icon: n.icon })),
+        ].map((dock) => {
+          const Icon = dock.icon;
+          const isActive = activeSection === dock.id;
+          return (
+            <a
+              key={dock.id}
+              href={`#${dock.id}`}
+              onClick={(e) => scrollToSection(e, dock.id)}
+              aria-label={dock.title}
+              className={`relative w-9 h-9 flex items-center justify-center rounded-xl transition-all active:scale-90 cursor-pointer ${
+                isActive
+                  ? "text-primary"
+                  : "text-muted-foreground hover:text-primary"
+              }`}
+            >
+              {isActive && (
+                <motion.span
+                  layoutId="mobileDockActivePill"
+                  transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                  className="absolute inset-0 rounded-xl bg-primary/15 border border-primary/30 -z-10"
+                />
+              )}
+              <Icon className="w-4 h-4" />
+            </a>
+          );
+        })}
+
+        <div className="w-5 h-px bg-border/80 my-0.5" />
+
+        <Link
+          href="/dashboard"
+          aria-label="Trải nghiệm ngay"
+          title="Trải nghiệm ngay"
+          className="w-9 h-9 rounded-xl gradient-brand text-white shadow-soft active:scale-90 transition-all flex items-center justify-center"
+        >
+          <ArrowUpRight className="w-4 h-4" />
+        </Link>
+      </div>
+
       {/* 3. HERO SECTION (MIDNIGHT EDITORIAL STYLE) */}
       <header className="relative min-h-screen w-full flex flex-col items-center justify-center px-5 md:px-10 pt-28 pb-28 overflow-hidden">
         {/* Ambient Brand Glows */}
@@ -389,9 +433,9 @@ export default function HomePage() {
             initial={{ opacity: 0, y: -12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4 }}
-            className="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-primary/10 border border-primary/25 text-primary text-[11px] font-extrabold uppercase tracking-[0.18em] mb-8"
+            className="inline-flex items-center gap-2 px-3.5 sm:px-4 py-1.5 rounded-full bg-primary/10 border border-primary/25 text-primary text-[10px] sm:text-[11px] font-extrabold uppercase tracking-[0.12em] sm:tracking-[0.18em] mb-8"
           >
-            <span className="w-2 h-2 rounded-full bg-pink-500 animate-pulse" />
+            <span className="w-2 h-2 rounded-full bg-pink-500 animate-pulse shrink-0" />
             <span>Ứng dụng Nhắc Sinh Nhật & Sự Kiện Thông Minh</span>
           </motion.div>
 

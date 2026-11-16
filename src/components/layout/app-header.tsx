@@ -60,7 +60,7 @@ export function AppHeader({ onOpenCreateModal }: AppHeaderProps) {
     } catch {
       // Ignored if local
     }
-    window.location.href = "/login";
+    window.location.href = "/";
   };
 
   return (

@@ -7593,3 +7593,43 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+
+---
+
+### 📅 2026-11-16 14:22:35 - Hiển Thị Thanh Dock Gọn Bên Phải Trên Mobile & Điều Hướng Về Trang Giới Thiệu Khi Đăng Xuất
+- **Yêu cầu của người dùng**:
+  1. Hiển thị thanh công cụ Floating Dock gọn gàng ở mép bên phải trên giao diện mobile.
+  2. Khi người dùng bấm Đăng xuất trong ứng dụng, điều hướng về trang giới thiệu `/` thay vì chuyển về form `/login`.
+- **Nội dung đã triển khai**:
+  1. Tại `src/app/page.tsx`:
+     - Bổ sung **Mobile Compact Right-Side Glass Dock** (`fixed right-2.5 bottom-5 z-50 flex md:hidden flex-col`) xếp dọc siêu gọn 5 nút điều hướng + nút CTA `gradient-brand` (`ArrowUpRight`), tích hợp viên nang trượt dọc `layoutId="mobileDockActivePill"` và cuộn mượt `scrollToSection`.
+  2. Tại `src/components/layout/app-header.tsx` & `src/app/(dashboard)/settings/page.tsx`:
+     - Cập nhật điều hướng sau khi `signOut()` từ `window.location.href = "/login"` thành `window.location.href = "/"`.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
+
+
+---
+
+### 📅 2026-11-16 14:28:30 - Căn Giữa Trục Dọc Thanh Dock Mobile & Thêm Nút Quay Lại (Back) Trên Các Trang Xác Thực
+- **Yêu cầu của người dùng**:
+  1. Căn thanh công cụ nổi (dock) mép phải trên giao diện mobile ra chính giữa theo chiều dọc màn hình.
+  2. Bổ sung nút "Quay lại" (Back) trên trang đăng nhập và các trang xác thực để quay lại trang trước/trang chủ.
+- **Nội dung đã triển khai**:
+  1. **Landing Page ([src/app/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/page.tsx))**:
+     - Thay đổi vị trí thanh dock mobile từ `bottom-5` thành `top-1/2 -translate-y-1/2`, căn chuẩn xác tại tâm trục dọc mép phải màn hình điện thoại, không che khuất nút CTA hay nội dung của người dùng.
+  2. **Các trang Xác thực ([src/app/(auth)/login/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/(auth)/login/page.tsx), [src/app/(auth)/register/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/(auth)/register/page.tsx), [src/app/(auth)/forgot-password/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/(auth)/forgot-password/page.tsx), [src/app/(auth)/reset-password/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/(auth)/reset-password/page.tsx))**:
+     - Bổ sung nút **Quay lại** ghim nổi bật ở góc trên bên trái (`fixed top-4 left-4 sm:top-6 sm:left-6 z-30`) với icon `ArrowLeft`, phong cách Midnight kính mờ (`bg-card/85 backdrop-blur-xl border border-border/80 shadow-md`), hiệu ứng hover/active mềm mại.
+     - Điều hướng linh hoạt: Tự động nhận diện lịch sử trình duyệt để `router.back()` quay lại trang trước, hoặc fallback về trang chủ `/` (hoặc `/login` cho forgot-password).
+- **Danh sách file tạo / chỉnh sửa**:
+  - [src/app/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/page.tsx)
+  - [src/app/(auth)/login/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/(auth)/login/page.tsx)
+  - [src/app/(auth)/register/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/(auth)/register/page.tsx)
+  - [src/app/(auth)/forgot-password/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/(auth)/forgot-password/page.tsx)
+  - [src/app/(auth)/reset-password/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/(auth)/reset-password/page.tsx)
+  - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.

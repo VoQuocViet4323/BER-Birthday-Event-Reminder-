@@ -201,8 +201,8 @@ export default function SettingsPage() {
       });
 
       setShowDeleteConfirm(false);
-      // 4. Điều hướng về trang đăng nhập
-      window.location.href = "/login";
+      // 4. Điều hướng về trang giới thiệu chủ đạo
+      window.location.href = "/";
     } catch (err: any) {
       toast({
         title: "Lỗi không xác định",
