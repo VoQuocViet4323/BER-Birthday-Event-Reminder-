@@ -7732,3 +7732,28 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+
+---
+
+### 📅 2026-11-16 14:50:15 - Khắc Phục Triệt Để Nút "Quay Lại" Trên Trang Đăng Nhập & Các Trang Xác Thực
+- **Yêu cầu của người dùng**:
+  - Nút "Quay lại" trên trang đăng nhập (`/login`) chưa hoạt động khi bấm.
+- **Nguyên nhân**:
+  - Trước đó nút dùng thẻ `<button onClick={() => { if (history.length > 1) router.back(); ... }}>`. Trong nhiều trường hợp Next.js App Router (người dùng mở tab mới, truy cập trực tiếp bằng URL hoặc khi history stack của trình duyệt bị giới hạn), `router.back()` không thực thi chuyển hướng hoặc bị đứng im.
+- **Cách khắc phục triệt để**:
+  - Chuyển toàn bộ nút Quay lại trên các trang xác thực thành thẻ `<Link href="...">` của Next.js (chuẩn semantic HTML anchor `<a>`):
+    - [src/app/(auth)/login/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/(auth)/login/page.tsx): `<Link href="/">` dẫn ngay về trang chủ giới thiệu.
+    - [src/app/(auth)/register/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/(auth)/register/page.tsx): `<Link href="/">` dẫn ngay về trang chủ giới thiệu.
+    - [src/app/(auth)/forgot-password/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/(auth)/forgot-password/page.tsx): `<Link href="/login">` dẫn về trang đăng nhập.
+    - [src/app/(auth)/reset-password/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/(auth)/reset-password/page.tsx): `<Link href="/login">` dẫn về trang đăng nhập.
+  - Thẻ `Link` với cơ chế Prefetch và Client-Side Navigation của Next.js đảm bảo 100% người dùng chạm/click vào là chuyển trang tức thì, không phụ thuộc vào trạng thái `history.length` của trình duyệt.
+- **Danh sách file tạo / chỉnh sửa**:
+  - [src/app/(auth)/login/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/(auth)/login/page.tsx)
+  - [src/app/(auth)/register/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/(auth)/register/page.tsx)
+  - [src/app/(auth)/forgot-password/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/(auth)/forgot-password/page.tsx)
+  - [src/app/(auth)/reset-password/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/(auth)/reset-password/page.tsx)
+  - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
