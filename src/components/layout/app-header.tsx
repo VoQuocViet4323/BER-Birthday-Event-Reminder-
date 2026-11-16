@@ -19,6 +19,7 @@ export function AppHeader({ onOpenCreateModal }: AppHeaderProps) {
   const { profile } = useUserSettings();
   const [menuOpen, setMenuOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
   const router = useRouter();
   const supabase = createClient();
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -31,16 +32,23 @@ export function AppHeader({ onOpenCreateModal }: AppHeaderProps) {
   const isAdmin = profile?.role === "admin";
 
   useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
+    function handlePointerDown(e: MouseEvent | TouchEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setMenuOpen(false);
       }
     }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("touchstart", handlePointerDown, { passive: true });
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("touchstart", handlePointerDown);
+    };
   }, []);
 
   const handleSignOut = async () => {
+    if (isSigningOut) return;
+    setIsSigningOut(true);
+
     try {
       const isRemembered = localStorage.getItem("ber_remember_me") === "true";
       if (!isRemembered) {
@@ -56,11 +64,17 @@ export function AppHeader({ onOpenCreateModal }: AppHeaderProps) {
     }
 
     try {
-      await supabase.auth.signOut();
+      // Giới hạn timeout 1.2s tránh mạng lag làm treo UI
+      const signOutPromise = supabase.auth.signOut();
+      const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 1200));
+      await Promise.race([signOutPromise, timeoutPromise]);
     } catch {
-      // Ignored if local
+      // Ignored if offline/local
     }
-    window.location.href = "/";
+
+    // Đóng dropdown và chuyển hướng trang chủ mượt mà
+    setMenuOpen(false);
+    window.location.replace("/");
   };
 
   return (
@@ -129,8 +143,9 @@ export function AppHeader({ onOpenCreateModal }: AppHeaderProps) {
           {/* User Profile Menu */}
           <div className="relative" ref={dropdownRef}>
             <button
+              type="button"
               onClick={() => setMenuOpen(!menuOpen)}
-              className="flex items-center gap-2 p-1 pl-2 rounded-2xl hover:bg-secondary transition-colors"
+              className="flex items-center gap-2 p-1 pl-2 rounded-2xl hover:bg-secondary active:scale-95 transition-all duration-150 cursor-pointer touch-manipulation select-none"
               aria-label="Menu tài khoản"
             >
               <div className="text-right hidden sm:block">
@@ -165,7 +180,7 @@ export function AppHeader({ onOpenCreateModal }: AppHeaderProps) {
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.95, y: -4 }}
                   transition={{ duration: 0.15 }}
-                  className="absolute right-0 mt-2 w-56 p-2 rounded-2xl bg-card border shadow-xl z-50 text-xs font-medium space-y-1"
+                  className="absolute right-0 mt-2 w-56 p-2 rounded-2xl bg-card/95 backdrop-blur-xl border border-border shadow-2xl z-50 text-xs font-medium space-y-1"
                 >
                   <div className="px-3 py-2 border-b border-border/50 mb-1">
                     <div className="flex items-center justify-between">
@@ -189,7 +204,7 @@ export function AppHeader({ onOpenCreateModal }: AppHeaderProps) {
                     <Link
                       href="/admin"
                       onClick={() => setMenuOpen(false)}
-                      className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500/10 text-amber-500 font-bold hover:bg-amber-500/20 transition-colors"
+                      className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500/10 text-amber-500 font-bold hover:bg-amber-500/20 active:scale-[0.98] transition-all cursor-pointer touch-manipulation"
                     >
                       <ShieldCheck className="w-4 h-4 text-amber-500" />
                       <span>Bảng Quản Trị Hệ Thống</span>
@@ -199,7 +214,7 @@ export function AppHeader({ onOpenCreateModal }: AppHeaderProps) {
                   <Link
                     href="/settings"
                     onClick={() => setMenuOpen(false)}
-                    className="flex items-center gap-2 px-3 py-2 rounded-xl text-foreground hover:bg-secondary transition-colors"
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl text-foreground hover:bg-secondary active:scale-[0.98] transition-all cursor-pointer touch-manipulation"
                   >
                     <Settings className="w-4 h-4 text-primary" />
                     <span>Cài đặt & Hồ sơ</span>
@@ -207,11 +222,22 @@ export function AppHeader({ onOpenCreateModal }: AppHeaderProps) {
 
                   <div className="border-t border-border/50 pt-1 mt-1">
                     <button
+                      type="button"
+                      disabled={isSigningOut}
                       onClick={handleSignOut}
-                      className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-destructive hover:bg-destructive/10 transition-colors"
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-destructive hover:bg-destructive/10 active:bg-destructive/20 active:scale-[0.97] transition-all cursor-pointer touch-manipulation disabled:opacity-60 select-none font-medium"
                     >
-                      <LogOut className="w-4 h-4" />
-                      <span>Đăng xuất</span>
+                      {isSigningOut ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-destructive border-t-transparent rounded-full animate-spin shrink-0" />
+                          <span className="font-semibold">Đang đăng xuất...</span>
+                        </>
+                      ) : (
+                        <>
+                          <LogOut className="w-4 h-4 shrink-0" />
+                          <span className="font-semibold">Đăng xuất</span>
+                        </>
+                      )}
                     </button>
                   </div>
                 </motion.div>

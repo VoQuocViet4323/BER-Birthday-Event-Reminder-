@@ -7757,3 +7757,30 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **35/35 tests PASSED (100%)**.
+
+
+---
+
+### 📅 2026-11-16 14:56:45 - Khắc Phục Hiện Tượng Lag & Nâng Cấp UX Mượt Mà Cho Nút Đăng Xuất (App Header)
+- **Yêu cầu của người dùng**:
+  - Nút đăng xuất trong menu profile avatar của thanh Header đang bị lag khi nhấn, đặc biệt trên thiết bị di động, và cảm giác UX khi bấm các button chưa mượt mà.
+- **Nguyên nhân cốt lõi**:
+  1. Thiếu phản hồi thị giác tức thì (Visual Feedback): Khi người dùng bấm "Đăng xuất", không có trạng thái loading; request mạng `supabase.auth.signOut()` chạy ngầm khiến giao diện đứng yên (đơ 1-2 giây trên mạng di động), sau đó `window.location.href = "/"` gây chớp trắng màn hình (hard reload).
+  2. Độ trễ sự kiện cảm ứng trên Mobile (Touch Delay): Menu avatar và các button thiếu thuộc tính `touch-manipulation`, thiếu hiệu ứng nhấn nảy (`active:scale-95`, `active:scale-[0.98]`) và sự kiện `handleClickOutside` chỉ bắt `mousedown` thay vì cả `touchstart`.
+- **Nội dung đã triển khai**:
+  - Tại [src/components/layout/app-header.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/layout/app-header.tsx):
+    1. **Trạng thái phản hồi tức thì (`isSigningOut`)**:
+       - Khi người dùng chạm nút "Đăng xuất": Lập tức vô hiệu hóa nút (`disabled`), hiển thị spinner xoay và đổi chữ thành `"Đang đăng xuất..."`.
+       - Dọn dẹp cache `localStorage` tức thì.
+       - Bọc `supabase.auth.signOut()` với `Promise.race` timeout 1.2s để không bao giờ bị nghẽn mạng gây đơ máy.
+       - Dùng `window.location.replace("/")` chuyển trang mượt mà.
+    2. **Tối ưu UX & Cảm ứng Mobile**:
+       - Bổ sung `touch-manipulation` loại bỏ hoàn toàn độ trễ 300ms của trình duyệt di động.
+       - Thêm hiệu ứng nhấn nảy xúc giác (`active:scale-95` trên Avatar, `active:scale-[0.98]` trên mục menu và `active:scale-[0.97]` trên nút Đăng xuất).
+       - Cập nhật `handlePointerDown` lắng nghe đồng thời cả `mousedown` và `touchstart` với cờ `passive: true`.
+- **Danh sách file tạo / chỉnh sửa**:
+  - [src/components/layout/app-header.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/layout/app-header.tsx)
+  - [MEMORIES.md](file:///e:/BER-Birthday-Event-Reminder-/MEMORIES.md)
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **35/35 tests PASSED (100%)**.
