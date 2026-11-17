@@ -214,12 +214,12 @@ export default function SettingsPage() {
         localStorage.removeItem("ber_remembered_password");
         localStorage.removeItem("ber_remember_me");
         sessionStorage.clear();
-      } catch {}
+      } catch { }
 
       // 3. Đăng xuất phiên làm việc hiện tại
       try {
         await supabase.auth.signOut();
-      } catch {}
+      } catch { }
 
       toast({
         title: "Tài khoản đã được xóa vĩnh viễn",
@@ -319,12 +319,13 @@ export default function SettingsPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 8 * 1024 * 1024) {
+    if (file.size > 30 * 1024 * 1024) {
       toast({
         title: "Ảnh quá lớn",
-        description: "Vui lòng chọn tệp ảnh có dung lượng dưới 8MB.",
+        description: "Vui lòng chọn tệp ảnh có dung lượng dưới 30MB.",
         variant: "error",
       });
+      if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
 
@@ -530,7 +531,7 @@ export default function SettingsPage() {
         if (localStorage.getItem("ber_remember_me") === "true") {
           localStorage.setItem("ber_remembered_password", newPassword);
         }
-      } catch {}
+      } catch { }
 
       toast({
         title: "Đổi mật khẩu thành công! 🔐",
@@ -712,8 +713,8 @@ export default function SettingsPage() {
                     {profile?.provider === "google"
                       ? "Hệ thống tự động liên kết tài khoản Google và gửi nhắc hẹn về email này."
                       : profile?.email?.includes("@ber-app.com")
-                      ? "⚠️ Đang dùng email tạm thời (@ber-app.com). Hãy bấm 'Đổi email' để nhập Gmail thật của bạn!"
-                      : "Email chính dùng để nhận toàn bộ thông báo nhắc nhở sự kiện và thông báo hệ thống."}
+                        ? "⚠️ Đang dùng email tạm thời (@ber-app.com). Hãy bấm 'Đổi email' để nhập Gmail thật của bạn!"
+                        : "Email chính dùng để nhận toàn bộ thông báo nhắc nhở sự kiện và thông báo hệ thống."}
                   </p>
                 </div>
                 {profile?.provider !== "google" && (
@@ -1069,7 +1070,7 @@ export default function SettingsPage() {
                 </div>
 
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  💡 Hỗ trợ JPG, PNG, WebP. Ảnh được tự động nén và crop vuông tối ưu cho máy tính và điện thoại.
+                  💡 Hỗ trợ JPG, PNG, WebP (tối đa 30MB). Ảnh được tự động nén siêu nhẹ và crop vuông tối ưu cho cả PC và điện thoại.
                 </p>
               </div>
             </div>

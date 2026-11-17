@@ -13,7 +13,7 @@ export interface ProcessedAvatar {
 
 /**
  * Nén ảnh và crop vuông từ tâm ảnh bằng Canvas API
- * Giúp giảm dung lượng từ 5-15MB xuống chỉ còn ~30-70KB
+ * Hỗ trợ ảnh lớn tới 30MB+ trên cả PC và Mobile, tự động giảm xuống chỉ còn ~30-70KB
  */
 export async function compressAndCropAvatar(
   file: File,
@@ -21,93 +21,116 @@ export async function compressAndCropAvatar(
   quality = 0.85
 ): Promise<ProcessedAvatar> {
   return new Promise((resolve, reject) => {
-    // Kiểm tra định dạng ảnh hợp lệ
-    if (!file.type.startsWith("image/")) {
+    // Kiểm tra định dạng ảnh hợp lệ (bao gồm cả trường hợp mobile không trả về MIME type rõ ràng)
+    const isImageType =
+      file.type.startsWith("image/") ||
+      /\.(jpe?g|png|webp|gif|bmp|heic|heif|avif)$/i.test(file.name);
+
+    if (!isImageType) {
       reject(new Error("Tệp được chọn không phải là hình ảnh hợp lệ."));
       return;
     }
 
+    const processImage = (img: HTMLImageElement, revokeUrl?: string) => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = targetSize;
+        canvas.height = targetSize;
+        const ctx = canvas.getContext("2d");
+
+        if (!ctx) {
+          if (revokeUrl) URL.revokeObjectURL(revokeUrl);
+          reject(new Error("Trình duyệt không hỗ trợ xử lý Canvas đồ họa."));
+          return;
+        }
+
+        // Kích hoạt làm mịn ảnh chất lượng cao
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+
+        // Tính toán vùng crop vuông từ tâm (center-crop)
+        const naturalW = img.naturalWidth || img.width;
+        const naturalH = img.naturalHeight || img.height;
+        const minSide = Math.min(naturalW, naturalH);
+        const sx = (naturalW - minSide) / 2;
+        const sy = (naturalH - minSide) / 2;
+
+        // Vẽ ảnh vuông lên canvas
+        ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, targetSize, targetSize);
+
+        // Giải phóng bộ nhớ ObjectURL ngay sau khi vẽ xong vào Canvas (quan trọng cho Mobile với ảnh >10MB)
+        if (revokeUrl) URL.revokeObjectURL(revokeUrl);
+
+        // Thử xuất sang định dạng WebP, nếu trình duyệt không hỗ trợ thì fallback sang JPEG
+        let outputType = "image/webp";
+        let ext = "webp";
+
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              const dataUrl = canvas.toDataURL(outputType, quality);
+              resolve({
+                blob,
+                dataUrl,
+                ext,
+                width: targetSize,
+                height: targetSize,
+              });
+            } else {
+              // Fallback sang JPEG
+              outputType = "image/jpeg";
+              ext = "jpg";
+              canvas.toBlob(
+                (jpegBlob) => {
+                  if (jpegBlob) {
+                    const dataUrl = canvas.toDataURL(outputType, quality);
+                    resolve({
+                      blob: jpegBlob,
+                      dataUrl,
+                      ext,
+                      width: targetSize,
+                      height: targetSize,
+                    });
+                  } else {
+                    reject(new Error("Không thể xuất tệp nén hình ảnh."));
+                  }
+                },
+                outputType,
+                quality
+              );
+            }
+          },
+          outputType,
+          quality
+        );
+      } catch (err: any) {
+        if (revokeUrl) URL.revokeObjectURL(revokeUrl);
+        reject(new Error(err?.message || "Lỗi trong quá trình nén và xử lý ảnh."));
+      }
+    };
+
+    // Trên trình duyệt (PC & Mobile), ưu tiên dùng ObjectURL để không tốn gấp đôi RAM cho chuỗi Base64 với ảnh >10MB
+    if (typeof window !== "undefined" && typeof URL !== "undefined" && typeof URL.createObjectURL === "function") {
+      const objectUrl = URL.createObjectURL(file);
+      const img = new Image();
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error("Hình ảnh bị lỗi hoặc trình duyệt chưa hỗ trợ định dạng này (ví dụ HEIC chưa chuyển đổi)."));
+      };
+      img.onload = () => processImage(img, objectUrl);
+      img.src = objectUrl;
+      return;
+    }
+
+    // Fallback dùng FileReader (môi trường test / trình duyệt cũ)
     const reader = new FileReader();
     reader.onerror = () => reject(new Error("Không thể đọc tệp hình ảnh từ thiết bị."));
     reader.onload = (e) => {
       const img = new Image();
       img.onerror = () => reject(new Error("Hình ảnh bị lỗi hoặc không hỗ trợ định dạng này."));
-      img.onload = () => {
-        try {
-          const canvas = document.createElement("canvas");
-          canvas.width = targetSize;
-          canvas.height = targetSize;
-          const ctx = canvas.getContext("2d");
-
-          if (!ctx) {
-            reject(new Error("Trình duyệt không hỗ trợ xử lý Canvas đồ họa."));
-            return;
-          }
-
-          // Kích hoạt làm mịn ảnh chất lượng cao
-          ctx.imageSmoothingEnabled = true;
-          ctx.imageSmoothingQuality = "high";
-
-          // Tính toán vùng crop vuông từ tâm (center-crop)
-          const naturalW = img.naturalWidth || img.width;
-          const naturalH = img.naturalHeight || img.height;
-          const minSide = Math.min(naturalW, naturalH);
-          const sx = (naturalW - minSide) / 2;
-          const sy = (naturalH - minSide) / 2;
-
-          // Vẽ ảnh vuông lên canvas
-          ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, targetSize, targetSize);
-
-          // Thử xuất sang định dạng WebP, nếu trình duyệt không hỗ trợ thì fallback sang JPEG
-          let outputType = "image/webp";
-          let ext = "webp";
-
-          canvas.toBlob(
-            (blob) => {
-              if (blob) {
-                const dataUrl = canvas.toDataURL(outputType, quality);
-                resolve({
-                  blob,
-                  dataUrl,
-                  ext,
-                  width: targetSize,
-                  height: targetSize,
-                });
-              } else {
-                // Fallback sang JPEG
-                outputType = "image/jpeg";
-                ext = "jpg";
-                canvas.toBlob(
-                  (jpegBlob) => {
-                    if (jpegBlob) {
-                      const dataUrl = canvas.toDataURL(outputType, quality);
-                      resolve({
-                        blob: jpegBlob,
-                        dataUrl,
-                        ext,
-                        width: targetSize,
-                        height: targetSize,
-                      });
-                    } else {
-                      reject(new Error("Không thể xuất tệp nén hình ảnh."));
-                    }
-                  },
-                  outputType,
-                  quality
-                );
-              }
-            },
-            outputType,
-            quality
-          );
-        } catch (err: any) {
-          reject(new Error(err?.message || "Lỗi trong quá trình nén và xử lý ảnh."));
-        }
-      };
-
+      img.onload = () => processImage(img);
       img.src = e.target?.result as string;
     };
-
     reader.readAsDataURL(file);
   });
 }
