@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUserSettings } from "@/hooks/use-user-settings";
 import { useToast } from "@/components/ui/toast";
 import { createClient } from "@/lib/supabase/client";
 import { generateReminderEmailHtml, ReminderItem } from "@/lib/email/template-builder";
+import { uploadAvatarWithFallback, PRESET_AVATARS } from "@/lib/image-utils";
+import { useTheme } from "@/components/providers/theme-provider";
 import {
   Mail,
   User,
@@ -23,6 +25,12 @@ import {
   CheckCircle2,
   Globe,
   Edit2,
+  Maximize2,
+  Download,
+  Upload,
+  Trash2,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -35,6 +43,12 @@ export default function SettingsPage() {
 
   // Local state form values
   const [displayName, setDisplayName] = useState(profile?.display_name || "");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(profile?.avatar_url || null);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [showPresetModal, setShowPresetModal] = useState(false);
+  const [showAvatarLightbox, setShowAvatarLightbox] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [remindDays, setRemindDays] = useState<number[]>(settings?.default_remind_days || [7, 3, 1, 0]);
   const [remindTime, setRemindTime] = useState(settings?.remind_time || "08:00");
   const [timezone, setTimezone] = useState(profile?.timezone || "Asia/Ho_Chi_Minh");
@@ -69,6 +83,9 @@ export default function SettingsPage() {
     if (profile?.timezone) {
       setTimezone(profile.timezone);
     }
+    if (profile) {
+      setAvatarUrl(profile.avatar_url || null);
+    }
     if (settings) {
       setRemindDays(settings.default_remind_days || [7, 3, 1, 0]);
       setRemindTime(settings.remind_time || "08:00");
@@ -77,10 +94,19 @@ export default function SettingsPage() {
   }, [profile, settings]);
 
   // Email test & preview modal states
+  const { resolvedTheme } = useTheme();
+  const [previewTheme, setPreviewTheme] = useState<"light" | "dark">("dark");
   const [isTestingEmail, setIsTestingEmail] = useState(false);
   const [showEmailPreview, setShowEmailPreview] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+
+  // Đồng bộ theme xem trước với theme hiện tại khi mở modal
+  useEffect(() => {
+    if (showEmailPreview && resolvedTheme) {
+      setPreviewTheme(resolvedTheme);
+    }
+  }, [showEmailPreview, resolvedTheme]);
 
   // Tạo mẫu HTML xem trước ở chế độ CHỈ XEM (Vô hiệu hóa mọi tương tác, click, link)
   const emailPreviewHtml = useMemo(() => {
@@ -116,6 +142,7 @@ export default function SettingsPage() {
       items: sampleItems,
       appUrl: "https://ber-birthday-event-reminder.vercel.app",
       unsubscribeUrl: "https://ber-birthday-event-reminder.vercel.app/settings",
+      theme: previewTheme,
     });
 
     // Chế độ CHỈ XEM (View-Only): Khóa toàn bộ liên kết, con trỏ chuột, ngăn chặn click hoặc chuyển trang
@@ -138,7 +165,7 @@ export default function SettingsPage() {
     return rawHtml
       .replace("</head>", `${readOnlyStyles}</head>`)
       .replace(/<a\s+href="[^"]*"/gi, '<a href="javascript:void(0)" tabindex="-1" onclick="return false;"');
-  }, [profile?.display_name]);
+  }, [profile?.display_name, previewTheme]);
 
   // Xóa tài khoản vĩnh viễn khỏi Database
   const handleDeleteAccount = async () => {
@@ -287,9 +314,112 @@ export default function SettingsPage() {
     }
   };
 
+  // Tải ảnh đại diện mới từ thiết bị
+  const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 8 * 1024 * 1024) {
+      toast({
+        title: "Ảnh quá lớn",
+        description: "Vui lòng chọn tệp ảnh có dung lượng dưới 8MB.",
+        variant: "error",
+      });
+      return;
+    }
+
+    setIsUploadingAvatar(true);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const userId = session?.user?.id || profile?.id || "user";
+
+      // Nén ảnh vuông tối ưu và tải lên với cơ chế Fallback chống lỗi tuyệt đối
+      const uploadedUrl = await uploadAvatarWithFallback(supabase, userId, file);
+
+      setAvatarUrl(uploadedUrl);
+
+      // Cập nhật profile & đồng bộ toàn ứng dụng
+      await updateSettings({
+        avatar_url: uploadedUrl,
+      });
+
+      toast({
+        title: "Cập nhật ảnh đại diện thành công! 🎉",
+        description: "Ảnh mới đã được đồng bộ trên thanh tiêu đề và hồ sơ của bạn.",
+        variant: "success",
+      });
+    } catch (err: any) {
+      console.error("Lỗi cập nhật ảnh đại diện:", err);
+      toast({
+        title: "Không thể tải ảnh lên",
+        description: err?.message || "Đã xảy ra sự cố khi tải ảnh lên. Vui lòng thử lại.",
+        variant: "error",
+      });
+    } finally {
+      setIsUploadingAvatar(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  // Chọn avatar mẫu preset
+  const handleSelectPresetAvatar = async (preset: { emoji: string; bg: string }) => {
+    try {
+      setIsUploadingAvatar(true);
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#8B5CF6"/><stop offset="50%" stop-color="#EC4899"/><stop offset="100%" stop-color="#F43F5E"/></linearGradient></defs><rect width="200" height="200" rx="60" fill="url(#g)"/><text x="50%" y="54%" font-size="95" text-anchor="middle" dominant-baseline="middle">${preset.emoji}</text></svg>`;
+      const encodedSvg = `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+
+      setAvatarUrl(encodedSvg);
+      setShowPresetModal(false);
+
+      await updateSettings({
+        avatar_url: encodedSvg,
+      });
+
+      toast({
+        title: "Đã chọn ảnh đại diện mẫu! ✨",
+        variant: "success",
+      });
+    } catch (err: any) {
+      toast({
+        title: "Không thể đổi avatar",
+        description: err?.message,
+        variant: "error",
+      });
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
+
+  // Gỡ bỏ ảnh đại diện về mặc định
+  const handleRemoveAvatar = async () => {
+    try {
+      setIsUploadingAvatar(true);
+      setAvatarUrl(null);
+      await updateSettings({
+        avatar_url: null,
+      });
+      toast({
+        title: "Đã gỡ ảnh đại diện",
+        description: "Hệ thống sẽ dùng chữ cái đầu tiên làm đại diện mặc định.",
+        variant: "success",
+      });
+    } catch (err: any) {
+      toast({
+        title: "Lỗi gỡ ảnh đại diện",
+        description: err?.message,
+        variant: "error",
+      });
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
+
   const handleSaveAll = async () => {
     await updateSettings({
       display_name: displayName,
+      avatar_url: avatarUrl,
       email_enabled: true,
       default_remind_days: remindDays,
       remind_time: remindTime,
@@ -845,7 +975,103 @@ export default function SettingsPage() {
             </div>
             <div>
               <h3 className="font-bold text-sm text-foreground">Hồ sơ người dùng</h3>
-              <p className="text-xs text-muted-foreground">Tên hiển thị trên thư thông báo</p>
+              <p className="text-xs text-muted-foreground">Ảnh đại diện & Tên hiển thị tài khoản</p>
+            </div>
+          </div>
+
+          {/* Phần Thay đổi ảnh đại diện */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-secondary/30 border border-border/60 space-y-4">
+            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground block">
+              Ảnh đại diện
+            </span>
+
+            <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-5">
+              {/* Avatar Preview Box (Bấm vào để xem ảnh phóng to) */}
+              <div className="relative group shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setShowAvatarLightbox(true)}
+                  className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl sm:rounded-3xl gradient-brand p-0.5 shadow-soft overflow-hidden flex items-center justify-center cursor-pointer hover:scale-105 active:scale-95 transition-all group-hover:shadow-soft-hover touch-manipulation focus:outline-hidden"
+                  title="Bấm vào để xem ảnh phóng to"
+                  aria-label="Xem ảnh đại diện phóng to"
+                >
+                  <div className="w-full h-full rounded-[14px] sm:rounded-[22px] bg-card flex items-center justify-center overflow-hidden relative">
+                    {avatarUrl ? (
+                      <img
+                        src={avatarUrl}
+                        alt={displayName || "Avatar"}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                    ) : (
+                      <div className="w-full h-full gradient-brand text-white font-extrabold text-2xl sm:text-3xl flex items-center justify-center">
+                        {(displayName || "U").charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    {/* Overlay kính lúp khi hover */}
+                    <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center transition-opacity text-white backdrop-blur-[1px]">
+                      <Maximize2 className="w-5 h-5 drop-shadow-md" />
+                      <span className="text-[9px] font-bold mt-0.5 tracking-tight">Phóng to</span>
+                    </div>
+                  </div>
+                </button>
+
+                {/* Loading indicator */}
+                {isUploadingAvatar && (
+                  <div className="absolute inset-0 rounded-2xl sm:rounded-3xl bg-black/60 backdrop-blur-xs flex flex-col items-center justify-center text-white z-10 pointer-events-none">
+                    <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin mb-1" />
+                    <span className="text-[10px] font-bold">Đang nén...</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Action Buttons & Guidance */}
+              <div className="flex-1 text-center sm:text-left space-y-2.5 w-full">
+                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleAvatarFileChange}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    disabled={isUploadingAvatar}
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-3.5 py-2 rounded-xl gradient-brand text-white text-xs font-bold shadow-soft hover:shadow-soft-hover hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center gap-1.5 cursor-pointer touch-manipulation disabled:opacity-50"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>{avatarUrl ? "Đổi ảnh mới" : "Tải ảnh lên"}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isUploadingAvatar}
+                    onClick={() => setShowPresetModal(true)}
+                    className="px-3 py-2 rounded-xl bg-secondary hover:bg-secondary/80 border border-border/80 text-foreground text-xs font-bold hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center gap-1.5 cursor-pointer touch-manipulation"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Avatar mẫu</span>
+                  </button>
+
+                  {avatarUrl && (
+                    <button
+                      type="button"
+                      disabled={isUploadingAvatar}
+                      onClick={handleRemoveAvatar}
+                      className="px-2.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 border border-rose-500/20 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer touch-manipulation"
+                      title="Gỡ ảnh đại diện"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Gỡ ảnh</span>
+                    </button>
+                  )}
+                </div>
+
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  💡 Hỗ trợ JPG, PNG, WebP. Ảnh được tự động nén và crop vuông tối ưu cho máy tính và điện thoại.
+                </p>
+              </div>
             </div>
           </div>
 
@@ -911,35 +1137,83 @@ export default function SettingsPage() {
                 onClick={(e) => e.stopPropagation()}
               >
                 {/* Header thanh điều hướng Modal */}
-                <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-card/95">
+                <div className="flex items-center justify-between px-4 sm:px-5 py-3.5 border-b border-border bg-card/95">
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-2xl gradient-brand text-white flex items-center justify-center font-bold text-base shadow-xs">
+                    <div className="w-9 h-9 rounded-2xl gradient-brand text-white flex items-center justify-center font-bold text-base shadow-xs shrink-0">
                       ✉️
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
                         <h3 className="font-bold text-sm text-foreground">Xem trước mẫu email thông báo</h3>
-                        <span className="px-2 py-0.5 rounded-full bg-secondary text-muted-foreground text-[10px] font-semibold border border-border">
+                        <span className="hidden sm:inline-block px-2 py-0.5 rounded-full bg-secondary text-muted-foreground text-[10px] font-semibold border border-border">
                           Chỉ xem
                         </span>
                       </div>
-                      <p className="text-[11px] text-muted-foreground">Mẫu email tĩnh xem trước • Không thể tương tác</p>
+                      <p className="text-[11px] text-muted-foreground line-clamp-1">Mẫu email tĩnh xem trước • Không thể tương tác</p>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowEmailPreview(false)}
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
-                    aria-label="Đóng"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
+
+                  <div className="flex items-center gap-2">
+                    {/* Bộ chuyển đổi giao diện Sáng / Tối */}
+                    <div className="flex items-center p-0.5 rounded-xl bg-secondary/80 border border-border/60">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewTheme("light")}
+                        className={cn(
+                          "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer",
+                          previewTheme === "light"
+                            ? "bg-card text-foreground shadow-xs font-bold"
+                            : "text-muted-foreground hover:text-foreground"
+                        )}
+                        title="Xem chế độ nền sáng"
+                      >
+                        <Sun className="w-3.5 h-3.5 text-amber-500" />
+                        <span className="hidden sm:inline">Sáng</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPreviewTheme("dark")}
+                        className={cn(
+                          "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer",
+                          previewTheme === "dark"
+                            ? "bg-card text-foreground shadow-xs font-bold"
+                            : "text-muted-foreground hover:text-foreground"
+                        )}
+                        title="Xem chế độ nền tối"
+                      >
+                        <Moon className="w-3.5 h-3.5 text-indigo-400" />
+                        <span className="hidden sm:inline">Tối</span>
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowEmailPreview(false)}
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
+                      aria-label="Đóng"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
 
-                {/* Khung mô phỏng hiển thị Email (Loại bỏ sandbox để triệt tiêu lỗi console, vô hiệu hóa tương tác) */}
-                <div className="flex-1 overflow-hidden p-2 sm:p-4 bg-slate-100 dark:bg-slate-950/70 flex items-center justify-center">
-                  <div className="w-full h-[460px] sm:h-[520px] rounded-2xl overflow-hidden border border-border/80 shadow-md bg-white select-none">
+                {/* Khung mô phỏng hiển thị Email (Hỗ trợ cả chế độ Sáng & Tối sắc nét) */}
+                <div
+                  className={cn(
+                    "flex-1 overflow-hidden p-2 sm:p-4 flex items-center justify-center transition-colors",
+                    previewTheme === "dark" ? "bg-slate-950" : "bg-slate-100"
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "w-full h-[460px] sm:h-[520px] rounded-2xl overflow-hidden border shadow-md select-none transition-all",
+                      previewTheme === "dark"
+                        ? "border-slate-800 bg-[#0b0b14]"
+                        : "border-slate-200/90 bg-white"
+                    )}
+                  >
                     <iframe
+                      key={previewTheme}
                       title="Xem trước mẫu email nhắc sự kiện BER (Chỉ xem)"
                       srcDoc={emailPreviewHtml}
                       className="w-full h-full border-0 select-none"
@@ -1024,6 +1298,174 @@ export default function SettingsPage() {
                     ) : (
                       <span>Xác nhận xóa</span>
                     )}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
+
+      {/* Modal Chọn mẫu Avatar phong cách */}
+      {mounted && createPortal(
+        <AnimatePresence>
+          {showPresetModal && (
+            <motion.div
+              key="preset-avatar-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={(e) => {
+                if (e.target === e.currentTarget) setShowPresetModal(false);
+              }}
+              className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-[4px]"
+            >
+              <motion.div
+                key="preset-avatar-card"
+                initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 15 }}
+                transition={{ type: "spring", damping: 28, stiffness: 320 }}
+                className="w-full max-w-sm bg-card rounded-3xl border border-border shadow-2xl p-5 sm:p-6 space-y-4"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between pb-3 border-b border-border">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-primary" />
+                    <h3 className="font-bold text-sm text-foreground">Chọn Avatar mẫu phong cách</h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowPresetModal(false)}
+                    className="p-1 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <p className="text-xs text-muted-foreground">
+                  Chọn một biểu tượng vui nhộn bạn yêu thích để làm ảnh đại diện:
+                </p>
+
+                <div className="grid grid-cols-4 gap-2.5 py-1">
+                  {PRESET_AVATARS.map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => handleSelectPresetAvatar(preset)}
+                      className="group flex flex-col items-center gap-1.5 p-2 rounded-2xl hover:bg-secondary border border-border/60 hover:border-primary/50 transition-all cursor-pointer active:scale-95 touch-manipulation"
+                    >
+                      <div className={cn(
+                        "w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br flex items-center justify-center text-2xl shadow-xs group-hover:scale-110 transition-transform",
+                        preset.bg
+                      )}>
+                        <span>{preset.emoji}</span>
+                      </div>
+                      <span className="text-[10px] font-bold text-muted-foreground group-hover:text-foreground truncate w-full text-center">
+                        {preset.label}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowPresetModal(false)}
+                    className="w-full py-2.5 rounded-xl bg-secondary hover:bg-muted text-xs font-bold text-muted-foreground transition-colors cursor-pointer"
+                  >
+                    Đóng
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
+
+      {/* Modal Phóng to Ảnh đại diện (Lightbox) */}
+      {mounted && createPortal(
+        <AnimatePresence>
+          {showAvatarLightbox && (
+            <motion.div
+              key="avatar-lightbox-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={(e) => {
+                if (e.target === e.currentTarget) setShowAvatarLightbox(false);
+              }}
+              className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md"
+            >
+              <motion.div
+                key="avatar-lightbox-card"
+                initial={{ opacity: 0, scale: 0.85, y: 15 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.85, y: 15 }}
+                transition={{ type: "spring", damping: 28, stiffness: 320 }}
+                className="relative max-w-xs sm:max-w-md w-full flex flex-col items-center gap-4"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Nút đóng góc trên bên phải */}
+                <button
+                  type="button"
+                  onClick={() => setShowAvatarLightbox(false)}
+                  className="absolute -top-12 right-0 w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-all cursor-pointer backdrop-blur-md"
+                  aria-label="Đóng xem ảnh"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+
+                {/* Khung ảnh đại diện kích thước lớn */}
+                <div className="w-64 h-64 sm:w-80 sm:h-80 md:w-88 md:h-88 rounded-3xl gradient-brand p-1 shadow-2xl overflow-hidden flex items-center justify-center">
+                  <div className="w-full h-full rounded-[22px] bg-card overflow-hidden flex items-center justify-center shadow-inner">
+                    {avatarUrl ? (
+                      <img
+                        src={avatarUrl}
+                        alt={displayName || "Avatar"}
+                        className="w-full h-full object-cover select-none"
+                      />
+                    ) : (
+                      <div className="w-full h-full gradient-brand text-white font-extrabold text-7xl sm:text-8xl flex items-center justify-center select-none">
+                        {(displayName || "U").charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Thông tin & nút hành động */}
+                <div className="text-center space-y-1 text-white">
+                  <h4 className="text-base sm:text-lg font-bold drop-shadow-md">
+                    {displayName || "Ảnh đại diện"}
+                  </h4>
+                  <p className="text-xs text-white/70">
+                    {avatarUrl ? "Ảnh đại diện tài khoản" : "Chữ cái đại diện mặc định"}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
+                  {avatarUrl && (
+                    <a
+                      href={avatarUrl}
+                      download={`avatar-${displayName || "user"}.png`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold backdrop-blur-md transition-all flex items-center gap-1.5"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Tải ảnh gốc</span>
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowAvatarLightbox(false)}
+                    className="px-5 py-2 rounded-xl bg-white text-slate-900 hover:bg-white/90 text-xs font-bold transition-all cursor-pointer shadow-md"
+                  >
+                    Đóng
                   </button>
                 </div>
               </motion.div>

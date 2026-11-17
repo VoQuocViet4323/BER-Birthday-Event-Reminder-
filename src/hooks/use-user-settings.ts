@@ -132,24 +132,36 @@ export function useUserSettings() {
         } = await supabase.auth.getSession();
 
         if (session?.user) {
-          if (values.display_name !== undefined || values.timezone !== undefined) {
+          if (
+            values.display_name !== undefined ||
+            values.timezone !== undefined ||
+            values.avatar_url !== undefined
+          ) {
+            const profilePayload: any = {};
+            if (values.display_name !== undefined) profilePayload.display_name = values.display_name;
+            if (values.timezone !== undefined) profilePayload.timezone = values.timezone;
+            if (values.avatar_url !== undefined) profilePayload.avatar_url = values.avatar_url;
+
             await (supabase as any)
               .from("profiles")
-              .update({
-                display_name: values.display_name,
-                timezone: values.timezone,
-              })
+              .update(profilePayload)
               .eq("id", session.user.id);
 
             // Đồng bộ trực tiếp metadata sang auth.users của Supabase Authentication
+            const authMetaPayload: any = {};
             if (values.display_name !== undefined) {
+              authMetaPayload.full_name = values.display_name;
+              authMetaPayload.display_name = values.display_name;
+              authMetaPayload.name = values.display_name;
+            }
+            if (values.avatar_url !== undefined) {
+              authMetaPayload.avatar_url = values.avatar_url;
+              authMetaPayload.picture = values.avatar_url;
+            }
+            if (Object.keys(authMetaPayload).length > 0) {
               try {
                 await supabase.auth.updateUser({
-                  data: {
-                    full_name: values.display_name,
-                    display_name: values.display_name,
-                    name: values.display_name,
-                  },
+                  data: authMetaPayload,
                 });
               } catch (authErr) {
                 console.warn("Lỗi đồng bộ metadata sang auth.users:", authErr);
@@ -189,6 +201,7 @@ export function useUserSettings() {
         ...curProfile,
         ...(values.display_name !== undefined && { display_name: values.display_name }),
         ...(values.timezone !== undefined && { timezone: values.timezone }),
+        ...(values.avatar_url !== undefined && { avatar_url: values.avatar_url }),
       };
 
       if (typeof window !== "undefined") {

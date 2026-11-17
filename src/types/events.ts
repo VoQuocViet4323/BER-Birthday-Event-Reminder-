@@ -54,6 +54,7 @@ export const userSettingsSchema = z.object({
   theme: z.enum(["light", "dark", "system"]),
   timezone: z.string(),
   display_name: z.string().min(1, "Vui lòng nhập tên hiển thị"),
+  avatar_url: z.string().optional().nullable(),
 });
 
 export type UserSettingsFormValues = z.infer<typeof userSettingsSchema>;
