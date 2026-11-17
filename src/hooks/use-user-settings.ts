@@ -121,7 +121,7 @@ export function useUserSettings() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (values: Partial<UserSettingsFormValues>) => {
+    mutationFn: async (values: Partial<UserSettingsFormValues> & { silent?: boolean }) => {
       const isConfigured =
         process.env.NEXT_PUBLIC_SUPABASE_URL &&
         !process.env.NEXT_PUBLIC_SUPABASE_URL.includes("dummy-project");
@@ -169,17 +169,27 @@ export function useUserSettings() {
             }
           }
 
-          await (supabase as any)
-            .from("user_settings")
-            .update({
-              email_enabled: values.email_enabled,
-              default_remind_days: values.default_remind_days,
-              remind_time: values.remind_time,
-              extra_emails: values.extra_emails,
-              leap_day_rule: values.leap_day_rule,
-              theme: values.theme,
-            })
-            .eq("user_id", session.user.id);
+          const hasSettingsFields =
+            values.email_enabled !== undefined ||
+            values.default_remind_days !== undefined ||
+            values.remind_time !== undefined ||
+            values.extra_emails !== undefined ||
+            values.leap_day_rule !== undefined ||
+            values.theme !== undefined;
+
+          if (hasSettingsFields) {
+            await (supabase as any)
+              .from("user_settings")
+              .update({
+                email_enabled: values.email_enabled,
+                default_remind_days: values.default_remind_days,
+                remind_time: values.remind_time,
+                extra_emails: values.extra_emails,
+                leap_day_rule: values.leap_day_rule,
+                theme: values.theme,
+              })
+              .eq("user_id", session.user.id);
+          }
         }
       }
 
@@ -211,12 +221,14 @@ export function useUserSettings() {
 
       return { settings: newSettings, profile: newProfile };
     },
-    onSuccess: (newData) => {
+    onSuccess: (newData, variables) => {
       queryClient.setQueryData(queryKey, newData);
-      toast({
-        title: "Đã lưu cài đặt thành công! ✨",
-        variant: "success",
-      });
+      if (!variables?.silent) {
+        toast({
+          title: "Đã lưu cài đặt thành công! ✨",
+          variant: "success",
+        });
+      }
     },
     onError: () => {
       toast({

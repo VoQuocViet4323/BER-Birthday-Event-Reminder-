@@ -341,15 +341,10 @@ export default function SettingsPage() {
 
       setAvatarUrl(uploadedUrl);
 
-      // Cập nhật profile & đồng bộ toàn ứng dụng
+      // Cập nhật profile & đồng bộ toàn ứng dụng (không hiện toast thành công theo yêu cầu)
       await updateSettings({
         avatar_url: uploadedUrl,
-      });
-
-      toast({
-        title: "Cập nhật ảnh đại diện thành công! 🎉",
-        description: "Ảnh mới đã được đồng bộ trên thanh tiêu đề và hồ sơ của bạn.",
-        variant: "success",
+        silent: true,
       });
     } catch (err: any) {
       console.error("Lỗi cập nhật ảnh đại diện:", err);
