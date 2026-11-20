@@ -23,6 +23,7 @@ import {
   SearchX,
   Tag,
   Filter,
+  Image as ImageIcon,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -91,13 +92,30 @@ export function MonthCalendarView({
   const [viewingDiary, setViewingDiary] = useState<DiaryEntry | null>(null);
   const [confirmDeleteDiaryId, setConfirmDeleteDiaryId] = useState<string | null>(null);
   const [isDeletingDiaryModal, setIsDeletingDiaryModal] = useState(false);
+  const [lightboxState, setLightboxState] = useState<{ images: string[]; index: number } | null>(null);
 
   // Khóa cuộn trang nền khi mở modal xem chi tiết sự kiện hoặc nhật ký
   useEffect(() => {
-    if (viewingEvent || viewingDiary) {
+    if (viewingEvent || viewingDiary || lightboxState) {
       const originalOverflow = document.body.style.overflow;
       document.body.style.overflow = "hidden";
       const handleKeyDown = (e: KeyboardEvent) => {
+        if (lightboxState) {
+          if (e.key === "Escape") {
+            setLightboxState(null);
+          } else if (e.key === "ArrowRight" && lightboxState.images.length > 1) {
+            setLightboxState((prev) =>
+              prev ? { ...prev, index: (prev.index + 1) % prev.images.length } : null
+            );
+          } else if (e.key === "ArrowLeft" && lightboxState.images.length > 1) {
+            setLightboxState((prev) =>
+              prev
+                ? { ...prev, index: (prev.index - 1 + prev.images.length) % prev.images.length }
+                : null
+            );
+          }
+          return;
+        }
         if (e.key === "Escape") {
           setViewingEvent(null);
           setViewingDiary(null);
@@ -111,7 +129,7 @@ export function MonthCalendarView({
         document.removeEventListener("keydown", handleKeyDown);
       };
     }
-  }, [viewingEvent, viewingDiary]);
+  }, [viewingEvent, viewingDiary, lightboxState]);
 
   // Xóa nhật ký thực tế khỏi DB từ modal / danh sách
   const handleDeleteDiaryEntry = async (id: string) => {
@@ -731,6 +749,12 @@ export function MonthCalendarView({
                                   <span className={cn("text-[10px] font-bold px-1.5 py-0.2 rounded-md border shrink-0", mood.color)}>
                                     {highlightMatch(mood.label, q)}
                                   </span>
+                                  {d.images && d.images.length > 0 && (
+                                    <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded-md bg-primary/10 text-primary border border-primary/20 flex items-center gap-0.5 shrink-0">
+                                      <ImageIcon className="w-2.5 h-2.5" />
+                                      {d.images.length}
+                                    </span>
+                                  )}
                                 </div>
                                 <span className="text-[11px] font-semibold text-muted-foreground shrink-0">
                                   {formatDiaryDate(d.entry_date)}
@@ -1046,17 +1070,31 @@ export function MonthCalendarView({
                       className="p-3 rounded-2xl bg-secondary/40 border border-border hover:border-primary cursor-pointer transition-colors flex items-center justify-between gap-3 group relative"
                     >
                       <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                        <div className="w-9 h-9 rounded-xl overflow-hidden bg-primary/10 shrink-0 flex items-center justify-center text-primary border border-primary/20">
-                          {diary.mood ? (
+                        <div className="w-9 h-9 rounded-xl overflow-hidden bg-primary/10 shrink-0 flex items-center justify-center text-primary border border-primary/20 relative">
+                          {diary.images && diary.images.length > 0 ? (
+                            <img
+                              src={diary.images[0]}
+                              alt={diary.title || "Ảnh nhật ký"}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : diary.mood ? (
                             <span className="text-base select-none">{moodInfo.emoji}</span>
                           ) : (
                             <BookOpen className="w-4 h-4 text-primary" />
                           )}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="font-bold text-xs text-foreground truncate">
-                            {diary.title || "Nhật ký không tiêu đề"}
-                          </p>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <p className="font-bold text-xs text-foreground truncate">
+                              {diary.title || "Nhật ký không tiêu đề"}
+                            </p>
+                            {diary.images && diary.images.length > 0 && (
+                              <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.2 rounded-md bg-primary/10 text-primary shrink-0">
+                                <ImageIcon className="w-2.5 h-2.5" />
+                                {diary.images.length}
+                              </span>
+                            )}
+                          </div>
                           <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground truncate">
                             {diary.created_at && (
                               <span className="flex items-center gap-1 shrink-0 font-medium">
@@ -1588,6 +1626,50 @@ export function MonthCalendarView({
                 </p>
               </div>
 
+              {/* Bộ sưu tập ảnh khoảnh khắc nếu có */}
+              {viewingDiary.images && viewingDiary.images.length > 0 && (
+                <div className="p-3.5 rounded-2xl bg-secondary/40 border border-border/70 space-y-2.5">
+                  <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5">
+                    <ImageIcon className="w-3.5 h-3.5 text-primary" />
+                    Khoảnh khắc đã lưu ({viewingDiary.images.length})
+                  </span>
+                  <div
+                    className={cn(
+                      "grid gap-2",
+                      viewingDiary.images.length === 1
+                        ? "grid-cols-1"
+                        : viewingDiary.images.length === 2
+                        ? "grid-cols-2"
+                        : "grid-cols-2 sm:grid-cols-3"
+                    )}
+                  >
+                    {viewingDiary.images.map((imgUrl, idx) => (
+                      <button
+                        key={`${imgUrl.slice(0, 32)}-${idx}`}
+                        type="button"
+                        onClick={() =>
+                          setLightboxState({
+                            images: viewingDiary.images || [],
+                            index: idx,
+                          })
+                        }
+                        className={cn(
+                          "relative overflow-hidden rounded-xl border border-border/80 bg-secondary/50 group cursor-pointer",
+                          viewingDiary.images!.length === 1 ? "max-h-72 w-full" : "aspect-square"
+                        )}
+                      >
+                        <img
+                          src={imgUrl}
+                          alt={`Khoảnh khắc ${idx + 1}`}
+                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        />
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/15 transition-colors" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Danh sách Tags nếu có */}
               {viewingDiary.tags && viewingDiary.tags.length > 0 && (
                 <div className="p-3 rounded-2xl bg-secondary/40 border border-border/70 space-y-2">
@@ -1669,6 +1751,77 @@ export function MonthCalendarView({
               </div>
             </div>
           </motion.div>
+        </motion.div>
+      )}
+
+      {/* Lightbox xem ảnh nhật ký toàn màn hình */}
+      {lightboxState && (
+        <motion.div
+          key="diary-lightbox-overlay"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.18 }}
+          onClick={() => setLightboxState(null)}
+          className="fixed inset-0 z-[130] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 select-none"
+        >
+          <button
+            type="button"
+            onClick={() => setLightboxState(null)}
+            className="absolute top-4 right-4 p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+            title="Đóng"
+          >
+            <X className="w-5 h-5" />
+          </button>
+
+          {lightboxState.images.length > 1 && (
+            <>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setLightboxState((prev) =>
+                    prev
+                      ? { ...prev, index: (prev.index - 1 + prev.images.length) % prev.images.length }
+                      : null
+                  );
+                }}
+                className="absolute left-3 sm:left-6 p-2.5 rounded-full bg-white/10 hover:bg-white/25 text-white transition-colors cursor-pointer"
+                title="Ảnh trước"
+              >
+                <ChevronLeft className="w-6 h-6" />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setLightboxState((prev) =>
+                    prev ? { ...prev, index: (prev.index + 1) % prev.images.length } : null
+                  );
+                }}
+                className="absolute right-3 sm:right-6 p-2.5 rounded-full bg-white/10 hover:bg-white/25 text-white transition-colors cursor-pointer"
+                title="Ảnh sau"
+              >
+                <ChevronRight className="w-6 h-6" />
+              </button>
+            </>
+          )}
+
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="flex flex-col items-center gap-3 max-w-full"
+          >
+            <img
+              src={lightboxState.images[lightboxState.index]}
+              alt={`Khoảnh khắc ${lightboxState.index + 1}`}
+              className="max-w-[92vw] max-h-[82vh] rounded-2xl object-contain shadow-2xl"
+            />
+            {lightboxState.images.length > 1 && (
+              <span className="px-3 py-1 rounded-full bg-white/10 text-white text-xs font-semibold">
+                {lightboxState.index + 1} / {lightboxState.images.length}
+              </span>
+            )}
+          </div>
         </motion.div>
       )}
     </AnimatePresence>,

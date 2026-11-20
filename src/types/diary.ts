@@ -12,9 +12,12 @@ export interface DiaryEntry {
   content: string;
   mood?: DiaryMood | null;
   tags?: string[] | null;
+  images?: string[] | null;
   created_at?: string;
   updated_at?: string;
 }
+
+export const MAX_DIARY_IMAGES = 6;
 
 export const diaryFormSchema = z.object({
   entry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Định dạng ngày không hợp lệ (YYYY-MM-DD)"),
@@ -30,6 +33,7 @@ export const diaryFormSchema = z.object({
     z.null(),
   ]).optional(),
   tags: z.array(z.string()).optional().default([]),
+  images: z.array(z.string()).max(MAX_DIARY_IMAGES, `Tối đa ${MAX_DIARY_IMAGES} ảnh cho mỗi bài nhật ký`).optional().default([]),
 });
 
 export type DiaryFormValues = z.infer<typeof diaryFormSchema>;

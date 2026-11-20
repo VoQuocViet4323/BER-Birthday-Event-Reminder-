@@ -212,6 +212,7 @@ export interface Database {
           content: string;
           mood: "happy" | "calm" | "excited" | "sad" | "grateful" | null;
           tags: string[] | null;
+          images?: string[] | null;
           created_at: string;
           last_seen_at?: string | null;
           banned_until?: string | null;
@@ -226,6 +227,7 @@ export interface Database {
           content: string;
           mood?: "happy" | "calm" | "excited" | "sad" | "grateful" | null;
           tags?: string[] | null;
+          images?: string[] | null;
           created_at?: string;
           last_seen_at?: string | null;
           banned_until?: string | null;
@@ -240,6 +242,7 @@ export interface Database {
           content?: string;
           mood?: "happy" | "calm" | "excited" | "sad" | "grateful" | null;
           tags?: string[] | null;
+          images?: string[] | null;
           created_at?: string;
           last_seen_at?: string | null;
           banned_until?: string | null;

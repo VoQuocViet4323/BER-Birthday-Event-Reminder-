@@ -75,6 +75,10 @@ export function useDiaries() {
           return getLocalDiaries();
         }
 
+        const localCacheMap = new Map(
+          getLocalDiaries().map((item) => [item.id, item.images || []])
+        );
+
         const entries: DiaryEntry[] = (data || []).map((row: any) => ({
           id: row.id,
           user_id: row.user_id,
@@ -83,6 +87,7 @@ export function useDiaries() {
           content: row.content,
           mood: row.mood,
           tags: row.tags || [],
+          images: Array.isArray(row.images) ? row.images : (localCacheMap.get(row.id) || []),
           created_at: row.created_at,
           updated_at: row.updated_at,
         }));
@@ -103,12 +108,15 @@ export function useDiaries() {
       const localList = getLocalDiaries();
       const cleanDate = normalizeDateKey(payload.values.entry_date);
 
+      const entryImages = Array.isArray(payload.values.images) ? payload.values.images : [];
+
       const entryPayload: any = {
         entry_date: cleanDate,
         title: payload.values.title || null,
         content: payload.values.content,
         mood: payload.values.mood || null,
         tags: payload.values.tags || [],
+        images: entryImages,
         updated_at: new Date().toISOString(),
       };
 
@@ -119,16 +127,38 @@ export function useDiaries() {
         created_at: new Date().toISOString(),
       };
 
+      const isMissingImagesColumnError = (err: any) => {
+        const msg = String(err?.message || "").toLowerCase();
+        return msg.includes("images") && (msg.includes("column") || msg.includes("schema cache"));
+      };
+
+      let savedWithoutDbImagesColumn = false;
+
       if (user) {
         if (payload.id) {
           // CẬP NHẬT (UPDATE) bản ghi đã tồn tại theo ID và user_id
-          const { data, error } = await (supabase as any)
+          let { data, error } = await (supabase as any)
             .from("diaries")
             .update(entryPayload)
             .eq("id", payload.id)
             .eq("user_id", user.id)
             .select()
             .single();
+
+          if (error && isMissingImagesColumnError(error)) {
+            savedWithoutDbImagesColumn = entryImages.length > 0;
+            console.warn("Cột 'images' chưa tồn tại trên Supabase DB. Vui lòng chạy migration 20261120_022_add_diary_images_and_storage.sql.");
+            const { images: _ignoredImages, ...fallbackPayload } = entryPayload;
+            const retryRes = await (supabase as any)
+              .from("diaries")
+              .update(fallbackPayload)
+              .eq("id", payload.id)
+              .eq("user_id", user.id)
+              .select()
+              .single();
+            data = retryRes.data;
+            error = retryRes.error;
+          }
 
           if (error) {
             console.error("Supabase update error:", error);
@@ -144,6 +174,7 @@ export function useDiaries() {
               content: data.content,
               mood: data.mood,
               tags: data.tags || [],
+              images: Array.isArray(data.images) ? data.images : entryImages,
               created_at: data.created_at,
               updated_at: data.updated_at,
             };
@@ -155,11 +186,24 @@ export function useDiaries() {
             user_id: user.id,
           };
 
-          const { data, error } = await (supabase as any)
+          let { data, error } = await (supabase as any)
             .from("diaries")
             .insert(insertPayload)
             .select()
             .single();
+
+          if (error && isMissingImagesColumnError(error)) {
+            savedWithoutDbImagesColumn = entryImages.length > 0;
+            console.warn("Cột 'images' chưa tồn tại trên Supabase DB. Vui lòng chạy migration 20261120_022_add_diary_images_and_storage.sql.");
+            const { images: _ignoredImages, ...fallbackInsertPayload } = insertPayload;
+            const retryRes = await (supabase as any)
+              .from("diaries")
+              .insert(fallbackInsertPayload)
+              .select()
+              .single();
+            data = retryRes.data;
+            error = retryRes.error;
+          }
 
           if (error) {
             console.error("Supabase insert error:", error);
@@ -175,6 +219,7 @@ export function useDiaries() {
               content: data.content,
               mood: data.mood,
               tags: data.tags || [],
+              images: Array.isArray(data.images) ? data.images : entryImages,
               created_at: data.created_at,
               updated_at: data.updated_at,
             };
@@ -193,9 +238,9 @@ export function useDiaries() {
       }
       saveLocalDiaries(updatedLocal);
 
-      return savedEntry;
+      return { savedEntry, savedWithoutDbImagesColumn };
     },
-    onSuccess: (savedEntry) => {
+    onSuccess: ({ savedEntry, savedWithoutDbImagesColumn }) => {
       queryClient.setQueryData<DiaryEntry[]>(["diaries"], (old = []) => {
         const existingIdx = old.findIndex((d) => d.id === savedEntry.id);
         if (existingIdx >= 0) {
@@ -206,11 +251,20 @@ export function useDiaries() {
         return [savedEntry, ...old];
       });
       queryClient.invalidateQueries({ queryKey: ["diaries"] });
-      toast({
-        title: "Đã lưu nhật ký!",
-        description: "Nội dung nhật ký đã được cập nhật thành công lên cơ sở dữ liệu.",
-        variant: "success",
-      });
+      if (savedWithoutDbImagesColumn) {
+        toast({
+          title: "Đã lưu nội dung, nhưng DB chưa có cột ảnh!",
+          description: "Hãy chạy file SQL migration 20261120_022_add_diary_images_and_storage.sql trên Supabase để lưu ảnh lên DB.",
+          variant: "error",
+          duration: 8000,
+        });
+      } else {
+        toast({
+          title: "Đã lưu nhật ký!",
+          description: "Nội dung và hình ảnh nhật ký đã được lưu thành công lên cơ sở dữ liệu.",
+          variant: "success",
+        });
+      }
     },
     onError: (err: any) => {
       console.error("Save diary error:", err);
@@ -245,8 +299,27 @@ export function useDiaries() {
         }
       }
 
-      // Xóa trong localStorage
+      // Dọn dẹp file ảnh trên Supabase Storage (best-effort) nếu nhật ký có lưu ảnh ở bucket 'diary-images'
       const localList = getLocalDiaries();
+      const targetDiary = id ? localList.find((d) => d.id === id) : undefined;
+      if (user && targetDiary?.images && targetDiary.images.length > 0 && supabase?.storage) {
+        const storagePaths = targetDiary.images
+          .map((url) => {
+            const marker = "/storage/v1/object/public/diary-images/";
+            const idx = url.indexOf(marker);
+            return idx >= 0 ? decodeURIComponent(url.slice(idx + marker.length)) : null;
+          })
+          .filter((p): p is string => Boolean(p));
+
+        if (storagePaths.length > 0) {
+          supabase.storage
+            .from("diary-images")
+            .remove(storagePaths)
+            .catch((e: any) => console.warn("Không thể xóa file ảnh cũ trên Storage:", e));
+        }
+      }
+
+      // Xóa trong localStorage
       const updated = localList.filter((d) => {
         if (id && d.id === id) return false;
         return true;
