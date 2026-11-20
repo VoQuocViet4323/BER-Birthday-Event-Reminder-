@@ -46,6 +46,7 @@ export function DiaryDrawer({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [tagInput, setTagInput] = useState("");
   const [pendingPhotos, setPendingPhotos] = useState<PendingPhoto[]>([]);
+  const [isSubmittingForm, setIsSubmittingForm] = useState(false);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -284,28 +285,32 @@ export function DiaryDrawer({
   };
 
   const handleFormSubmit = async (values: DiaryFormValues) => {
-    if (isUploadingImages || isSaving) return;
+    if (isSubmittingForm || isUploadingImages || isSaving) return;
 
+    setIsSubmittingForm(true);
     let finalImages = [...(values.images || [])];
 
-    // Chỉ nén & upload các ảnh mới chọn lên Supabase Storage khi người dùng bấm "Lưu nhật ký"
-    if (pendingPhotos.length > 0) {
-      setIsUploadingImages(true);
-      setUploadProgress({ current: 0, total: pendingPhotos.length });
+    try {
+      // Chỉ nén & upload các ảnh mới chọn lên Supabase Storage khi người dùng bấm "Lưu nhật ký"
+      if (pendingPhotos.length > 0) {
+        setIsUploadingImages(true);
+        setUploadProgress({ current: 0, total: pendingPhotos.length });
 
-      try {
         const supabase = createClient();
         let userId = "local_user";
         try {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session?.user?.id) {
-            userId = session.user.id;
-          } else {
+          const authPromise = (async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.user?.id) return session.user.id;
             const { data } = await supabase.auth.getUser();
-            if (data?.user?.id) userId = data.user.id;
-          }
+            return data?.user?.id || "local_user";
+          })();
+          userId = await Promise.race([
+            authPromise,
+            new Promise<string>((resolve) => setTimeout(() => resolve("local_user"), 5000)),
+          ]);
         } catch {
-          // Fallback sang local_user nếu chưa đăng nhập
+          // Fallback sang local_user nếu chưa đăng nhập hoặc timeout
         }
 
         const uploadedUrls: string[] = [];
@@ -323,14 +328,15 @@ export function DiaryDrawer({
           }
         }
 
+        setIsUploadingImages(false);
+        setUploadProgress(null);
+
         if (uploadedUrls.length === 0 && failedCount > 0) {
           toast({
             title: "Không thể tải ảnh lên",
             description: "Hình ảnh bị lỗi hoặc trình duyệt chưa hỗ trợ định dạng này (ví dụ HEIC chưa chuyển đổi).",
             variant: "error",
           });
-          setIsUploadingImages(false);
-          setUploadProgress(null);
           return;
         }
 
@@ -343,13 +349,8 @@ export function DiaryDrawer({
         }
 
         finalImages = [...finalImages, ...uploadedUrls];
-      } finally {
-        setIsUploadingImages(false);
-        setUploadProgress(null);
       }
-    }
 
-    try {
       await onSave({
         id: initialData?.id,
         values: {
@@ -362,8 +363,17 @@ export function DiaryDrawer({
       setTimeout(() => {
         onClose();
       }, 700);
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      console.error("Diary submit error:", err);
+      toast({
+        title: "Không thể lưu nhật ký",
+        description: err?.message || "Đã xảy ra lỗi khi lưu nhật ký. Vui lòng thử lại.",
+        variant: "error",
+      });
+    } finally {
+      setIsSubmittingForm(false);
+      setIsUploadingImages(false);
+      setUploadProgress(null);
     }
   };
 
@@ -788,7 +798,7 @@ export function DiaryDrawer({
             <LiquidGlassButton
               type="button"
               id="btn-save-diary"
-              isSubmitting={isSaving || isUploadingImages}
+              isSubmitting={isSubmittingForm || isSaving || isUploadingImages}
               idleText={initialData ? "Lưu thay đổi" : "Lưu nhật ký"}
               loadingText={isUploadingImages ? "Đang tải ảnh..." : "Đang lưu..."}
               successText="Đã lưu!"
@@ -798,13 +808,17 @@ export function DiaryDrawer({
                 (values) => handleFormSubmit(values),
                 (errs) => {
                   console.error("Diary form validation errors:", errs);
-                  if (errs.content) {
-                    toast({
-                      title: "Vui lòng nhập nội dung",
-                      description: errs.content.message || "Bạn chưa nhập nội dung nhật ký.",
-                      variant: "error",
-                    });
-                  }
+                  const firstErr =
+                    errs.content?.message ||
+                    errs.title?.message ||
+                    errs.images?.message ||
+                    errs.entry_date?.message ||
+                    "Vui lòng kiểm tra lại thông tin nhật ký.";
+                  toast({
+                    title: errs.content ? "Vui lòng nhập nội dung" : "Thông tin chưa hợp lệ",
+                    description: String(firstErr),
+                    variant: "error",
+                  });
                 }
               )}
             />

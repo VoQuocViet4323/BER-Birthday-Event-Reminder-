@@ -45,13 +45,37 @@ export function useDiaries() {
 
   const getAuthUser = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) return session.user;
-      const { data } = await supabase.auth.getUser();
-      return data?.user || null;
+      const authTask = (async () => {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) return session.user;
+        const { data } = await supabase.auth.getUser();
+        return data?.user || null;
+      })();
+      return await Promise.race([
+        authTask,
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000)),
+      ]);
     } catch {
       return null;
     }
+  };
+
+  const withDbTimeout = <T,>(promise: PromiseLike<T>, ms = 20000): Promise<T> => {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error("Kết nối tới cơ sở dữ liệu quá lâu. Vui lòng thử lại."));
+      }, ms);
+      Promise.resolve(promise).then(
+        (val) => {
+          clearTimeout(timer);
+          resolve(val);
+        },
+        (err) => {
+          clearTimeout(timer);
+          reject(err);
+        }
+      );
+    });
   };
 
   const diariesQuery = useQuery({
@@ -137,25 +161,29 @@ export function useDiaries() {
       if (user) {
         if (payload.id) {
           // CẬP NHẬT (UPDATE) bản ghi đã tồn tại theo ID và user_id
-          let { data, error } = await (supabase as any)
-            .from("diaries")
-            .update(entryPayload)
-            .eq("id", payload.id)
-            .eq("user_id", user.id)
-            .select()
-            .single();
+          let { data, error } = await withDbTimeout<any>(
+            (supabase as any)
+              .from("diaries")
+              .update(entryPayload)
+              .eq("id", payload.id)
+              .eq("user_id", user.id)
+              .select()
+              .single()
+          );
 
           if (error && isMissingImagesColumnError(error)) {
             savedWithoutDbImagesColumn = entryImages.length > 0;
             console.warn("Cột 'images' chưa tồn tại trên Supabase DB. Vui lòng chạy migration 20261120_022_add_diary_images_and_storage.sql.");
             const { images: _ignoredImages, ...fallbackPayload } = entryPayload;
-            const retryRes = await (supabase as any)
-              .from("diaries")
-              .update(fallbackPayload)
-              .eq("id", payload.id)
-              .eq("user_id", user.id)
-              .select()
-              .single();
+            const retryRes = await withDbTimeout<any>(
+              (supabase as any)
+                .from("diaries")
+                .update(fallbackPayload)
+                .eq("id", payload.id)
+                .eq("user_id", user.id)
+                .select()
+                .single()
+            );
             data = retryRes.data;
             error = retryRes.error;
           }
@@ -186,21 +214,25 @@ export function useDiaries() {
             user_id: user.id,
           };
 
-          let { data, error } = await (supabase as any)
-            .from("diaries")
-            .insert(insertPayload)
-            .select()
-            .single();
+          let { data, error } = await withDbTimeout<any>(
+            (supabase as any)
+              .from("diaries")
+              .insert(insertPayload)
+              .select()
+              .single()
+          );
 
           if (error && isMissingImagesColumnError(error)) {
             savedWithoutDbImagesColumn = entryImages.length > 0;
             console.warn("Cột 'images' chưa tồn tại trên Supabase DB. Vui lòng chạy migration 20261120_022_add_diary_images_and_storage.sql.");
             const { images: _ignoredImages, ...fallbackInsertPayload } = insertPayload;
-            const retryRes = await (supabase as any)
-              .from("diaries")
-              .insert(fallbackInsertPayload)
-              .select()
-              .single();
+            const retryRes = await withDbTimeout<any>(
+              (supabase as any)
+                .from("diaries")
+                .insert(fallbackInsertPayload)
+                .select()
+                .single()
+            );
             data = retryRes.data;
             error = retryRes.error;
           }

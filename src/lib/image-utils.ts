@@ -188,6 +188,27 @@ export async function uploadAvatarWithFallback(
 }
 
 /**
+ * Helper chống treo vô hạn cho các tác vụ bất đồng bộ (nén ảnh, upload Storage...)
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, ms);
+    promise.then(
+      (val) => {
+        clearTimeout(timer);
+        resolve(val);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
+}
+
+/**
  * Kiểm tra định dạng tệp có phải hình ảnh hợp lệ không
  */
 export function isValidImageFile(file: File): boolean {
@@ -200,9 +221,10 @@ export function isValidImageFile(file: File): boolean {
 /**
  * Nén ảnh nhật ký giữ nguyên tỷ lệ khung hình (aspect ratio) bằng Canvas API.
  * Hỗ trợ ảnh dung lượng rất lớn (>30MB, 50MB+) trên cả PC và Mobile:
- * - Ưu tiên createImageBitmap (tiết kiệm RAM, tự động xoay EXIF)
+ * - Ưu tiên createImageBitmap (tiết kiệm RAM, tự động xoay EXIF) với timeout an toàn
  * - Fallback sang ObjectURL -> Image và giải phóng bộ nhớ ngay sau khi vẽ
  * - Tự động thu gọn cạnh dài tối đa về maxDimension (mặc định 1600px) và nén WebP/JPEG sắc nét (~150-350KB)
+ * - Luôn có cơ chế timeout chống treo vô hạn
  */
 export async function compressDiaryImage(
   file: File,
@@ -221,6 +243,12 @@ export async function compressDiaryImage(
   ): Promise<ProcessedAvatar> => {
     return new Promise((resolve, reject) => {
       try {
+        if (!naturalW || !naturalH) {
+          cleanup?.();
+          reject(new Error("Không thể đọc kích thước hình ảnh."));
+          return;
+        }
+
         let targetW = naturalW;
         let targetH = naturalH;
 
@@ -299,62 +327,75 @@ export async function compressDiaryImage(
     });
   };
 
-  // 1. Ưu tiên createImageBitmap trên trình duyệt hiện đại (tối ưu RAM cho ảnh >30MB và giữ đúng hướng EXIF)
-  if (typeof window !== "undefined" && typeof createImageBitmap === "function") {
-    try {
-      const bitmap = await createImageBitmap(file);
-      return await drawSourceToCanvas(bitmap, bitmap.width, bitmap.height, () => {
-        if (typeof bitmap.close === "function") bitmap.close();
-      });
-    } catch {
-      // Fallback sang ObjectURL nếu trình duyệt không hỗ trợ decode định dạng này qua createImageBitmap
+  const runCompression = async (): Promise<ProcessedAvatar> => {
+    // 1. Ưu tiên createImageBitmap trên trình duyệt hiện đại (tối ưu RAM cho ảnh >30MB và giữ đúng hướng EXIF)
+    if (typeof window !== "undefined" && typeof createImageBitmap === "function") {
+      try {
+        const bitmap = await withTimeout(
+          createImageBitmap(file),
+          10000,
+          "Quá thời gian giải mã ảnh bằng createImageBitmap."
+        );
+        return await drawSourceToCanvas(bitmap, bitmap.width, bitmap.height, () => {
+          if (typeof bitmap.close === "function") bitmap.close();
+        });
+      } catch {
+        // Fallback sang ObjectURL nếu trình duyệt không hỗ trợ decode định dạng này qua createImageBitmap
+      }
     }
-  }
 
-  // 2. Fallback sang ObjectURL (không nhân đôi RAM như FileReader.readAsDataURL)
-  if (typeof window !== "undefined" && typeof URL !== "undefined" && typeof URL.createObjectURL === "function") {
+    // 2. Fallback sang ObjectURL (không nhân đôi RAM như FileReader.readAsDataURL)
+    if (typeof window !== "undefined" && typeof URL !== "undefined" && typeof URL.createObjectURL === "function") {
+      return new Promise((resolve, reject) => {
+        const objectUrl = URL.createObjectURL(file);
+        const img = new Image();
+        img.onerror = () => {
+          URL.revokeObjectURL(objectUrl);
+          reject(new Error("Hình ảnh bị lỗi hoặc trình duyệt chưa hỗ trợ định dạng này (ví dụ HEIC chưa chuyển đổi)."));
+        };
+        img.onload = () => {
+          drawSourceToCanvas(
+            img,
+            img.naturalWidth || img.width,
+            img.naturalHeight || img.height,
+            () => URL.revokeObjectURL(objectUrl)
+          )
+            .then(resolve)
+            .catch(reject);
+        };
+        img.src = objectUrl;
+      });
+    }
+
+    // 3. Fallback FileReader (môi trường test / trình duyệt cũ)
     return new Promise((resolve, reject) => {
-      const objectUrl = URL.createObjectURL(file);
-      const img = new Image();
-      img.onerror = () => {
-        URL.revokeObjectURL(objectUrl);
-        reject(new Error("Hình ảnh bị lỗi hoặc trình duyệt chưa hỗ trợ định dạng này (ví dụ HEIC chưa chuyển đổi)."));
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("Không thể đọc tệp hình ảnh từ thiết bị."));
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onerror = () => reject(new Error("Hình ảnh bị lỗi hoặc không hỗ trợ định dạng này."));
+        img.onload = () => {
+          drawSourceToCanvas(img, img.naturalWidth || img.width, img.naturalHeight || img.height)
+            .then(resolve)
+            .catch(reject);
+        };
+        img.src = e.target?.result as string;
       };
-      img.onload = () => {
-        drawSourceToCanvas(
-          img,
-          img.naturalWidth || img.width,
-          img.naturalHeight || img.height,
-          () => URL.revokeObjectURL(objectUrl)
-        )
-          .then(resolve)
-          .catch(reject);
-      };
-      img.src = objectUrl;
+      reader.readAsDataURL(file);
     });
-  }
+  };
 
-  // 3. Fallback FileReader (môi trường test / trình duyệt cũ)
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Không thể đọc tệp hình ảnh từ thiết bị."));
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onerror = () => reject(new Error("Hình ảnh bị lỗi hoặc không hỗ trợ định dạng này."));
-      img.onload = () => {
-        drawSourceToCanvas(img, img.naturalWidth || img.width, img.naturalHeight || img.height)
-          .then(resolve)
-          .catch(reject);
-      };
-      img.src = e.target?.result as string;
-    };
-    reader.readAsDataURL(file);
-  });
+  return withTimeout(
+    runCompression(),
+    25000,
+    "Xử lý nén ảnh quá lâu. Vui lòng thử lại với định dạng JPG/PNG/WebP."
+  );
 }
 
 /**
  * Tải ảnh nhật ký lên Supabase Storage (bucket "diary-images") với Smart Fallback sang Data URL.
  * Cho phép chọn ảnh dung lượng >30MB nhờ cơ chế nén thông minh trước khi tải lên.
+ * Có timeout 25s cho bước upload Storage để đảm bảo không bao giờ bị treo vô hạn.
  */
 export async function uploadDiaryImageWithFallback(
   supabase: any,
@@ -372,21 +413,25 @@ export async function uploadDiaryImageWithFallback(
     return processed.dataUrl;
   }
 
-  // 2. Thử tải lên bucket "diary-images"
+  // 2. Thử tải lên bucket "diary-images" (có timeout 25s chống treo)
   try {
     const randomSuffix = Math.random().toString(36).slice(2, 8);
     const fileName = `diary-${Date.now()}-${randomSuffix}.${processed.ext}`;
     const filePath = `${userId}/${fileName}`;
 
-    const { error: uploadError } = await supabase.storage
-      .from("diary-images")
-      .upload(filePath, processed.blob, {
-        cacheControl: "31536000",
-        upsert: false,
-        contentType: processed.blob.type,
-      });
+    const uploadResult = await withTimeout(
+      supabase.storage
+        .from("diary-images")
+        .upload(filePath, processed.blob, {
+          cacheControl: "31536000",
+          upsert: false,
+          contentType: processed.blob.type || `image/${processed.ext}`,
+        }),
+      25000,
+      "Tải ảnh lên Supabase Storage quá thời gian chờ."
+    ) as { error?: any };
 
-    if (!uploadError) {
+    if (!uploadResult?.error) {
       const { data } = supabase.storage.from("diary-images").getPublicUrl(filePath);
       if (data?.publicUrl) {
         return data.publicUrl;
@@ -394,14 +439,25 @@ export async function uploadDiaryImageWithFallback(
     } else {
       console.warn(
         "Lỗi upload Supabase Storage diary-images, kích hoạt cơ chế Base64 fallback:",
-        uploadError.message
+        uploadResult.error.message || uploadResult.error
       );
     }
-  } catch (storageErr) {
-    console.warn("Ngoại lệ khi tải ảnh nhật ký lên Supabase Storage, chuyển sang Base64 fallback:", storageErr);
+  } catch (storageErr: any) {
+    console.warn(
+      "Ngoại lệ/timeout khi tải ảnh nhật ký lên Supabase Storage, chuyển sang Base64 fallback:",
+      storageErr?.message || storageErr
+    );
   }
 
-  // 3. Fallback an toàn sang Data URL đã nén
+  // 3. Fallback an toàn sang Data URL đã nén (thu gọn thêm nếu quá lớn để INSERT DB luôn nhanh)
+  if (processed.dataUrl.length > 450_000) {
+    try {
+      const compact = await compressDiaryImage(file, 1080, 0.72);
+      return compact.dataUrl;
+    } catch {
+      return processed.dataUrl;
+    }
+  }
   return processed.dataUrl;
 }
 
