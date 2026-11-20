@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { LiquidGlassButton } from "@/components/ui/liquid-glass-button";
+import { ImageLightbox } from "@/components/ui/image-lightbox";
 import { createClient } from "@/lib/supabase/client";
 import {
   uploadDiaryImageWithFallback,
@@ -57,12 +58,31 @@ export function DiaryDrawer({
   const [isUploadingImages, setIsUploadingImages] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingPhotosRef = useRef<PendingPhoto[]>([]);
   pendingPhotosRef.current = pendingPhotos;
   // Hàng đợi nén tuần tự 1 ảnh/lần để chọn cùng lúc 6 ảnh >30MB trên iPhone không bao giờ bị tràn RAM
   const compressQueueRef = useRef<Promise<any>>(Promise.resolve());
+  // Cache sẵn userId khi mở modal để lúc bấm Lưu không mất thời gian chờ auth.getSession()
+  const cachedUserIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!cancelled && session?.user?.id) {
+          cachedUserIdRef.current = session.user.id;
+        }
+      } catch {}
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
 
   const clearPendingPhotos = () => {
     pendingPhotosRef.current.forEach((p) => {
@@ -94,8 +114,8 @@ export function DiaryDrawer({
       document.body.style.overflow = "hidden";
       const handleKeyDown = (e: KeyboardEvent) => {
         if (e.key === "Escape") {
-          if (previewImage) {
-            setPreviewImage(null);
+          if (previewIndex !== null) {
+            setPreviewIndex(null);
           } else {
             onClose();
           }
@@ -107,7 +127,7 @@ export function DiaryDrawer({
         document.removeEventListener("keydown", handleKeyDown);
       };
     }
-  }, [isOpen, onClose, previewImage]);
+  }, [isOpen, onClose, previewIndex]);
 
   const entryDateStr = normalizeDateKey(selectedDate);
 
@@ -157,7 +177,7 @@ export function DiaryDrawer({
     }
     setConfirmDelete(false);
     setTagInput("");
-    setPreviewImage(null);
+    setPreviewIndex(null);
     setIsDragOver(false);
     clearPendingPhotos();
   }, [initialData, entryDateStr, reset, isOpen]);
@@ -318,20 +338,23 @@ export function DiaryDrawer({
         setUploadProgress({ current: 0, total: pendingPhotos.length });
 
         const supabase = createClient();
-        let userId = "local_user";
-        try {
-          const authPromise = (async () => {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session?.user?.id) return session.user.id;
-            const { data } = await supabase.auth.getUser();
-            return data?.user?.id || "local_user";
-          })();
-          userId = await Promise.race([
-            authPromise,
-            new Promise<string>((resolve) => setTimeout(() => resolve("local_user"), 5000)),
-          ]);
-        } catch {
-          // Fallback sang local_user nếu chưa đăng nhập hoặc timeout
+        let userId = cachedUserIdRef.current || "local_user";
+        if (!cachedUserIdRef.current) {
+          try {
+            const authPromise = (async () => {
+              const { data: { session } } = await supabase.auth.getSession();
+              if (session?.user?.id) return session.user.id;
+              const { data } = await supabase.auth.getUser();
+              return data?.user?.id || "local_user";
+            })();
+            userId = await Promise.race([
+              authPromise,
+              new Promise<string>((resolve) => setTimeout(() => resolve("local_user"), 4000)),
+            ]);
+            if (userId !== "local_user") cachedUserIdRef.current = userId;
+          } catch {
+            // Fallback sang local_user nếu chưa đăng nhập hoặc timeout
+          }
         }
 
         let completedCount = 0;
@@ -397,7 +420,7 @@ export function DiaryDrawer({
       clearPendingPhotos();
       setTimeout(() => {
         onClose();
-      }, 700);
+      }, 250);
     } catch (err: any) {
       console.error("Diary submit error:", err);
       toast({
@@ -637,12 +660,12 @@ export function DiaryDrawer({
                       <img
                         src={imgUrl}
                         alt={`Khoảnh khắc ${idx + 1}`}
-                        onClick={() => setPreviewImage(imgUrl)}
+                        onClick={() => setPreviewIndex(idx)}
                         className="w-full h-full object-cover cursor-pointer transition-transform duration-300 [@media(hover:hover)]:group-hover:scale-105"
                       />
                       <button
                         type="button"
-                        onClick={() => setPreviewImage(imgUrl)}
+                        onClick={() => setPreviewIndex(idx)}
                         className="absolute bottom-1.5 left-1.5 p-1 rounded-lg bg-black/55 hover:bg-black/75 text-white transition-opacity cursor-pointer touch-manipulation [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
                         title="Xem ảnh lớn"
                       >
@@ -675,12 +698,12 @@ export function DiaryDrawer({
                       <img
                         src={photo.previewUrl}
                         alt={`Ảnh chờ lưu ${idx + 1}`}
-                        onClick={() => setPreviewImage(photo.previewUrl)}
+                        onClick={() => setPreviewIndex(selectedImages.length + idx)}
                         className="w-full h-full object-cover cursor-pointer transition-transform duration-300 [@media(hover:hover)]:group-hover:scale-105"
                       />
                       <button
                         type="button"
-                        onClick={() => setPreviewImage(photo.previewUrl)}
+                        onClick={() => setPreviewIndex(selectedImages.length + idx)}
                         className="absolute bottom-1.5 left-1.5 p-1 rounded-lg bg-black/55 hover:bg-black/75 text-white transition-opacity cursor-pointer touch-manipulation [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
                         title="Xem ảnh lớn"
                       >
@@ -863,33 +886,13 @@ export function DiaryDrawer({
         </div>
       </motion.div>
 
-      {/* Lightbox xem trước ảnh toàn màn hình */}
-      {previewImage && (
-        <div
-          onClick={(e) => {
-            e.stopPropagation();
-            setPreviewImage(null);
-          }}
-          className="fixed inset-0 z-[120] bg-black/90 backdrop-blur-md flex items-center justify-center p-4"
-        >
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setPreviewImage(null);
-            }}
-            className="absolute top-4 right-4 p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
-            title="Đóng xem trước"
-          >
-            <X className="w-5 h-5" />
-          </button>
-          <img
-            src={previewImage}
-            alt="Xem trước ảnh nhật ký"
-            onClick={(e) => e.stopPropagation()}
-            className="max-w-full max-h-[88vh] rounded-2xl object-contain shadow-2xl"
-          />
-        </div>
+      {/* Lightbox xem trước ảnh toàn màn hình (hỗ trợ kéo 2 ngón tay phóng to / thu nhỏ) */}
+      {previewIndex !== null && (
+        <ImageLightbox
+          images={[...selectedImages, ...pendingPhotos.map((p) => p.previewUrl)]}
+          initialIndex={previewIndex}
+          onClose={() => setPreviewIndex(null)}
+        />
       )}
     </motion.div>
   )}

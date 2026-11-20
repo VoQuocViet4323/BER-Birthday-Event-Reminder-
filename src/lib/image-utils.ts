@@ -33,6 +33,9 @@ export async function compressAndCropAvatar(
 
     const processImage = (img: HTMLImageElement, revokeUrl?: string) => {
       try {
+        // Kiểm tra khả năng hỗ trợ WebP trước khi tạo canvas chính (chỉ chạy 1 lần duy nhất)
+        const canUseWebP = supportsCanvasWebP();
+
         const canvas = document.createElement("canvas");
         canvas.width = targetSize;
         canvas.height = targetSize;
@@ -188,6 +191,30 @@ export async function uploadAvatarWithFallback(
 }
 
 /**
+ * Kiểm tra 1 lần duy nhất xem trình duyệt có thực sự hỗ trợ xuất WebP từ Canvas không.
+ * Trên iOS Safari/WebKit, hàm này trả về false ngay lập tức (<1ms) để bỏ qua việc
+ * gọi canvas.toBlob('image/webp') gây mã hóa PNG thừa mất 1-2 giây cho mỗi ảnh!
+ */
+let cachedWebPSupport: boolean | null = null;
+function supportsCanvasWebP(): boolean {
+  if (cachedWebPSupport !== null) return cachedWebPSupport;
+  if (typeof document === "undefined") {
+    cachedWebPSupport = true;
+    return true;
+  }
+  try {
+    const testCanvas = document.createElement("canvas");
+    testCanvas.width = 1;
+    testCanvas.height = 1;
+    const dataUrl = testCanvas.toDataURL("image/webp");
+    cachedWebPSupport = typeof dataUrl === "string" && dataUrl.startsWith("data:image/webp");
+  } catch {
+    cachedWebPSupport = false;
+  }
+  return cachedWebPSupport;
+}
+
+/**
  * Helper chống treo vô hạn cho các tác vụ bất đồng bộ (nén ảnh, upload Storage...)
  */
 function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string): Promise<T> {
@@ -275,6 +302,9 @@ export async function compressDiaryImage(
           }
         }
 
+        // Kiểm tra khả năng hỗ trợ WebP trước khi tạo canvas chính (chỉ chạy 1 lần duy nhất)
+        const canUseWebP = supportsCanvasWebP();
+
         const canvas = document.createElement("canvas");
         canvas.width = targetW;
         canvas.height = targetH;
@@ -293,7 +323,9 @@ export async function compressDiaryImage(
         // Giải phóng RAM ngay lập tức (rất quan trọng với ảnh >30MB)
         cleanup?.();
 
-        // Helper xuất Blob nén thực sự (khắc phục lỗi iOS Safari/WebKit tự trả về PNG nặng 4-8MB khi gọi image/webp)
+        // Helper xuất Blob nén thực sự:
+        // Nếu trình duyệt KHÔNG hỗ trợ WebP (như iOS Safari/WebKit), đi thẳng sang JPEG phần cứng (<100ms),
+        // tránh hoàn toàn việc gọi toBlob('image/webp') tạo PNG thừa tốn 1-2s trên mobile!
         const exportCompressedBlob = () => {
           const fallbackToJpeg = () => {
             canvas.toBlob(
@@ -316,10 +348,13 @@ export async function compressDiaryImage(
             );
           };
 
+          if (!canUseWebP) {
+            fallbackToJpeg();
+            return;
+          }
+
           canvas.toBlob(
             (blob) => {
-              // Chỉ nhận WebP khi trình duyệt thực sự xuất đúng MIME image/webp
-              // Trên iOS Safari/Chrome (WebKit), toBlob('image/webp') trả về image/png cực nặng -> ép chuyển sang JPEG!
               if (blob && blob.type === "image/webp") {
                 const dataUrl = includeDataUrl ? canvas.toDataURL("image/webp", quality) : "";
                 resolve({
@@ -446,8 +481,8 @@ export async function prepareDiaryImageForUpload(file: File): Promise<ProcessedA
     };
   }
 
-  // Nén nhanh không gọi toDataURL đồng bộ
-  return compressDiaryImage(file, 1280, 0.8, false);
+  // Nén nhanh không gọi toDataURL đồng bộ (1080px, quality 0.78 -> ~70-130KB, đẩy 4G/5G cực nhanh)
+  return compressDiaryImage(file, 1080, 0.78, false);
 }
 
 /**

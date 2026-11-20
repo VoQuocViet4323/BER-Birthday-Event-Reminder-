@@ -31,6 +31,7 @@ import { useToast } from "@/components/ui/toast";
 import { useDiaries, normalizeDateKey } from "@/hooks/use-diaries";
 import { DiaryEntry } from "@/types/diary";
 import { DiaryDrawer } from "./diary-drawer";
+import { ImageLightbox } from "@/components/ui/image-lightbox";
 import { EventFormDrawer } from "@/components/events/event-form-drawer";
 import { useEvents } from "@/hooks/use-events";
 import { isLeapYear } from "@/lib/date-utils";
@@ -1754,75 +1755,13 @@ export function MonthCalendarView({
         </motion.div>
       )}
 
-      {/* Lightbox xem ảnh nhật ký toàn màn hình */}
+      {/* Lightbox xem ảnh nhật ký toàn màn hình (hỗ trợ kéo 2 ngón phóng to / thu nhỏ) */}
       {lightboxState && (
-        <motion.div
-          key="diary-lightbox-overlay"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.18 }}
-          onClick={() => setLightboxState(null)}
-          className="fixed inset-0 z-[130] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 select-none"
-        >
-          <button
-            type="button"
-            onClick={() => setLightboxState(null)}
-            className="absolute top-4 right-4 p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
-            title="Đóng"
-          >
-            <X className="w-5 h-5" />
-          </button>
-
-          {lightboxState.images.length > 1 && (
-            <>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setLightboxState((prev) =>
-                    prev
-                      ? { ...prev, index: (prev.index - 1 + prev.images.length) % prev.images.length }
-                      : null
-                  );
-                }}
-                className="absolute left-3 sm:left-6 p-2.5 rounded-full bg-white/10 hover:bg-white/25 text-white transition-colors cursor-pointer"
-                title="Ảnh trước"
-              >
-                <ChevronLeft className="w-6 h-6" />
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setLightboxState((prev) =>
-                    prev ? { ...prev, index: (prev.index + 1) % prev.images.length } : null
-                  );
-                }}
-                className="absolute right-3 sm:right-6 p-2.5 rounded-full bg-white/10 hover:bg-white/25 text-white transition-colors cursor-pointer"
-                title="Ảnh sau"
-              >
-                <ChevronRight className="w-6 h-6" />
-              </button>
-            </>
-          )}
-
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="flex flex-col items-center gap-3 max-w-full"
-          >
-            <img
-              src={lightboxState.images[lightboxState.index]}
-              alt={`Khoảnh khắc ${lightboxState.index + 1}`}
-              className="max-w-[92vw] max-h-[82vh] rounded-2xl object-contain shadow-2xl"
-            />
-            {lightboxState.images.length > 1 && (
-              <span className="px-3 py-1 rounded-full bg-white/10 text-white text-xs font-semibold">
-                {lightboxState.index + 1} / {lightboxState.images.length}
-              </span>
-            )}
-          </div>
-        </motion.div>
+        <ImageLightbox
+          images={lightboxState.images}
+          initialIndex={lightboxState.index}
+          onClose={() => setLightboxState(null)}
+        />
       )}
     </AnimatePresence>,
         document.body
