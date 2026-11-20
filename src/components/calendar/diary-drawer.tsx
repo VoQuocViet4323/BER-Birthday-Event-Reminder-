@@ -14,6 +14,12 @@ import { LiquidGlassButton } from "@/components/ui/liquid-glass-button";
 import { createClient } from "@/lib/supabase/client";
 import { uploadDiaryImageWithFallback, isValidImageFile } from "@/lib/image-utils";
 
+interface PendingPhoto {
+  id: string;
+  file: File;
+  previewUrl: string;
+}
+
 interface DiaryDrawerProps {
   isOpen: boolean;
   onClose: () => void;
@@ -39,11 +45,33 @@ export function DiaryDrawer({
   const [mounted, setMounted] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [tagInput, setTagInput] = useState("");
+  const [pendingPhotos, setPendingPhotos] = useState<PendingPhoto[]>([]);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pendingPhotosRef = useRef<PendingPhoto[]>([]);
+  pendingPhotosRef.current = pendingPhotos;
+
+  const clearPendingPhotos = () => {
+    pendingPhotosRef.current.forEach((p) => {
+      try {
+        URL.revokeObjectURL(p.previewUrl);
+      } catch {}
+    });
+    setPendingPhotos([]);
+  };
+
+  useEffect(() => {
+    return () => {
+      pendingPhotosRef.current.forEach((p) => {
+        try {
+          URL.revokeObjectURL(p.previewUrl);
+        } catch {}
+      });
+    };
+  }, []);
 
   useEffect(() => {
     setMounted(true);
@@ -121,6 +149,7 @@ export function DiaryDrawer({
     setTagInput("");
     setPreviewImage(null);
     setIsDragOver(false);
+    clearPendingPhotos();
   }, [initialData, entryDateStr, reset, isOpen]);
 
   if (!mounted) return null;
@@ -153,7 +182,9 @@ export function DiaryDrawer({
     setTagInput("");
   };
 
-  const handleFilesSelected = async (incomingFiles: FileList | File[]) => {
+  const totalImagesCount = selectedImages.length + pendingPhotos.length;
+
+  const handleFilesSelected = (incomingFiles: FileList | File[]) => {
     const fileArray = Array.from(incomingFiles || []);
     if (fileArray.length === 0) return;
 
@@ -170,12 +201,12 @@ export function DiaryDrawer({
     if (validFiles.length < fileArray.length) {
       toast({
         title: "Một số tệp đã được bỏ qua",
-        description: "Chỉ những tệp hình ảnh hợp lệ mới được tải lên.",
+        description: "Chỉ những tệp hình ảnh hợp lệ mới được chọn.",
         variant: "default",
       });
     }
 
-    const remainingSlots = MAX_DIARY_IMAGES - selectedImages.length;
+    const remainingSlots = MAX_DIARY_IMAGES - totalImagesCount;
     if (remainingSlots <= 0) {
       toast({
         title: `Đã đạt tối đa ${MAX_DIARY_IMAGES} ảnh`,
@@ -185,90 +216,58 @@ export function DiaryDrawer({
       return;
     }
 
-    const filesToProcess = validFiles.slice(0, remainingSlots);
+    const filesToQueue = validFiles.slice(0, remainingSlots);
     if (validFiles.length > remainingSlots) {
       toast({
         title: `Giới hạn tối đa ${MAX_DIARY_IMAGES} ảnh`,
-        description: `Hệ thống sẽ chỉ tải lên ${remainingSlots} ảnh đầu tiên.`,
+        description: `Hệ thống sẽ chỉ chọn ${remainingSlots} ảnh đầu tiên.`,
         variant: "default",
       });
     }
 
-    setIsUploadingImages(true);
-    setUploadProgress({ current: 0, total: filesToProcess.length });
+    // Chỉ tạo ảnh xem trước cục bộ (KHÔNG upload lên Storage cho tới khi bấm "Lưu nhật ký")
+    const newPending: PendingPhoto[] = filesToQueue.map((file) => ({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      file,
+      previewUrl: URL.createObjectURL(file),
+    }));
 
-    try {
-      const supabase = createClient();
-      let userId = "local_user";
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user?.id) {
-          userId = session.user.id;
-        } else {
-          const { data } = await supabase.auth.getUser();
-          if (data?.user?.id) userId = data.user.id;
-        }
-      } catch {
-        // Fallback sang local_user nếu chưa đăng nhập
-      }
+    setPendingPhotos((prev) => [...prev, ...newPending]);
 
-      const uploadedUrls: string[] = [];
-      let failedCount = 0;
-
-      // Xử lý tuần tự từng ảnh để tối ưu RAM trên PC & Mobile khi tải ảnh dung lượng lớn (>30MB)
-      for (let i = 0; i < filesToProcess.length; i++) {
-        setUploadProgress({ current: i + 1, total: filesToProcess.length });
-        try {
-          const url = await uploadDiaryImageWithFallback(supabase, userId, filesToProcess[i]);
-          uploadedUrls.push(url);
-        } catch (err: any) {
-          failedCount++;
-          console.error(`Lỗi xử lý ảnh ${filesToProcess[i].name}:`, err);
-        }
-      }
-
-      if (uploadedUrls.length > 0) {
-        setValue("images", [...selectedImages, ...uploadedUrls], { shouldDirty: true });
-        toast({
-          title: `Đã thêm ${uploadedUrls.length} ảnh kỷ niệm!`,
-          description: failedCount > 0
-            ? `${failedCount} ảnh không thể xử lý. Ảnh hợp lệ đã được nén tối ưu.`
-            : "Ảnh đã được tối ưu dung lượng sắc nét và sẵn sàng lưu cùng nhật ký.",
-          variant: "success",
-        });
-      } else if (failedCount > 0) {
-        toast({
-          title: "Không thể tải ảnh lên",
-          description: "Hình ảnh bị lỗi hoặc trình duyệt chưa hỗ trợ định dạng này (ví dụ HEIC chưa chuyển đổi).",
-          variant: "error",
-        });
-      }
-    } finally {
-      setIsUploadingImages(false);
-      setUploadProgress(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
   };
 
-  const handleRemoveImage = (indexToRemove: number) => {
+  const handleRemoveSavedImage = (indexToRemove: number) => {
     const next = selectedImages.filter((_, idx) => idx !== indexToRemove);
     setValue("images", next, { shouldDirty: true });
+  };
+
+  const handleRemovePendingPhoto = (photoId: string) => {
+    setPendingPhotos((prev) => {
+      const target = prev.find((p) => p.id === photoId);
+      if (target) {
+        try {
+          URL.revokeObjectURL(target.previewUrl);
+        } catch {}
+      }
+      return prev.filter((p) => p.id !== photoId);
+    });
   };
 
   const handleDropImages = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragOver(false);
-    if (isUploadingImages) return;
+    if (isUploadingImages || isSaving) return;
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       handleFilesSelected(e.dataTransfer.files);
     }
   };
 
   const handlePasteImages = (e: React.ClipboardEvent<HTMLFormElement>) => {
-    if (isUploadingImages) return;
+    if (isUploadingImages || isSaving) return;
     const items = e.clipboardData?.items;
     if (!items) return;
     const pastedImages: File[] = [];
@@ -285,16 +284,81 @@ export function DiaryDrawer({
   };
 
   const handleFormSubmit = async (values: DiaryFormValues) => {
-    if (isUploadingImages) return;
+    if (isUploadingImages || isSaving) return;
+
+    let finalImages = [...(values.images || [])];
+
+    // Chỉ nén & upload các ảnh mới chọn lên Supabase Storage khi người dùng bấm "Lưu nhật ký"
+    if (pendingPhotos.length > 0) {
+      setIsUploadingImages(true);
+      setUploadProgress({ current: 0, total: pendingPhotos.length });
+
+      try {
+        const supabase = createClient();
+        let userId = "local_user";
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user?.id) {
+            userId = session.user.id;
+          } else {
+            const { data } = await supabase.auth.getUser();
+            if (data?.user?.id) userId = data.user.id;
+          }
+        } catch {
+          // Fallback sang local_user nếu chưa đăng nhập
+        }
+
+        const uploadedUrls: string[] = [];
+        let failedCount = 0;
+
+        // Xử lý tuần tự từng ảnh để tối ưu RAM khi tải ảnh dung lượng lớn (>30MB)
+        for (let i = 0; i < pendingPhotos.length; i++) {
+          setUploadProgress({ current: i + 1, total: pendingPhotos.length });
+          try {
+            const url = await uploadDiaryImageWithFallback(supabase, userId, pendingPhotos[i].file);
+            uploadedUrls.push(url);
+          } catch (err: any) {
+            failedCount++;
+            console.error(`Lỗi xử lý ảnh ${pendingPhotos[i].file.name}:`, err);
+          }
+        }
+
+        if (uploadedUrls.length === 0 && failedCount > 0) {
+          toast({
+            title: "Không thể tải ảnh lên",
+            description: "Hình ảnh bị lỗi hoặc trình duyệt chưa hỗ trợ định dạng này (ví dụ HEIC chưa chuyển đổi).",
+            variant: "error",
+          });
+          setIsUploadingImages(false);
+          setUploadProgress(null);
+          return;
+        }
+
+        if (failedCount > 0) {
+          toast({
+            title: "Một số ảnh không thể tải lên",
+            description: `${failedCount} ảnh bị lỗi định dạng đã được bỏ qua.`,
+            variant: "default",
+          });
+        }
+
+        finalImages = [...finalImages, ...uploadedUrls];
+      } finally {
+        setIsUploadingImages(false);
+        setUploadProgress(null);
+      }
+    }
+
     try {
       await onSave({
         id: initialData?.id,
         values: {
           ...values,
           entry_date: entryDateStr,
-          images: values.images || [],
+          images: finalImages,
         },
       });
+      clearPendingPhotos();
       setTimeout(() => {
         onClose();
       }, 700);
@@ -455,7 +519,7 @@ export function DiaryDrawer({
                 </span>
               </label>
               <span className="text-[11px] text-muted-foreground font-medium">
-                {selectedImages.length}/{MAX_DIARY_IMAGES} ảnh
+                {totalImagesCount}/{MAX_DIARY_IMAGES} ảnh
               </span>
             </div>
 
@@ -465,7 +529,7 @@ export function DiaryDrawer({
               type="file"
               accept="image/*"
               multiple
-              disabled={isUploadingImages}
+              disabled={isUploadingImages || isSaving}
               onChange={(e) => {
                 if (e.target.files && e.target.files.length > 0) {
                   handleFilesSelected(e.target.files);
@@ -474,9 +538,9 @@ export function DiaryDrawer({
               className="hidden"
             />
 
-            {selectedImages.length === 0 ? (
+            {totalImagesCount === 0 ? (
               <div
-                onClick={() => !isUploadingImages && fileInputRef.current?.click()}
+                onClick={() => !isUploadingImages && !isSaving && fileInputRef.current?.click()}
                 onDragOver={(e) => {
                   e.preventDefault();
                   setIsDragOver(true);
@@ -488,32 +552,20 @@ export function DiaryDrawer({
                   isDragOver
                     ? "border-primary bg-primary/10 scale-[1.01]"
                     : "border-border/80 bg-secondary/30 hover:border-primary/60 hover:bg-secondary/50",
-                  isUploadingImages && "opacity-75 cursor-wait"
+                  (isUploadingImages || isSaving) && "opacity-75 cursor-wait"
                 )}
               >
-                {isUploadingImages ? (
-                  <div className="flex flex-col items-center justify-center gap-2 py-2">
-                    <Loader2 className="w-6 h-6 text-primary animate-spin" />
-                    <p className="text-xs font-semibold text-foreground">
-                      Đang nén & tối ưu ảnh ({uploadProgress?.current || 1}/{uploadProgress?.total || 1})...
-                    </p>
-                    <p className="text-[11px] text-muted-foreground">
-                      Ảnh dung lượng lớn (&gt;30MB) có thể mất vài giây xử lý
-                    </p>
+                <div className="flex flex-col items-center justify-center gap-1.5 py-1">
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
+                    <ImagePlus className="w-5 h-5" />
                   </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center gap-1.5 py-1">
-                    <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary">
-                      <ImagePlus className="w-5 h-5" />
-                    </div>
-                    <p className="text-xs font-semibold text-foreground mt-0.5">
-                      Thêm ảnh lưu giữ khoảnh khắc đẹp
-                    </p>
-                    <p className="text-[11px] text-muted-foreground">
-                      Bấm chọn, kéo thả hoặc dán ảnh • Hỗ trợ ảnh &gt;30MB (tự động nén sắc nét)
-                    </p>
-                  </div>
-                )}
+                  <p className="text-xs font-semibold text-foreground mt-0.5">
+                    Thêm ảnh lưu giữ khoảnh khắc đẹp
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Bấm chọn, kéo thả hoặc dán ảnh • Hỗ trợ ảnh &gt;30MB (tự động nén sắc nét)
+                  </p>
+                </div>
               </div>
             ) : (
               <div
@@ -531,9 +583,10 @@ export function DiaryDrawer({
                 )}
               >
                 <div className="grid grid-cols-3 gap-2">
+                  {/* Ảnh đã lưu sẵn trên DB (khi chỉnh sửa) */}
                   {selectedImages.map((imgUrl, idx) => (
                     <div
-                      key={`${imgUrl.slice(0, 32)}-${idx}`}
+                      key={`saved-${imgUrl.slice(0, 32)}-${idx}`}
                       className="relative aspect-square rounded-xl overflow-hidden border border-border/80 bg-secondary/50 group"
                     >
                       <img
@@ -552,11 +605,12 @@ export function DiaryDrawer({
                       </button>
                       <button
                         type="button"
+                        disabled={isUploadingImages || isSaving}
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleRemoveImage(idx);
+                          handleRemoveSavedImage(idx);
                         }}
-                        className="absolute top-1.5 right-1.5 p-1 rounded-full bg-black/65 hover:bg-rose-600 text-white transition-colors cursor-pointer shadow-xs"
+                        className="absolute top-1.5 right-1.5 p-1 rounded-full bg-black/65 hover:bg-rose-600 text-white transition-colors cursor-pointer shadow-xs disabled:opacity-50"
                         title="Xóa ảnh này"
                       >
                         <X className="w-3 h-3" />
@@ -564,34 +618,61 @@ export function DiaryDrawer({
                     </div>
                   ))}
 
-                  {selectedImages.length < MAX_DIARY_IMAGES && (
+                  {/* Ảnh mới chọn (chỉ xem trước cục bộ, chỉ đẩy lên Storage khi bấm Lưu nhật ký) */}
+                  {pendingPhotos.map((photo, idx) => (
+                    <div
+                      key={photo.id}
+                      className="relative aspect-square rounded-xl overflow-hidden border border-primary/50 bg-secondary/50 group"
+                    >
+                      <img
+                        src={photo.previewUrl}
+                        alt={`Ảnh chờ lưu ${idx + 1}`}
+                        onClick={() => setPreviewImage(photo.previewUrl)}
+                        className="w-full h-full object-cover cursor-pointer transition-transform duration-300 group-hover:scale-105"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setPreviewImage(photo.previewUrl)}
+                        className="absolute bottom-1.5 left-1.5 p-1 rounded-lg bg-black/55 hover:bg-black/75 text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                        title="Xem ảnh lớn"
+                      >
+                        <ZoomIn className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isUploadingImages || isSaving}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemovePendingPhoto(photo.id);
+                        }}
+                        className="absolute top-1.5 right-1.5 p-1 rounded-full bg-black/65 hover:bg-rose-600 text-white transition-colors cursor-pointer shadow-xs disabled:opacity-50"
+                        title="Bỏ chọn ảnh này"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+
+                  {totalImagesCount < MAX_DIARY_IMAGES && (
                     <button
                       type="button"
-                      disabled={isUploadingImages}
+                      disabled={isUploadingImages || isSaving}
                       onClick={() => fileInputRef.current?.click()}
                       className="aspect-square rounded-xl border border-dashed border-border/80 hover:border-primary/60 bg-secondary/40 hover:bg-secondary/70 flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-primary transition-all cursor-pointer disabled:opacity-60 disabled:cursor-wait"
                       title="Thêm ảnh khác"
                     >
-                      {isUploadingImages ? (
-                        <>
-                          <Loader2 className="w-5 h-5 text-primary animate-spin" />
-                          <span className="text-[10px] font-semibold text-primary">
-                            {uploadProgress?.current || 1}/{uploadProgress?.total || 1}
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          <Plus className="w-5 h-5" />
-                          <span className="text-[10px] font-semibold">Thêm ảnh</span>
-                        </>
-                      )}
+                      <Plus className="w-5 h-5" />
+                      <span className="text-[10px] font-semibold">Thêm ảnh</span>
                     </button>
                   )}
                 </div>
 
                 {isUploadingImages && (
-                  <p className="text-[11px] text-primary font-medium mt-2 text-center">
-                    Đang nén & tối ưu ảnh ({uploadProgress?.current || 1}/{uploadProgress?.total || 1})...
+                  <p className="text-[11px] text-primary font-medium mt-2 text-center flex items-center justify-center gap-1.5">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>
+                      Đang nén & tải ảnh lên ({uploadProgress?.current || 1}/{uploadProgress?.total || 1})...
+                    </span>
                   </p>
                 )}
               </div>
