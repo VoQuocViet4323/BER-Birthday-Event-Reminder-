@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
 
 interface ImageLightboxProps {
@@ -12,6 +13,24 @@ interface ImageLightboxProps {
 const MIN_SCALE = 1;
 const MAX_SCALE = 4;
 
+const slideVariants = {
+  enter: (direction: number) => ({
+    x: direction > 0 ? 280 : direction < 0 ? -280 : 0,
+    opacity: direction === 0 ? 1 : 0,
+    scale: direction === 0 ? 1 : 0.96,
+  }),
+  center: {
+    x: 0,
+    opacity: 1,
+    scale: 1,
+  },
+  exit: (direction: number) => ({
+    x: direction > 0 ? -280 : direction < 0 ? 280 : 0,
+    opacity: 0,
+    scale: 0.96,
+  }),
+};
+
 export function ImageLightbox({
   images,
   initialIndex = 0,
@@ -20,36 +39,49 @@ export function ImageLightbox({
   const [index, setIndex] = useState(
     Math.min(Math.max(0, initialIndex), Math.max(0, images.length - 1))
   );
+  const [direction, setDirection] = useState<number>(0);
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [swipeOffsetX, setSwipeOffsetX] = useState(0);
   const [isInteracting, setIsInteracting] = useState(false);
 
-  // Refs cho touch gestures (pinch-to-zoom 2 ngón, pan 1 ngón, swipe đổi ảnh, double-tap theo tọa độ)
+  // Refs cho touch & mouse gestures
   const viewportRef = useRef<HTMLDivElement>(null);
   const pinchStartDistRef = useRef<number | null>(null);
   const pinchStartScaleRef = useRef<number>(1);
   const dragStartRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
-  const swipeStartXRef = useRef<number | null>(null);
+  const swipeStartRef = useRef<{ x: number; y: number; time: number; lockedAxis: "x" | "y" | null } | null>(null);
   const lastTapRef = useRef<{ time: number; x: number; y: number }>({ time: 0, x: 0, y: 0 });
   const lastTouchTimeRef = useRef<number>(0);
-  const mouseDraggingRef = useRef<boolean>(false);
+  const mouseModeRef = useRef<"none" | "pan" | "swipe">("none");
 
   const resetZoom = useCallback(() => {
     setScale(1);
     setOffset({ x: 0, y: 0 });
   }, []);
 
+  const goToIndex = useCallback(
+    (nextIdx: number, dir: number) => {
+      if (images.length <= 1 || nextIdx === index) return;
+      resetZoom();
+      setSwipeOffsetX(0);
+      setDirection(dir);
+      setIndex(nextIdx);
+    },
+    [images.length, index, resetZoom]
+  );
+
   const goPrev = useCallback(() => {
     if (images.length <= 1) return;
-    resetZoom();
-    setIndex((prev) => (prev - 1 + images.length) % images.length);
-  }, [images.length, resetZoom]);
+    const prevIdx = (index - 1 + images.length) % images.length;
+    goToIndex(prevIdx, -1);
+  }, [images.length, index, goToIndex]);
 
   const goNext = useCallback(() => {
     if (images.length <= 1) return;
-    resetZoom();
-    setIndex((prev) => (prev + 1) % images.length);
-  }, [images.length, resetZoom]);
+    const nextIdx = (index + 1) % images.length;
+    goToIndex(nextIdx, 1);
+  }, [images.length, index, goToIndex]);
 
   const clampOffset = useCallback((x: number, y: number, currentScale: number) => {
     if (currentScale <= 1) return { x: 0, y: 0 };
@@ -104,6 +136,7 @@ export function ImageLightbox({
   const toggleZoomAtPoint = useCallback(
     (clientX: number, clientY: number) => {
       setIsInteracting(false);
+      setSwipeOffsetX(0);
       if (scale > 1.05) {
         resetZoom();
         return;
@@ -133,16 +166,37 @@ export function ImageLightbox({
     [scale, resetZoom, clampOffset]
   );
 
+  const finishSwipe = (deltaX: number, elapsedMs: number) => {
+    if (images.length <= 1) {
+      setSwipeOffsetX(0);
+      return;
+    }
+    const velocity = Math.abs(deltaX) / Math.max(1, elapsedMs); // px/ms
+    const shouldSwitch = Math.abs(deltaX) > 55 || (velocity > 0.35 && Math.abs(deltaX) > 25);
+
+    if (shouldSwitch) {
+      if (deltaX < 0) {
+        goNext();
+      } else {
+        goPrev();
+      }
+    } else {
+      // Đàn hồi mượt về giữa nếu chưa đủ lực vuốt
+      setSwipeOffsetX(0);
+    }
+  };
+
   const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
     lastTouchTimeRef.current = Date.now();
 
     if (e.touches.length === 2) {
       // Bắt đầu kéo 2 ngón tay để phóng to / thu nhỏ (pinch-to-zoom)
       setIsInteracting(true);
+      setSwipeOffsetX(0);
       pinchStartDistRef.current = getTouchDistance(e.touches[0], e.touches[1]);
       pinchStartScaleRef.current = scale;
       dragStartRef.current = null;
-      swipeStartXRef.current = null;
+      swipeStartRef.current = null;
       lastTapRef.current = { time: 0, x: 0, y: 0 };
     } else if (e.touches.length === 1) {
       const touch = e.touches[0];
@@ -154,7 +208,7 @@ export function ImageLightbox({
       if (now - prevTap.time < 300 && tapDist < 45) {
         lastTapRef.current = { time: 0, x: 0, y: 0 };
         dragStartRef.current = null;
-        swipeStartXRef.current = null;
+        swipeStartRef.current = null;
         toggleZoomAtPoint(touch.clientX, touch.clientY);
         return;
       }
@@ -169,9 +223,15 @@ export function ImageLightbox({
           offsetX: offset.x,
           offsetY: offset.y,
         };
-      } else {
-        // Khi đang ở 1x: ghi nhận vuốt ngang để chuyển ảnh
-        swipeStartXRef.current = touch.clientX;
+      } else if (images.length > 1) {
+        // Khi đang ở 1x: theo dõi vuốt ngang trực tiếp theo ngón tay để chuyển ảnh mượt mà
+        setIsInteracting(true);
+        swipeStartRef.current = {
+          x: touch.clientX,
+          y: touch.clientY,
+          time: now,
+          lockedAxis: null,
+        };
       }
     }
   };
@@ -198,6 +258,19 @@ export function ImageLightbox({
           scale
         )
       );
+    } else if (e.touches.length === 1 && swipeStartRef.current && scale <= 1.02) {
+      const touch = e.touches[0];
+      const dx = touch.clientX - swipeStartRef.current.x;
+      const dy = touch.clientY - swipeStartRef.current.y;
+
+      if (!swipeStartRef.current.lockedAxis && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+        swipeStartRef.current.lockedAxis = Math.abs(dx) >= Math.abs(dy) ? "x" : "y";
+      }
+
+      if (swipeStartRef.current.lockedAxis === "x") {
+        // Kéo ảnh chạy theo ngón tay mượt mà
+        setSwipeOffsetX(dx);
+      }
     }
   };
 
@@ -211,19 +284,19 @@ export function ImageLightbox({
 
     if (e.touches.length === 0) {
       setIsInteracting(false);
-      // Xử lý vuốt ngang chuyển ảnh khi chưa phóng to
-      if (swipeStartXRef.current !== null && scale <= 1.02 && images.length > 1) {
+      if (swipeStartRef.current && scale <= 1.02 && swipeStartRef.current.lockedAxis === "x") {
         const endX = e.changedTouches[0]?.clientX;
         if (typeof endX === "number") {
-          const deltaX = endX - swipeStartXRef.current;
-          if (deltaX > 60) {
-            goPrev();
-          } else if (deltaX < -60) {
-            goNext();
-          }
+          const deltaX = endX - swipeStartRef.current.x;
+          const elapsed = Date.now() - swipeStartRef.current.time;
+          finishSwipe(deltaX, elapsed);
+        } else {
+          setSwipeOffsetX(0);
         }
+      } else {
+        setSwipeOffsetX(0);
       }
-      swipeStartXRef.current = null;
+      swipeStartRef.current = null;
       dragStartRef.current = null;
     }
   };
@@ -235,47 +308,76 @@ export function ImageLightbox({
     applyScale(scale + delta);
   };
 
-  // Hỗ trợ kéo chuột di chuyển ảnh khi đang phóng to trên máy tính
+  // Hỗ trợ kéo chuột di chuyển ảnh khi đang phóng to HOẶC kéo ngang chuyển ảnh trên máy tính
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (scale <= 1.02) return;
     e.preventDefault();
-    mouseDraggingRef.current = true;
-    setIsInteracting(true);
-    dragStartRef.current = {
-      x: e.clientX,
-      y: e.clientY,
-      offsetX: offset.x,
-      offsetY: offset.y,
-    };
+    if (scale > 1.02) {
+      mouseModeRef.current = "pan";
+      setIsInteracting(true);
+      dragStartRef.current = {
+        x: e.clientX,
+        y: e.clientY,
+        offsetX: offset.x,
+        offsetY: offset.y,
+      };
+    } else if (images.length > 1) {
+      mouseModeRef.current = "swipe";
+      setIsInteracting(true);
+      swipeStartRef.current = {
+        x: e.clientX,
+        y: e.clientY,
+        time: Date.now(),
+        lockedAxis: "x",
+      };
+    }
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!mouseDraggingRef.current || !dragStartRef.current) return;
-    const dx = e.clientX - dragStartRef.current.x;
-    const dy = e.clientY - dragStartRef.current.y;
-    setOffset(
-      clampOffset(
-        dragStartRef.current.offsetX + dx,
-        dragStartRef.current.offsetY + dy,
-        scale
-      )
-    );
+    if (mouseModeRef.current === "pan" && dragStartRef.current) {
+      const dx = e.clientX - dragStartRef.current.x;
+      const dy = e.clientY - dragStartRef.current.y;
+      setOffset(
+        clampOffset(
+          dragStartRef.current.offsetX + dx,
+          dragStartRef.current.offsetY + dy,
+          scale
+        )
+      );
+    } else if (mouseModeRef.current === "swipe" && swipeStartRef.current) {
+      const dx = e.clientX - swipeStartRef.current.x;
+      setSwipeOffsetX(dx);
+    }
   };
 
-  const handleMouseUp = () => {
-    mouseDraggingRef.current = false;
+  const handleMouseUp = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (mouseModeRef.current === "swipe" && swipeStartRef.current) {
+      const deltaX = e.clientX - swipeStartRef.current.x;
+      const elapsed = Date.now() - swipeStartRef.current.time;
+      finishSwipe(deltaX, elapsed);
+    }
+    mouseModeRef.current = "none";
     dragStartRef.current = null;
+    swipeStartRef.current = null;
     setIsInteracting(false);
   };
 
   const currentUrl = images[index];
   if (!currentUrl) return null;
 
+  // Hiệu ứng giảm nhẹ độ mờ và tỷ lệ khi người dùng đang kéo vuốt ngang
+  const dragProgress = Math.min(1, Math.abs(swipeOffsetX) / 320);
+  const swipeScale = scale <= 1.02 ? 1 - dragProgress * 0.06 : scale;
+  const swipeOpacity = scale <= 1.02 ? 1 - dragProgress * 0.35 : 1;
+
   return (
-    <div
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.18 }}
       onClick={(e) => {
         e.stopPropagation();
-        if (scale <= 1.02) onClose();
+        if (scale <= 1.02 && Math.abs(swipeOffsetX) < 5) onClose();
       }}
       onWheel={handleWheel}
       onMouseMove={handleMouseMove}
@@ -339,7 +441,7 @@ export function ImageLightbox({
         </div>
       </div>
 
-      {/* Nút chuyển ảnh trái/phải (khi có >1 ảnh và không đang phóng to quá mức) */}
+      {/* Nút chuyển ảnh trái/phải (khi có >1 ảnh và không đang phóng to) */}
       {images.length > 1 && scale <= 1.05 && (
         <>
           <button
@@ -348,7 +450,7 @@ export function ImageLightbox({
               e.stopPropagation();
               goPrev();
             }}
-            className="absolute left-2.5 sm:left-5 z-20 p-2.5 rounded-full bg-white/12 hover:bg-white/25 text-white transition-colors cursor-pointer"
+            className="absolute left-2.5 sm:left-5 z-20 p-2.5 rounded-full bg-white/12 hover:bg-white/25 active:scale-90 text-white transition-all cursor-pointer"
             title="Ảnh trước"
           >
             <ChevronLeft className="w-6 h-6" />
@@ -359,7 +461,7 @@ export function ImageLightbox({
               e.stopPropagation();
               goNext();
             }}
-            className="absolute right-2.5 sm:right-5 z-20 p-2.5 rounded-full bg-white/12 hover:bg-white/25 text-white transition-colors cursor-pointer"
+            className="absolute right-2.5 sm:right-5 z-20 p-2.5 rounded-full bg-white/12 hover:bg-white/25 active:scale-90 text-white transition-all cursor-pointer"
             title="Ảnh sau"
           >
             <ChevronRight className="w-6 h-6" />
@@ -367,13 +469,12 @@ export function ImageLightbox({
         </>
       )}
 
-      {/* Vùng hiển thị ảnh hỗ trợ Pinch-to-zoom 2 ngón + Double-tap phóng to đúng vị trí chạm + Kéo di chuyển */}
+      {/* Vùng hiển thị ảnh hỗ trợ: Vuốt trái/phải bám tay + Animation chuyển ảnh mượt + Pinch-to-zoom 2 ngón + Double-tap đúng điểm */}
       <div
         ref={viewportRef}
         onClick={(e) => e.stopPropagation()}
         onDoubleClick={(e) => {
           e.stopPropagation();
-          // Bỏ qua synthetic double-click ngay sau sự kiện touch trên mobile để tránh bị zoom rồi thu lại ngay
           if (Date.now() - lastTouchTimeRef.current < 500) return;
           toggleZoomAtPoint(e.clientX, e.clientY);
         }}
@@ -381,27 +482,68 @@ export function ImageLightbox({
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         onMouseDown={handleMouseDown}
-        className="w-full h-full flex items-center justify-center overflow-hidden touch-none p-3 sm:p-8"
+        className="w-full h-full flex items-center justify-center overflow-hidden touch-none p-3 sm:p-8 relative"
       >
-        <img
-          src={currentUrl}
-          alt={`Khoảnh khắc ${index + 1}`}
-          draggable={false}
-          style={{
-            transform: `translate3d(${offset.x}px, ${offset.y}px, 0) scale(${scale})`,
-            transition: isInteracting ? "none" : "transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1)",
-          }}
-          className="max-w-full max-h-[82vh] rounded-2xl object-contain shadow-2xl will-change-transform select-none pointer-events-none"
-        />
+        <AnimatePresence initial={false} custom={direction} mode="popLayout">
+          <motion.div
+            key={`${index}-${currentUrl.slice(0, 32)}`}
+            custom={direction}
+            variants={slideVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={{
+              x: { type: "spring", stiffness: 320, damping: 32, mass: 0.85 },
+              opacity: { duration: 0.22, ease: "easeOut" },
+              scale: { duration: 0.22, ease: "easeOut" },
+            }}
+            className="w-full h-full flex items-center justify-center"
+          >
+            <img
+              src={currentUrl}
+              alt={`Khoảnh khắc ${index + 1}`}
+              draggable={false}
+              style={{
+                transform: `translate3d(${offset.x + swipeOffsetX}px, ${offset.y}px, 0) scale(${swipeScale})`,
+                opacity: swipeOpacity,
+                transition: isInteracting
+                  ? "none"
+                  : "transform 0.24s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease-out",
+              }}
+              className="max-w-full max-h-[80vh] rounded-2xl object-contain shadow-2xl will-change-transform select-none pointer-events-none"
+            />
+          </motion.div>
+        </AnimatePresence>
       </div>
 
-      {/* Chú thích cử chỉ ở dưới cùng */}
-      <div className="absolute bottom-4 inset-x-0 z-20 flex justify-center pointer-events-none px-4">
-        <span className="px-3 py-1 rounded-full bg-black/50 text-white/75 text-[11px] font-medium backdrop-blur-xs text-center">
-          Kéo 2 ngón tay hoặc chạm đúp để phóng to / thu nhỏ
-          {scale > 1.02 ? " • Kéo để di chuyển" : images.length > 1 ? " • Vuốt để chuyển ảnh" : ""}
+      {/* Thanh chấm chỉ báo (Pagination Dots) + Chú thích cử chỉ ở dưới cùng */}
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="absolute bottom-4 inset-x-0 z-20 flex flex-col items-center gap-2 px-4"
+      >
+        {images.length > 1 && (
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/45 backdrop-blur-xs">
+            {images.map((_, dotIdx) => {
+              const isActive = dotIdx === index;
+              return (
+                <button
+                  key={dotIdx}
+                  type="button"
+                  onClick={() => goToIndex(dotIdx, dotIdx > index ? 1 : -1)}
+                  className={`h-1.5 rounded-full transition-all duration-300 cursor-pointer ${
+                    isActive ? "w-5 bg-white" : "w-1.5 bg-white/40 hover:bg-white/70"
+                  }`}
+                  aria-label={`Xem ảnh ${dotIdx + 1}`}
+                />
+              );
+            })}
+          </div>
+        )}
+        <span className="px-3 py-1 rounded-full bg-black/45 text-white/75 text-[11px] font-medium backdrop-blur-xs text-center pointer-events-none">
+          Kéo 2 ngón hoặc chạm đúp để phóng to
+          {scale > 1.02 ? " • Kéo để di chuyển" : images.length > 1 ? " • Vuốt trái/phải để chuyển ảnh" : ""}
         </span>
       </div>
-    </div>
+    </motion.div>
   );
 }
