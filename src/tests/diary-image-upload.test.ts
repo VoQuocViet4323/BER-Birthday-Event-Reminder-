@@ -3,6 +3,7 @@ import { diaryFormSchema, MAX_DIARY_IMAGES } from "../types/diary";
 import {
   isValidImageFile,
   compressDiaryImage,
+  prepareDiaryImageForUpload,
   uploadDiaryImageWithFallback,
 } from "../lib/image-utils";
 
@@ -18,9 +19,10 @@ describe("Diary Image Upload & Schema Test Suite", () => {
 
     // Mock FileReader trên global
     (global as any).FileReader = class {
+      result = "data:image/webp;base64,diaryOptimizedImageData";
       readAsDataURL() {
         setTimeout(() => {
-          (this as any).onload?.({ target: { result: "data:image/jpeg;base64,dummy" } });
+          (this as any).onload?.({ target: { result: this.result } });
         }, 0);
       }
     };
@@ -224,6 +226,14 @@ describe("Diary Image Upload & Schema Test Suite", () => {
       const file = new File(["mock"], "local.jpg", { type: "image/jpeg" });
       const url = await uploadDiaryImageWithFallback(null, "local_user", file);
       expect(url).toBe("data:image/webp;base64,diaryOptimizedImageData");
+    });
+
+    it("prepareDiaryImageForUpload bỏ qua nén Canvas với ảnh nhẹ <=400KB (0ms trên mobile)", async () => {
+      const lightFile = new File(["tiny"], "light.jpg", { type: "image/jpeg" });
+      Object.defineProperty(lightFile, "size", { value: 180 * 1024 }); // 180KB
+      const prepared = await prepareDiaryImageForUpload(lightFile);
+      expect(prepared.blob).toBe(lightFile);
+      expect(prepared.ext).toBe("jpg");
     });
   });
 });

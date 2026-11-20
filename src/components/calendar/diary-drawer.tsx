@@ -12,12 +12,19 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { LiquidGlassButton } from "@/components/ui/liquid-glass-button";
 import { createClient } from "@/lib/supabase/client";
-import { uploadDiaryImageWithFallback, isValidImageFile } from "@/lib/image-utils";
+import {
+  uploadDiaryImageWithFallback,
+  prepareDiaryImageForUpload,
+  isValidImageFile,
+  ProcessedAvatar,
+} from "@/lib/image-utils";
 
 interface PendingPhoto {
   id: string;
   file: File;
   previewUrl: string;
+  // Nén sẵn cục bộ trong nền ngay khi chọn ảnh (KHÔNG upload lên mạng) để bấm Lưu là đẩy lên tức thì
+  compressedPromise: Promise<ProcessedAvatar | null>;
 }
 
 interface DiaryDrawerProps {
@@ -226,11 +233,15 @@ export function DiaryDrawer({
       });
     }
 
-    // Chỉ tạo ảnh xem trước cục bộ (KHÔNG upload lên Storage cho tới khi bấm "Lưu nhật ký")
+    // Tạo ảnh xem trước cục bộ VÀ nén sẵn trong nền (KHÔNG gọi mạng / KHÔNG upload lên Storage cho tới khi bấm "Lưu nhật ký")
     const newPending: PendingPhoto[] = filesToQueue.map((file) => ({
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       file,
       previewUrl: URL.createObjectURL(file),
+      compressedPromise: prepareDiaryImageForUpload(file).catch((err) => {
+        console.warn(`Lỗi nén sẵn cục bộ ${file.name}:`, err);
+        return null;
+      }),
     }));
 
     setPendingPhotos((prev) => [...prev, ...newPending]);
@@ -313,20 +324,34 @@ export function DiaryDrawer({
           // Fallback sang local_user nếu chưa đăng nhập hoặc timeout
         }
 
-        const uploadedUrls: string[] = [];
+        let completedCount = 0;
         let failedCount = 0;
 
-        // Xử lý tuần tự từng ảnh để tối ưu RAM khi tải ảnh dung lượng lớn (>30MB)
-        for (let i = 0; i < pendingPhotos.length; i++) {
-          setUploadProgress({ current: i + 1, total: pendingPhotos.length });
-          try {
-            const url = await uploadDiaryImageWithFallback(supabase, userId, pendingPhotos[i].file);
-            uploadedUrls.push(url);
-          } catch (err: any) {
-            failedCount++;
-            console.error(`Lỗi xử lý ảnh ${pendingPhotos[i].file.name}:`, err);
-          }
-        }
+        // Tận dụng ảnh đã nén sẵn trong nền và upload SONG SONG lên Supabase Storage để lưu siêu nhanh trên mobile
+        const uploadResults = await Promise.all(
+          pendingPhotos.map(async (photo) => {
+            try {
+              const preCompressed = await photo.compressedPromise;
+              const url = await uploadDiaryImageWithFallback(
+                supabase,
+                userId,
+                photo.file,
+                preCompressed ?? undefined
+              );
+              completedCount++;
+              setUploadProgress({ current: completedCount, total: pendingPhotos.length });
+              return url;
+            } catch (err: any) {
+              failedCount++;
+              completedCount++;
+              setUploadProgress({ current: completedCount, total: pendingPhotos.length });
+              console.error(`Lỗi xử lý ảnh ${photo.file.name}:`, err);
+              return null;
+            }
+          })
+        );
+
+        const uploadedUrls = uploadResults.filter((u): u is string => Boolean(u));
 
         setIsUploadingImages(false);
         setUploadProgress(null);
