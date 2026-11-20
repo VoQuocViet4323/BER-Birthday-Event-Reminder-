@@ -593,12 +593,12 @@ export function DiaryDrawer({
                         src={imgUrl}
                         alt={`Khoảnh khắc ${idx + 1}`}
                         onClick={() => setPreviewImage(imgUrl)}
-                        className="w-full h-full object-cover cursor-pointer transition-transform duration-300 group-hover:scale-105"
+                        className="w-full h-full object-cover cursor-pointer transition-transform duration-300 [@media(hover:hover)]:group-hover:scale-105"
                       />
                       <button
                         type="button"
                         onClick={() => setPreviewImage(imgUrl)}
-                        className="absolute bottom-1.5 left-1.5 p-1 rounded-lg bg-black/55 hover:bg-black/75 text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                        className="absolute bottom-1.5 left-1.5 p-1 rounded-lg bg-black/55 hover:bg-black/75 text-white transition-opacity cursor-pointer touch-manipulation [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
                         title="Xem ảnh lớn"
                       >
                         <ZoomIn className="w-3.5 h-3.5" />
@@ -606,14 +606,17 @@ export function DiaryDrawer({
                       <button
                         type="button"
                         disabled={isUploadingImages || isSaving}
+                        onPointerDown={(e) => e.stopPropagation()}
                         onClick={(e) => {
+                          e.preventDefault();
                           e.stopPropagation();
                           handleRemoveSavedImage(idx);
                         }}
-                        className="absolute top-1.5 right-1.5 p-1 rounded-full bg-black/65 hover:bg-rose-600 text-white transition-colors cursor-pointer shadow-xs disabled:opacity-50"
+                        className="absolute top-1.5 right-1.5 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-black/70 hover:bg-rose-600 active:bg-rose-600 active:scale-90 text-white transition-all cursor-pointer shadow-xs touch-manipulation disabled:opacity-50"
                         title="Xóa ảnh này"
+                        aria-label="Xóa ảnh này"
                       >
-                        <X className="w-3 h-3" />
+                        <X className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   ))}
@@ -628,12 +631,12 @@ export function DiaryDrawer({
                         src={photo.previewUrl}
                         alt={`Ảnh chờ lưu ${idx + 1}`}
                         onClick={() => setPreviewImage(photo.previewUrl)}
-                        className="w-full h-full object-cover cursor-pointer transition-transform duration-300 group-hover:scale-105"
+                        className="w-full h-full object-cover cursor-pointer transition-transform duration-300 [@media(hover:hover)]:group-hover:scale-105"
                       />
                       <button
                         type="button"
                         onClick={() => setPreviewImage(photo.previewUrl)}
-                        className="absolute bottom-1.5 left-1.5 p-1 rounded-lg bg-black/55 hover:bg-black/75 text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                        className="absolute bottom-1.5 left-1.5 p-1 rounded-lg bg-black/55 hover:bg-black/75 text-white transition-opacity cursor-pointer touch-manipulation [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
                         title="Xem ảnh lớn"
                       >
                         <ZoomIn className="w-3.5 h-3.5" />
@@ -641,14 +644,17 @@ export function DiaryDrawer({
                       <button
                         type="button"
                         disabled={isUploadingImages || isSaving}
+                        onPointerDown={(e) => e.stopPropagation()}
                         onClick={(e) => {
+                          e.preventDefault();
                           e.stopPropagation();
                           handleRemovePendingPhoto(photo.id);
                         }}
-                        className="absolute top-1.5 right-1.5 p-1 rounded-full bg-black/65 hover:bg-rose-600 text-white transition-colors cursor-pointer shadow-xs disabled:opacity-50"
+                        className="absolute top-1.5 right-1.5 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-black/70 hover:bg-rose-600 active:bg-rose-600 active:scale-90 text-white transition-all cursor-pointer shadow-xs touch-manipulation disabled:opacity-50"
                         title="Bỏ chọn ảnh này"
+                        aria-label="Bỏ chọn ảnh này"
                       >
-                        <X className="w-3 h-3" />
+                        <X className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   ))}
