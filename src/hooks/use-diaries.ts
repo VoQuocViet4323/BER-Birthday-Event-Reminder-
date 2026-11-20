@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { DiaryEntry, DiaryFormValues } from "@/types/diary";
 import { useToast } from "@/components/ui/toast";
+import { deleteDiaryImagesFromStorage } from "@/lib/image-utils";
 
 const STORAGE_KEY = "ber-local-diaries";
 
@@ -160,6 +161,13 @@ export function useDiaries() {
 
       if (user) {
         if (payload.id) {
+          // Ghi nhận ảnh cũ trước khi cập nhật để tự động xóa ảnh bị gỡ bỏ khỏi Supabase Storage
+          const cachedDiaries = queryClient.getQueryData<DiaryEntry[]>(["diaries"]) || [];
+          const prevDiary =
+            cachedDiaries.find((d) => d.id === payload.id) ||
+            localList.find((d) => d.id === payload.id);
+          const previousImages = Array.isArray(prevDiary?.images) ? prevDiary.images : [];
+
           // CẬP NHẬT (UPDATE) bản ghi đã tồn tại theo ID và user_id
           let { data, error } = await withDbTimeout<any>(
             (supabase as any)
@@ -191,6 +199,12 @@ export function useDiaries() {
           if (error) {
             console.error("Supabase update error:", error);
             throw error;
+          }
+
+          // Nếu người dùng đã gỡ bớt ảnh cũ khi sửa nhật ký -> xóa luôn các ảnh đó trên Supabase Storage
+          const removedImages = previousImages.filter((oldUrl) => !entryImages.includes(oldUrl));
+          if (removedImages.length > 0) {
+            await deleteDiaryImagesFromStorage(supabase, removedImages);
           }
 
           if (data) {
@@ -312,6 +326,22 @@ export function useDiaries() {
     mutationFn: async ({ id, entry_date }: { id?: string; entry_date?: string }) => {
       const user = await getAuthUser();
       const cleanDate = entry_date ? normalizeDateKey(entry_date) : undefined;
+      const localList = getLocalDiaries();
+      const cachedList = queryClient.getQueryData<DiaryEntry[]>(["diaries"]) || [];
+
+      // Thu thập toàn bộ URL ảnh từ cache (React Query + localStorage) phòng trường hợp cần dọn dẹp
+      const imagesToDelete: string[] = [];
+      const collectFromList = (list: DiaryEntry[]) => {
+        for (const d of list) {
+          const matchesId = id && d.id === id;
+          const matchesDate = !id && cleanDate && normalizeDateKey(d.entry_date) === cleanDate;
+          if ((matchesId || matchesDate) && Array.isArray(d.images)) {
+            imagesToDelete.push(...d.images);
+          }
+        }
+      };
+      collectFromList(cachedList);
+      collectFromList(localList);
 
       if (user) {
         let query = (supabase as any)
@@ -324,53 +354,67 @@ export function useDiaries() {
         } else if (cleanDate) {
           query = query.eq("entry_date", cleanDate);
         }
-        const { error } = await query;
+
+        // Lấy luôn cột images của bản ghi vừa xóa từ PostgreSQL DB để đảm bảo xóa sạch 100% file ảnh trên Storage
+        // ngay cả khi xóa từ thiết bị khác chưa có localStorage cache
+        let { data: deletedRows, error } = await withDbTimeout<any>(query.select("id, images"));
+
+        if (error && String(error?.message || "").toLowerCase().includes("images")) {
+          let fallbackQuery = (supabase as any)
+            .from("diaries")
+            .delete()
+            .eq("user_id", user.id);
+          if (id) {
+            fallbackQuery = fallbackQuery.eq("id", id);
+          } else if (cleanDate) {
+            fallbackQuery = fallbackQuery.eq("entry_date", cleanDate);
+          }
+          const retry = await withDbTimeout<any>(fallbackQuery);
+          deletedRows = null;
+          error = retry.error;
+        }
+
         if (error) {
           console.error("Supabase delete error:", error);
           throw error;
         }
-      }
 
-      // Dọn dẹp file ảnh trên Supabase Storage (best-effort) nếu nhật ký có lưu ảnh ở bucket 'diary-images'
-      const localList = getLocalDiaries();
-      const targetDiary = id ? localList.find((d) => d.id === id) : undefined;
-      if (user && targetDiary?.images && targetDiary.images.length > 0 && supabase?.storage) {
-        const storagePaths = targetDiary.images
-          .map((url) => {
-            const marker = "/storage/v1/object/public/diary-images/";
-            const idx = url.indexOf(marker);
-            return idx >= 0 ? decodeURIComponent(url.slice(idx + marker.length)) : null;
-          })
-          .filter((p): p is string => Boolean(p));
+        if (Array.isArray(deletedRows)) {
+          for (const row of deletedRows) {
+            if (Array.isArray(row?.images)) {
+              imagesToDelete.push(...row.images);
+            }
+          }
+        }
 
-        if (storagePaths.length > 0) {
-          supabase.storage
-            .from("diary-images")
-            .remove(storagePaths)
-            .catch((e: any) => console.warn("Không thể xóa file ảnh cũ trên Storage:", e));
+        // Chờ xóa sạch tất cả file ảnh đính kèm trên Supabase Storage bucket 'diary-images'
+        if (imagesToDelete.length > 0) {
+          await deleteDiaryImagesFromStorage(supabase, imagesToDelete);
         }
       }
 
       // Xóa trong localStorage
       const updated = localList.filter((d) => {
         if (id && d.id === id) return false;
+        if (!id && cleanDate && normalizeDateKey(d.entry_date) === cleanDate) return false;
         return true;
       });
       saveLocalDiaries(updated);
 
       return { id, entry_date: cleanDate };
     },
-    onSuccess: ({ id }) => {
+    onSuccess: ({ id, entry_date }) => {
       queryClient.setQueryData<DiaryEntry[]>(["diaries"], (old = []) => {
         return old.filter((d) => {
           if (id && d.id === id) return false;
+          if (!id && entry_date && normalizeDateKey(d.entry_date) === entry_date) return false;
           return true;
         });
       });
       queryClient.invalidateQueries({ queryKey: ["diaries"] });
       toast({
         title: "Đã xóa nhật ký",
-        description: "Nhật ký đã được xóa hoàn toàn khỏi cơ sở dữ liệu.",
+        description: "Nhật ký và toàn bộ ảnh đính kèm đã được xóa sạch khỏi cơ sở dữ liệu.",
         variant: "default",
       });
     },

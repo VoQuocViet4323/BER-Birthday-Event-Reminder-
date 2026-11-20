@@ -557,6 +557,60 @@ export async function uploadDiaryImageWithFallback(
 }
 
 /**
+ * Trích xuất danh sách đường dẫn file (object path) trong Supabase Storage bucket 'diary-images'
+ * từ mảng URL ảnh (tự động loại bỏ Base64 Data URL, query string và trùng lặp).
+ */
+export function extractDiaryStoragePaths(urls?: (string | null | undefined)[] | null): string[] {
+  if (!Array.isArray(urls) || urls.length === 0) return [];
+  const marker = "/storage/v1/object/public/diary-images/";
+  const pathSet = new Set<string>();
+
+  for (const rawUrl of urls) {
+    if (typeof rawUrl !== "string") continue;
+    const idx = rawUrl.indexOf(marker);
+    if (idx < 0) continue;
+    const afterMarker = rawUrl.slice(idx + marker.length).split("?")[0].split("#")[0];
+    if (!afterMarker) continue;
+    try {
+      pathSet.add(decodeURIComponent(afterMarker));
+    } catch {
+      pathSet.add(afterMarker);
+    }
+  }
+
+  return Array.from(pathSet);
+}
+
+/**
+ * Xóa danh sách ảnh nhật ký trên Supabase Storage bucket 'diary-images'.
+ * Trả về true nếu xóa thành công (hoặc không có ảnh nào thuộc Storage), false nếu Storage báo lỗi.
+ */
+export async function deleteDiaryImagesFromStorage(
+  supabase: any,
+  urls?: (string | null | undefined)[] | null
+): Promise<boolean> {
+  const storagePaths = extractDiaryStoragePaths(urls);
+  if (storagePaths.length === 0 || !supabase?.storage) return true;
+
+  try {
+    const { error } = await withTimeout(
+      supabase.storage.from("diary-images").remove(storagePaths),
+      15000,
+      "Xóa ảnh trên Supabase Storage quá thời gian chờ."
+    ) as { error?: any };
+
+    if (error) {
+      console.warn("Lỗi xóa file ảnh trên Supabase Storage diary-images:", error.message || error);
+      return false;
+    }
+    return true;
+  } catch (err: any) {
+    console.warn("Ngoại lệ khi xóa file ảnh trên Supabase Storage:", err?.message || err);
+    return false;
+  }
+}
+
+/**
  * Danh sách avatar preset biểu tượng mẫu (Emoji & Avatar phong cách)
  */
 export const PRESET_AVATARS = [

@@ -24,12 +24,14 @@ export function ImageLightbox({
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [isInteracting, setIsInteracting] = useState(false);
 
-  // Refs cho touch gestures (pinch-to-zoom 2 ngón, pan 1 ngón, swipe đổi ảnh, double-tap)
+  // Refs cho touch gestures (pinch-to-zoom 2 ngón, pan 1 ngón, swipe đổi ảnh, double-tap theo tọa độ)
+  const viewportRef = useRef<HTMLDivElement>(null);
   const pinchStartDistRef = useRef<number | null>(null);
   const pinchStartScaleRef = useRef<number>(1);
   const dragStartRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
   const swipeStartXRef = useRef<number | null>(null);
-  const lastTapRef = useRef<number>(0);
+  const lastTapRef = useRef<{ time: number; x: number; y: number }>({ time: 0, x: 0, y: 0 });
+  const lastTouchTimeRef = useRef<number>(0);
   const mouseDraggingRef = useRef<boolean>(false);
 
   const resetZoom = useCallback(() => {
@@ -99,7 +101,41 @@ export function ImageLightbox({
     return Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
   };
 
+  const toggleZoomAtPoint = useCallback(
+    (clientX: number, clientY: number) => {
+      setIsInteracting(false);
+      if (scale > 1.05) {
+        resetZoom();
+        return;
+      }
+
+      const targetScale = 2.5;
+      const rect = viewportRef.current?.getBoundingClientRect();
+      if (!rect) {
+        setScale(targetScale);
+        setOffset({ x: 0, y: 0 });
+        return;
+      }
+
+      // Tính tâm vùng hiển thị và độ lệch từ tâm tới đúng vị trí người dùng bấm double
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const dx = clientX - cx;
+      const dy = clientY - cy;
+
+      // Dịch chuyển ảnh sao cho đúng điểm vừa chạm được phóng to ngay dưới tay
+      const nextX = -dx * (targetScale - 1);
+      const nextY = -dy * (targetScale - 1);
+
+      setScale(targetScale);
+      setOffset(clampOffset(nextX, nextY, targetScale));
+    },
+    [scale, resetZoom, clampOffset]
+  );
+
   const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    lastTouchTimeRef.current = Date.now();
+
     if (e.touches.length === 2) {
       // Bắt đầu kéo 2 ngón tay để phóng to / thu nhỏ (pinch-to-zoom)
       setIsInteracting(true);
@@ -107,22 +143,22 @@ export function ImageLightbox({
       pinchStartScaleRef.current = scale;
       dragStartRef.current = null;
       swipeStartXRef.current = null;
+      lastTapRef.current = { time: 0, x: 0, y: 0 };
     } else if (e.touches.length === 1) {
       const touch = e.touches[0];
       const now = Date.now();
+      const prevTap = lastTapRef.current;
+      const tapDist = Math.hypot(touch.clientX - prevTap.x, touch.clientY - prevTap.y);
 
-      // Chạm đúp (double-tap) để phóng to 2.5x hoặc thu nhỏ về 1x
-      if (now - lastTapRef.current < 280) {
-        lastTapRef.current = 0;
-        if (scale > 1.1) {
-          resetZoom();
-        } else {
-          setScale(2.5);
-          setOffset({ x: 0, y: 0 });
-        }
+      // Chạm đúp (double-tap) tại cùng 1 vùng (<300ms, lệch <45px) -> phóng to đúng chỗ chạm hoặc thu nhỏ lại 100%
+      if (now - prevTap.time < 300 && tapDist < 45) {
+        lastTapRef.current = { time: 0, x: 0, y: 0 };
+        dragStartRef.current = null;
+        swipeStartXRef.current = null;
+        toggleZoomAtPoint(touch.clientX, touch.clientY);
         return;
       }
-      lastTapRef.current = now;
+      lastTapRef.current = { time: now, x: touch.clientX, y: touch.clientY };
 
       if (scale > 1.02) {
         // Kéo 1 ngón để di chuyển vùng đang phóng to
@@ -331,17 +367,15 @@ export function ImageLightbox({
         </>
       )}
 
-      {/* Vùng hiển thị ảnh hỗ trợ Pinch-to-zoom 2 ngón + Kéo di chuyển */}
+      {/* Vùng hiển thị ảnh hỗ trợ Pinch-to-zoom 2 ngón + Double-tap phóng to đúng vị trí chạm + Kéo di chuyển */}
       <div
+        ref={viewportRef}
         onClick={(e) => e.stopPropagation()}
         onDoubleClick={(e) => {
           e.stopPropagation();
-          if (scale > 1.1) {
-            resetZoom();
-          } else {
-            setScale(2.5);
-            setOffset({ x: 0, y: 0 });
-          }
+          // Bỏ qua synthetic double-click ngay sau sự kiện touch trên mobile để tránh bị zoom rồi thu lại ngay
+          if (Date.now() - lastTouchTimeRef.current < 500) return;
+          toggleZoomAtPoint(e.clientX, e.clientY);
         }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}

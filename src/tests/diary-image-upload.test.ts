@@ -5,6 +5,8 @@ import {
   compressDiaryImage,
   prepareDiaryImageForUpload,
   uploadDiaryImageWithFallback,
+  extractDiaryStoragePaths,
+  deleteDiaryImagesFromStorage,
 } from "../lib/image-utils";
 
 describe("Diary Image Upload & Schema Test Suite", () => {
@@ -257,6 +259,38 @@ describe("Diary Image Upload & Schema Test Suite", () => {
       const prepared = await prepareDiaryImageForUpload(lightFile);
       expect(prepared.blob).toBe(lightFile);
       expect(prepared.ext).toBe("jpg");
+    });
+  });
+
+  describe("extractDiaryStoragePaths & deleteDiaryImagesFromStorage", () => {
+    it("trích xuất đúng đường dẫn file trên bucket diary-images, bỏ qua Base64 và trùng lặp", () => {
+      const urls = [
+        "https://abc.supabase.co/storage/v1/object/public/diary-images/user-1/diary-1.jpg",
+        "https://abc.supabase.co/storage/v1/object/public/diary-images/user-1/diary-2.webp?t=123",
+        "https://abc.supabase.co/storage/v1/object/public/diary-images/user-1/diary-1.jpg", // trùng lặp
+        "data:image/jpeg;base64,/9j/4AAQSkZJRg==", // Base64 -> bỏ qua
+        null,
+      ];
+      const paths = extractDiaryStoragePaths(urls);
+      expect(paths).toEqual(["user-1/diary-1.jpg", "user-1/diary-2.webp"]);
+    });
+
+    it("gọi supabase.storage.from('diary-images').remove() với đầy đủ đường dẫn ảnh khi xóa nhật ký", async () => {
+      const removeMock = vi.fn().mockResolvedValue({ error: null });
+      const mockSupabase = {
+        storage: {
+          from: vi.fn().mockReturnValue({ remove: removeMock }),
+        },
+      };
+
+      const ok = await deleteDiaryImagesFromStorage(mockSupabase, [
+        "https://abc.supabase.co/storage/v1/object/public/diary-images/u1/diary-100.jpg",
+        "https://abc.supabase.co/storage/v1/object/public/diary-images/u1/diary-101.webp",
+      ]);
+
+      expect(ok).toBe(true);
+      expect(mockSupabase.storage.from).toHaveBeenCalledWith("diary-images");
+      expect(removeMock).toHaveBeenCalledWith(["u1/diary-100.jpg", "u1/diary-101.webp"]);
     });
   });
 });
