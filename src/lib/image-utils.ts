@@ -293,46 +293,52 @@ export async function compressDiaryImage(
         // Giải phóng RAM ngay lập tức (rất quan trọng với ảnh >30MB)
         cleanup?.();
 
-        let outputType = "image/webp";
-        let ext = "webp";
+        // Helper xuất Blob nén thực sự (khắc phục lỗi iOS Safari/WebKit tự trả về PNG nặng 4-8MB khi gọi image/webp)
+        const exportCompressedBlob = () => {
+          const fallbackToJpeg = () => {
+            canvas.toBlob(
+              (jpegBlob) => {
+                if (jpegBlob) {
+                  const dataUrl = includeDataUrl ? canvas.toDataURL("image/jpeg", quality) : "";
+                  resolve({
+                    blob: jpegBlob,
+                    dataUrl,
+                    ext: "jpg",
+                    width: targetW,
+                    height: targetH,
+                  });
+                } else {
+                  reject(new Error("Không thể xuất tệp nén hình ảnh."));
+                }
+              },
+              "image/jpeg",
+              quality
+            );
+          };
 
-        canvas.toBlob(
-          (blob) => {
-            if (blob) {
-              const dataUrl = includeDataUrl ? canvas.toDataURL(outputType, quality) : "";
-              resolve({
-                blob,
-                dataUrl,
-                ext,
-                width: targetW,
-                height: targetH,
-              });
-            } else {
-              outputType = "image/jpeg";
-              ext = "jpg";
-              canvas.toBlob(
-                (jpegBlob) => {
-                  if (jpegBlob) {
-                    const dataUrl = includeDataUrl ? canvas.toDataURL(outputType, quality) : "";
-                    resolve({
-                      blob: jpegBlob,
-                      dataUrl,
-                      ext,
-                      width: targetW,
-                      height: targetH,
-                    });
-                  } else {
-                    reject(new Error("Không thể xuất tệp nén hình ảnh."));
-                  }
-                },
-                outputType,
-                quality
-              );
-            }
-          },
-          outputType,
-          quality
-        );
+          canvas.toBlob(
+            (blob) => {
+              // Chỉ nhận WebP khi trình duyệt thực sự xuất đúng MIME image/webp
+              // Trên iOS Safari/Chrome (WebKit), toBlob('image/webp') trả về image/png cực nặng -> ép chuyển sang JPEG!
+              if (blob && blob.type === "image/webp") {
+                const dataUrl = includeDataUrl ? canvas.toDataURL("image/webp", quality) : "";
+                resolve({
+                  blob,
+                  dataUrl,
+                  ext: "webp",
+                  width: targetW,
+                  height: targetH,
+                });
+              } else {
+                fallbackToJpeg();
+              }
+            },
+            "image/webp",
+            quality
+          );
+        };
+
+        exportCompressedBlob();
       } catch (err: any) {
         cleanup?.();
         reject(new Error(err?.message || "Lỗi trong quá trình nén và xử lý ảnh."));
@@ -427,10 +433,10 @@ export async function prepareDiaryImageForUpload(file: File): Promise<ProcessedA
       file.type === "image/webp"
         ? "webp"
         : file.type === "image/png"
-        ? "png"
-        : file.type === "image/gif"
-        ? "gif"
-        : "jpg";
+          ? "png"
+          : file.type === "image/gif"
+            ? "gif"
+            : "jpg";
     return {
       blob: file,
       dataUrl: "",
@@ -502,10 +508,11 @@ export async function uploadDiaryImageWithFallback(
   }
 
   // 3. Fallback an toàn sang Data URL đã nén (chỉ tạo Data URL tại đây nếu Storage thực sự lỗi)
+  // Giới hạn kích thước Data URL nhỏ gọn (<250KB) để INSERT vào DB trên mạng 4G/5G luôn tức thì
   const fallbackDataUrl = processed.dataUrl || (await blobToDataUrl(processed.blob));
-  if (fallbackDataUrl.length > 450_000) {
+  if (fallbackDataUrl.length > 250_000) {
     try {
-      const compact = await compressDiaryImage(file, 1080, 0.72, true);
+      const compact = await compressDiaryImage(file, 960, 0.7, true);
       return compact.dataUrl;
     } catch {
       return fallbackDataUrl;

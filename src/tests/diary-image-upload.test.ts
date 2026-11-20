@@ -171,6 +171,29 @@ describe("Diary Image Upload & Schema Test Suite", () => {
       expect(result.height).toBe(600);
     });
 
+    it("tự động chuyển sang JPEG trên iOS Safari khi toBlob('image/webp') trả về image/png không nén", async () => {
+      // Giả lập hành vi thực tế của iOS Safari/WebKit: gọi image/webp nhưng trả về image/png
+      const origCreateElement = (global as any).document.createElement;
+      (global as any).document.createElement = (tag: string) => {
+        const el = origCreateElement(tag);
+        if (tag === "canvas") {
+          el.toBlob = (cb: any, mime?: string) => {
+            if (mime === "image/webp") {
+              cb(new Blob(["huge-uncompressed-png"], { type: "image/png" }));
+            } else {
+              cb(new Blob(["fast-jpeg"], { type: "image/jpeg" }));
+            }
+          };
+        }
+        return el;
+      };
+
+      const iphonePhoto = new File(["mock"], "IMG_001.JPG", { type: "image/jpeg" });
+      const result = await compressDiaryImage(iphonePhoto, 1280, 0.8, false);
+      expect(result.ext).toBe("jpg");
+      expect(result.blob.type).toBe("image/jpeg");
+    });
+
     it("báo lỗi rõ ràng khi chọn tệp không phải hình ảnh", async () => {
       const pdfFile = new File(["mock"], "report.pdf", { type: "application/pdf" });
       await expect(compressDiaryImage(pdfFile)).rejects.toThrow(

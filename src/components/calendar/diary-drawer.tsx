@@ -61,6 +61,8 @@ export function DiaryDrawer({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingPhotosRef = useRef<PendingPhoto[]>([]);
   pendingPhotosRef.current = pendingPhotos;
+  // Hàng đợi nén tuần tự 1 ảnh/lần để chọn cùng lúc 6 ảnh >30MB trên iPhone không bao giờ bị tràn RAM
+  const compressQueueRef = useRef<Promise<any>>(Promise.resolve());
 
   const clearPendingPhotos = () => {
     pendingPhotosRef.current.forEach((p) => {
@@ -233,16 +235,24 @@ export function DiaryDrawer({
       });
     }
 
-    // Tạo ảnh xem trước cục bộ VÀ nén sẵn trong nền (KHÔNG gọi mạng / KHÔNG upload lên Storage cho tới khi bấm "Lưu nhật ký")
-    const newPending: PendingPhoto[] = filesToQueue.map((file) => ({
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      file,
-      previewUrl: URL.createObjectURL(file),
-      compressedPromise: prepareDiaryImageForUpload(file).catch((err) => {
-        console.warn(`Lỗi nén sẵn cục bộ ${file.name}:`, err);
-        return null;
-      }),
-    }));
+    // Tạo ảnh xem trước cục bộ VÀ xếp hàng nén tuần tự trong nền (1 ảnh/lần để chống tràn RAM khi chọn 6 ảnh >30MB trên iPhone)
+    // Hoàn toàn KHÔNG gọi mạng / KHÔNG upload lên Storage cho tới khi bấm "Lưu nhật ký"
+    const newPending: PendingPhoto[] = filesToQueue.map((file) => {
+      const task = compressQueueRef.current.then(() =>
+        prepareDiaryImageForUpload(file).catch((err) => {
+          console.warn(`Lỗi nén sẵn cục bộ ${file.name}:`, err);
+          return null;
+        })
+      );
+      compressQueueRef.current = task.then(() => undefined);
+
+      return {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        file,
+        previewUrl: URL.createObjectURL(file),
+        compressedPromise: task,
+      };
+    });
 
     setPendingPhotos((prev) => [...prev, ...newPending]);
 
@@ -708,11 +718,13 @@ export function DiaryDrawer({
                   )}
                 </div>
 
-                {isUploadingImages && (
+                {(isUploadingImages || isSubmittingForm) && (
                   <p className="text-[11px] text-primary font-medium mt-2 text-center flex items-center justify-center gap-1.5">
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
                     <span>
-                      Đang nén & tải ảnh lên ({uploadProgress?.current || 1}/{uploadProgress?.total || 1})...
+                      {isUploadingImages
+                        ? `Đang tải ảnh lên (${uploadProgress?.current || 0}/${uploadProgress?.total || 1})...`
+                        : "Đang lưu nhật ký lên cơ sở dữ liệu..."}
                     </span>
                   </p>
                 )}
