@@ -467,12 +467,19 @@ function MessengerContent() {
                               "text-xs sm:text-[13px] truncate",
                               hasUnread
                                 ? "font-extrabold text-foreground"
-                                : "font-bold text-foreground"
+                                : "font-semibold text-foreground/90"
                             )}
                           >
                             {item.display_name}
                           </p>
-                          <span className="text-[10px] text-muted-foreground shrink-0">
+                          <span
+                            className={cn(
+                              "text-[10px] shrink-0",
+                              hasUnread
+                                ? "text-primary font-bold"
+                                : "text-muted-foreground font-normal"
+                            )}
+                          >
                             {formatMessageRelativeTime(latestActivityAt)}
                           </span>
                         </div>
@@ -480,9 +487,9 @@ function MessengerContent() {
                           <p
                             className={cn(
                               "text-[11px] truncate flex items-center gap-1",
-                              hasUnread || (showReactionAsLatest && item.last_reaction_by !== currentUserId)
+                              hasUnread
                                 ? "text-foreground font-semibold"
-                                : "text-muted-foreground"
+                                : "text-muted-foreground font-normal"
                             )}
                           >
                             {reactionPreviewText ? (
