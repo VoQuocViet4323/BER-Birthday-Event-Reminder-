@@ -10,8 +10,11 @@ ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS reply_to_id UUID REFERENCES
 ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS edited_at TIMESTAMPTZ DEFAULT NULL;
 ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS is_recalled BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS recalled_at TIMESTAMPTZ DEFAULT NULL;
-ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS hidden_for_user_ids UUID[] NOT NULL DEFAULT '{}';
+ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS hidden_for_user_ids UUID[] NOT NULL DEFAULT '{}'::uuid[];
 ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS reactions JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS last_reaction_emoji TEXT DEFAULT NULL;
+ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS last_reaction_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL;
+ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS last_reaction_at TIMESTAMPTZ DEFAULT NULL;
 ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS pinned_at TIMESTAMPTZ DEFAULT NULL;
 ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS pinned_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL;
@@ -108,7 +111,10 @@ BEGIN
         is_pinned = false,
         pinned_at = NULL,
         pinned_by = NULL,
-        reactions = '{}'::jsonb
+        reactions = '{}'::jsonb,
+        last_reaction_emoji = NULL,
+        last_reaction_by = NULL,
+        last_reaction_at = NULL
     WHERE id = p_message_id
     RETURNING * INTO v_row;
 
@@ -141,8 +147,8 @@ BEGIN
 
     UPDATE public.messages
     SET hidden_for_user_ids = CASE
-        WHEN v_me = ANY(COALESCE(hidden_for_user_ids, '{}')) THEN hidden_for_user_ids
-        ELSE array_append(COALESCE(hidden_for_user_ids, '{}'), v_me)
+        WHEN v_me = ANY(COALESCE(hidden_for_user_ids, '{}'::uuid[])) THEN hidden_for_user_ids
+        ELSE array_append(COALESCE(hidden_for_user_ids, '{}'::uuid[]), v_me)
     END
     WHERE id = p_message_id
     RETURNING * INTO v_row;
@@ -189,14 +195,25 @@ BEGIN
 
     IF v_current = v_emoji THEN
         v_next := COALESCE(v_row.reactions, '{}'::jsonb) - v_me::text;
+        UPDATE public.messages
+        SET
+            reactions = v_next,
+            last_reaction_emoji = CASE WHEN last_reaction_by = v_me THEN NULL ELSE last_reaction_emoji END,
+            last_reaction_by = CASE WHEN last_reaction_by = v_me THEN NULL ELSE last_reaction_by END,
+            last_reaction_at = CASE WHEN last_reaction_by = v_me THEN NULL ELSE last_reaction_at END
+        WHERE id = p_message_id
+        RETURNING * INTO v_row;
     ELSE
         v_next := jsonb_set(COALESCE(v_row.reactions, '{}'::jsonb), ARRAY[v_me::text], to_jsonb(v_emoji), true);
+        UPDATE public.messages
+        SET
+            reactions = v_next,
+            last_reaction_emoji = v_emoji,
+            last_reaction_by = v_me,
+            last_reaction_at = now()
+        WHERE id = p_message_id
+        RETURNING * INTO v_row;
     END IF;
-
-    UPDATE public.messages
-    SET reactions = v_next
-    WHERE id = p_message_id
-    RETURNING * INTO v_row;
 
     RETURN jsonb_build_object('success', true, 'data', to_jsonb(v_row));
 END;
@@ -269,7 +286,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 GRANT EXECUTE ON FUNCTION public.toggle_pin_message(UUID) TO authenticated, service_role;
 
--- 7. Cập nhật get_my_friend_network() để bỏ qua tin nhắn đã bị ẩn ở phía người dùng hiện tại & hiển thị đúng tin đã thu hồi
+-- 7. Cập nhật get_my_friend_network() để bỏ qua tin nhắn đã ẩn, hiển thị tin thu hồi & thông báo cảm xúc mới nhất ngoài thanh đoạn chat
 DROP FUNCTION IF EXISTS public.get_my_friend_network();
 CREATE OR REPLACE FUNCTION public.get_my_friend_network()
 RETURNS TABLE (
@@ -289,6 +306,10 @@ RETURNS TABLE (
     last_message_image_url TEXT,
     last_message_sender_id UUID,
     last_message_at TIMESTAMPTZ,
+    last_reaction_emoji TEXT,
+    last_reaction_by UUID,
+    last_reaction_target_sender_id UUID,
+    last_reaction_at TIMESTAMPTZ,
     unread_count BIGINT
 ) AS $$
 DECLARE
@@ -316,6 +337,10 @@ BEGIN
         CASE WHEN lm.is_recalled THEN NULL ELSE lm.image_url END AS last_message_image_url,
         lm.sender_id AS last_message_sender_id,
         lm.created_at AS last_message_at,
+        lr.last_reaction_emoji,
+        lr.last_reaction_by,
+        lr.sender_id AS last_reaction_target_sender_id,
+        lr.last_reaction_at,
         COALESCE(uc.cnt, 0) AS unread_count
     FROM public.friendships f
     JOIN public.profiles p
@@ -326,10 +351,22 @@ BEGIN
         FROM public.messages m
         WHERE ((m.sender_id = v_me AND m.receiver_id = p.id)
             OR (m.sender_id = p.id AND m.receiver_id = v_me))
-          AND NOT (v_me = ANY(COALESCE(m.hidden_for_user_ids, '{}')))
+          AND NOT (v_me = ANY(COALESCE(m.hidden_for_user_ids, '{}'::uuid[])))
         ORDER BY m.created_at DESC
         LIMIT 1
     ) lm ON true
+    LEFT JOIN LATERAL (
+        SELECT m.last_reaction_emoji, m.last_reaction_by, m.sender_id, m.last_reaction_at
+        FROM public.messages m
+        WHERE ((m.sender_id = v_me AND m.receiver_id = p.id)
+            OR (m.sender_id = p.id AND m.receiver_id = v_me))
+          AND m.is_recalled = false
+          AND m.last_reaction_at IS NOT NULL
+          AND m.last_reaction_emoji IS NOT NULL
+          AND NOT (v_me = ANY(COALESCE(m.hidden_for_user_ids, '{}'::uuid[])))
+        ORDER BY m.last_reaction_at DESC
+        LIMIT 1
+    ) lr ON true
     LEFT JOIN LATERAL (
         SELECT COUNT(*)::BIGINT AS cnt
         FROM public.messages m
@@ -337,10 +374,13 @@ BEGIN
           AND m.receiver_id = v_me
           AND m.is_read = false
           AND m.is_recalled = false
-          AND NOT (v_me = ANY(COALESCE(m.hidden_for_user_ids, '{}')))
+          AND NOT (v_me = ANY(COALESCE(m.hidden_for_user_ids, '{}'::uuid[])))
     ) uc ON true
     WHERE f.requester_id = v_me OR f.addressee_id = v_me
-    ORDER BY COALESCE(lm.created_at, f.updated_at, f.created_at) DESC;
+    ORDER BY GREATEST(
+        COALESCE(lm.created_at, f.updated_at, f.created_at),
+        COALESCE(lr.last_reaction_at, f.updated_at, f.created_at)
+    ) DESC;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
 

@@ -18,6 +18,7 @@ import {
   getMessagePreviewText,
   canPinMoreMessages,
   isSwipeReplyTriggered,
+  formatReactionActivityPreview,
   MAX_CHAT_IMAGE_BYTES,
   MAX_PINNED_MESSAGES,
   MESSAGE_REACTIONS,
@@ -307,5 +308,39 @@ describe("Messenger & Fixed QR Friend System Test Suite", () => {
     expect(sql).toContain("v_pinned_count >= 5");
     expect(sql).toContain("v_row.sender_id <> v_me");
     expect(sql).toContain("hidden_for_user_ids");
+    expect(sql).toContain("last_reaction_emoji");
+    expect(sql).toContain("last_reaction_at");
+  });
+
+  it("formatReactionActivityPreview hiển thị đúng câu thông báo thả cảm xúc ở thanh đoạn chat bên ngoài", () => {
+    expect(
+      formatReactionActivityPreview({
+        emoji: "❤️",
+        actorId: "user-viet",
+        targetSenderId: "user-khue",
+        currentUserId: "user-khue",
+        friendName: "Việt",
+      })
+    ).toBe("Việt đã thả tim tin nhắn của bạn");
+
+    expect(
+      formatReactionActivityPreview({
+        emoji: "😆",
+        actorId: "user-viet",
+        targetSenderId: "user-khue",
+        currentUserId: "user-khue",
+        friendName: "Việt",
+      })
+    ).toBe("Việt đã thả haha tin nhắn của bạn");
+
+    expect(
+      formatReactionActivityPreview({
+        emoji: "❤️",
+        actorId: "user-khue",
+        targetSenderId: "user-viet",
+        currentUserId: "user-khue",
+        friendName: "Việt",
+      })
+    ).toBe("Bạn đã thả tim tin nhắn của Việt");
   });
 });

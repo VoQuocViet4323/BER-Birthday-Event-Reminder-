@@ -450,3 +450,39 @@ export function isSwipeReplyTriggered(
 ): boolean {
   return isMine ? deltaX <= -threshold : deltaX >= threshold;
 }
+
+/**
+ * Tạo dòng thông báo thả cảm xúc hiển thị ở danh sách đoạn chat bên ngoài (giống Messenger)
+ * VD: "Việt đã thả tim tin nhắn của bạn", "Việt đã thả haha tin nhắn của bạn"
+ */
+export function formatReactionActivityPreview(params: {
+  emoji?: string | null;
+  actorId?: string | null;
+  targetSenderId?: string | null;
+  currentUserId?: string | null;
+  friendName: string;
+}): string | null {
+  const { emoji, actorId, targetSenderId, currentUserId, friendName } = params;
+  if (!emoji || !actorId || !currentUserId) return null;
+
+  const isActorMe = actorId === currentUserId;
+  const actorLabel = isActorMe ? "Bạn" : friendName;
+
+  const actionByEmoji: Record<string, string> = {
+    "❤️": "đã thả tim",
+    "😆": "đã thả haha",
+    "😮": "đã thả 😮 vào",
+    "😢": "đã thả 😢 vào",
+    "😠": "đã thả 😠 vào",
+    "👍": "đã thích 👍",
+  };
+  const verb = actionByEmoji[emoji] || `đã thả ${emoji} vào`;
+
+  if (targetSenderId === currentUserId) {
+    return `${actorLabel} ${verb} tin nhắn của bạn`;
+  }
+  if (isActorMe) {
+    return `${actorLabel} ${verb} tin nhắn của ${friendName}`;
+  }
+  return `${actorLabel} ${verb} tin nhắn của họ`;
+}

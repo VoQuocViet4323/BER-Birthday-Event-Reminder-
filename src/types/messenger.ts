@@ -17,6 +17,10 @@ export interface FriendNetworkItem {
   last_message_image_url: string | null;
   last_message_sender_id: string | null;
   last_message_at: string | null;
+  last_reaction_emoji?: string | null;
+  last_reaction_by?: string | null;
+  last_reaction_target_sender_id?: string | null;
+  last_reaction_at?: string | null;
   unread_count: number;
 }
 

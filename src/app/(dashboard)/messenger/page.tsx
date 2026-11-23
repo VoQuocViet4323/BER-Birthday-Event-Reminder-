@@ -25,6 +25,7 @@ import { MyQrModal } from "@/components/messenger/my-qr-modal";
 import { AddFriendModal } from "@/components/messenger/add-friend-modal";
 import {
   formatMessageRelativeTime,
+  formatReactionActivityPreview,
   getFixedFriendCode,
   isUserOnline,
 } from "@/lib/messenger-utils";
@@ -400,6 +401,24 @@ function MessengerContent() {
                   const isMineLast = item.last_message_sender_id === currentUserId;
                   const hasUnread = item.unread_count > 0;
 
+                  const msgTime = item.last_message_at ? new Date(item.last_message_at).getTime() : 0;
+                  const reactTime = item.last_reaction_at ? new Date(item.last_reaction_at).getTime() : 0;
+                  const showReactionAsLatest = Boolean(
+                    item.last_reaction_emoji && item.last_reaction_by && reactTime >= msgTime && reactTime > 0
+                  );
+                  const reactionPreviewText = showReactionAsLatest
+                    ? formatReactionActivityPreview({
+                        emoji: item.last_reaction_emoji,
+                        actorId: item.last_reaction_by,
+                        targetSenderId: item.last_reaction_target_sender_id,
+                        currentUserId,
+                        friendName: item.display_name,
+                      })
+                    : null;
+                  const latestActivityAt = showReactionAsLatest
+                    ? item.last_reaction_at
+                    : item.last_message_at || item.updated_at;
+
                   return (
                     <button
                       key={item.friendship_id}
@@ -448,23 +467,26 @@ function MessengerContent() {
                             {item.display_name}
                           </p>
                           <span className="text-[10px] text-muted-foreground shrink-0">
-                            {formatMessageRelativeTime(
-                              item.last_message_at || item.updated_at
-                            )}
+                            {formatMessageRelativeTime(latestActivityAt)}
                           </span>
                         </div>
                         <div className="flex items-center justify-between gap-2 mt-0.5">
                           <p
                             className={cn(
                               "text-[11px] truncate flex items-center gap-1",
-                              hasUnread
+                              hasUnread || (showReactionAsLatest && item.last_reaction_by !== currentUserId)
                                 ? "text-foreground font-semibold"
                                 : "text-muted-foreground"
                             )}
                           >
-                            {item.last_message_content ? (
+                            {reactionPreviewText ? (
+                              <span className="truncate">{reactionPreviewText}</span>
+                            ) : item.last_message_content ? (
                               <>
-                                {isMineLast && <span>Bạn:</span>}
+                                {isMineLast &&
+                                  item.last_message_content !== "Tin nhắn đã được thu hồi" && (
+                                    <span>Bạn:</span>
+                                  )}
                                 <span className="truncate">{item.last_message_content}</span>
                               </>
                             ) : item.last_message_image_url ? (

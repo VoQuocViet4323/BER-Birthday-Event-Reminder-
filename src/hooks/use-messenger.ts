@@ -928,6 +928,7 @@ export function useConversation(
           old.map((m) => (m.id === vars.messageId ? { ...m, ...updated } : m))
         );
       }
+      queryClient.invalidateQueries({ queryKey: ["messenger-network", currentUserId] });
     },
     onError: (err: any) => {
       toast({ title: err?.message || "Không thể thả cảm xúc", variant: "error" });
