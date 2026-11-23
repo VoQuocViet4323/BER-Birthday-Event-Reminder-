@@ -437,7 +437,7 @@ export function useConversation(
       if (!currentUserId || !friendId) return [];
       const { data, error } = await (supabase as any)
         .from("messages")
-        .select("id, sender_id, receiver_id, content, image_url, image_storage_path, image_width, image_height, image_size_bytes, is_read, read_at, created_at")
+        .select("id, sender_id, receiver_id, content, image_url, is_read, read_at, created_at")
         .or(
           `and(sender_id.eq.${currentUserId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${currentUserId})`
         )
@@ -445,20 +445,7 @@ export function useConversation(
         .order("created_at", { ascending: false })
         .limit(120);
 
-      if (error) {
-        // Fallback nếu DB cũ chưa chạy bổ sung 4 cột metadata ảnh
-        const fallbackRes = await (supabase as any)
-          .from("messages")
-          .select("id, sender_id, receiver_id, content, image_url, is_read, read_at, created_at")
-          .or(
-            `and(sender_id.eq.${currentUserId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${currentUserId})`
-          )
-          .not("image_url", "is", null)
-          .order("created_at", { ascending: false })
-          .limit(120);
-        if (fallbackRes.error) return [];
-        return (fallbackRes.data || []) as ChatMessage[];
-      }
+      if (error) return [];
       return (data || []) as ChatMessage[];
     },
   });
@@ -650,40 +637,16 @@ export function useConversation(
           );
         }
 
-        const fullPayload: Record<string, any> = {
-          sender_id: currentUserId,
-          receiver_id: friendId,
-          content: trimmedText,
-          image_url: uploadedImage?.url || null,
-          ...(uploadedImage && {
-            image_storage_path: uploadedImage.storagePath,
-            image_width: uploadedImage.width,
-            image_height: uploadedImage.height,
-            image_size_bytes: uploadedImage.sizeBytes,
-          }),
-        };
-
-        let { data, error } = await (supabase as any)
+        const { data, error } = await (supabase as any)
           .from("messages")
-          .insert(fullPayload)
+          .insert({
+            sender_id: currentUserId,
+            receiver_id: friendId,
+            content: trimmedText,
+            image_url: uploadedImage?.url || null,
+          })
           .select("*")
           .single();
-
-        // Fallback tương thích nếu bảng messages đã chạy bản migration cũ chưa có 4 cột metadata
-        if (error && (String(error.code) === "42703" || String(error.code) === "PGRST204")) {
-          const retry = await (supabase as any)
-            .from("messages")
-            .insert({
-              sender_id: currentUserId,
-              receiver_id: friendId,
-              content: trimmedText,
-              image_url: uploadedImage?.url || null,
-            })
-            .select("*")
-            .single();
-          data = retry.data;
-          error = retry.error;
-        }
 
         if (error) {
           if (String(error.code) === "42501") {
@@ -734,9 +697,18 @@ export function useConversation(
         .eq("id", msg.id);
       if (error) throw error;
 
-      if (msg.image_storage_path && supabase?.storage) {
+      // Trích đường dẫn file từ image_storage_path hoặc public URL của bucket chat-images để dọn sạch Storage
+      const storagePath =
+        msg.image_storage_path ||
+        (msg.image_url?.includes("/storage/v1/object/public/chat-images/")
+          ? decodeURIComponent(
+              msg.image_url.split("/storage/v1/object/public/chat-images/")[1].split("?")[0]
+            )
+          : null);
+
+      if (storagePath && supabase?.storage) {
         try {
-          await supabase.storage.from("chat-images").remove([msg.image_storage_path]);
+          await supabase.storage.from("chat-images").remove([storagePath]);
         } catch {
           // Không chặn flow nếu file đã bị xóa trước đó
         }
