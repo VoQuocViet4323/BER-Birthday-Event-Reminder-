@@ -19,6 +19,7 @@ import {
   canPinMoreMessages,
   isSwipeReplyTriggered,
   formatReactionActivityPreview,
+  hasUnreadReactionFromFriend,
   MAX_CHAT_IMAGE_BYTES,
   MAX_PINNED_MESSAGES,
   MESSAGE_REACTIONS,
@@ -342,5 +343,31 @@ describe("Messenger & Fixed QR Friend System Test Suite", () => {
         friendName: "Việt",
       })
     ).toBe("Bạn đã thả tim tin nhắn của Việt");
+  });
+
+  it("hasUnreadReactionFromFriend bật badge thông báo khi đối phương thả cảm xúc mới và tắt sau khi đã mở xem", () => {
+    const item = {
+      friend_id: "user-viet",
+      last_reaction_emoji: "❤️",
+      last_reaction_by: "user-viet",
+      last_reaction_at: "2026-11-23T11:05:00Z",
+    };
+
+    // Chưa mở xem -> phải hiện badge thông báo
+    expect(hasUnreadReactionFromFriend(item, "user-khue", {})).toBe(true);
+    // Đã mở xem từ trước khi bạn thả tim -> vẫn hiện badge
+    expect(
+      hasUnreadReactionFromFriend(item, "user-khue", {
+        "user-viet": "2026-11-23T11:00:00Z",
+      })
+    ).toBe(true);
+    // Đã mở xem sau khi bạn thả tim -> tắt badge
+    expect(
+      hasUnreadReactionFromFriend(item, "user-khue", {
+        "user-viet": "2026-11-23T11:06:00Z",
+      })
+    ).toBe(false);
+    // Chính mình thả -> không bật badge cho chính mình
+    expect(hasUnreadReactionFromFriend(item, "user-viet", {})).toBe(false);
   });
 });

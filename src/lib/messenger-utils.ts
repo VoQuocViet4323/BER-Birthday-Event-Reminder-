@@ -486,3 +486,33 @@ export function formatReactionActivityPreview(params: {
   }
   return `${actorLabel} ${verb} tin nhắn của họ`;
 }
+
+/**
+ * Kiểm tra cuộc trò chuyện có cảm xúc mới chưa xem từ đối phương hay không
+ */
+export function hasUnreadReactionFromFriend(
+  item: {
+    friend_id: string;
+    last_reaction_emoji?: string | null;
+    last_reaction_by?: string | null;
+    last_reaction_at?: string | null;
+  },
+  currentUserId?: string | null,
+  seenReactionMap?: Record<string, string> | null
+): boolean {
+  if (!currentUserId || !item.last_reaction_emoji || !item.last_reaction_by || !item.last_reaction_at) {
+    return false;
+  }
+  // Cảm xúc do chính mình thả không tạo chấm chưa đọc cho chính mình
+  if (item.last_reaction_by === currentUserId) return false;
+
+  const reactTs = new Date(item.last_reaction_at).getTime();
+  if (Number.isNaN(reactTs)) return false;
+
+  const seenIso = seenReactionMap?.[item.friend_id];
+  if (!seenIso) return true;
+  const seenTs = new Date(seenIso).getTime();
+  if (Number.isNaN(seenTs)) return true;
+
+  return reactTs > seenTs;
+}

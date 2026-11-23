@@ -11,12 +11,41 @@ import {
 } from "@/types/messenger";
 import {
   canPinMoreMessages,
+  hasUnreadReactionFromFriend,
   isMessageHiddenForUser,
   isMessengerSchemaMissingError,
   MAX_PINNED_MESSAGES,
   parseFriendQrPayload,
   uploadChatImageDetailed,
 } from "@/lib/messenger-utils";
+
+const SEEN_REACTIONS_STORAGE_KEY = "ber_messenger_seen_reactions";
+const SEEN_REACTIONS_EVENT = "ber-messenger-seen-reactions-updated";
+
+function readSeenReactionsMap(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(SEEN_REACTIONS_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function markFriendReactionsAsSeen(friendId: string, seenAtIso?: string) {
+  if (typeof window === "undefined" || !friendId) return;
+  try {
+    const map = readSeenReactionsMap();
+    const nextIso = seenAtIso || new Date().toISOString();
+    const prevTs = map[friendId] ? new Date(map[friendId]).getTime() : 0;
+    const nextTs = new Date(nextIso).getTime();
+    if (!Number.isNaN(nextTs) && nextTs <= prevTs) return;
+    map[friendId] = nextIso;
+    localStorage.setItem(SEEN_REACTIONS_STORAGE_KEY, JSON.stringify(map));
+    window.dispatchEvent(new CustomEvent(SEEN_REACTIONS_EVENT));
+  } catch {}
+}
 
 function isSupabaseConfigured(): boolean {
   return Boolean(
@@ -38,6 +67,20 @@ export function useMessengerNetwork() {
   const { toast } = useToast();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [schemaMissing, setSchemaMissing] = useState(false);
+  const [seenReactionMap, setSeenReactionMap] = useState<Record<string, string>>(() =>
+    readSeenReactionsMap()
+  );
+
+  // Đồng bộ trạng thái đã xem cảm xúc giữa AppHeader, DesktopSidebar và MessengerPage
+  useEffect(() => {
+    const syncSeen = () => setSeenReactionMap(readSeenReactionsMap());
+    window.addEventListener(SEEN_REACTIONS_EVENT, syncSeen);
+    window.addEventListener("storage", syncSeen);
+    return () => {
+      window.removeEventListener(SEEN_REACTIONS_EVENT, syncSeen);
+      window.removeEventListener("storage", syncSeen);
+    };
+  }, []);
 
   // Lấy phiên người dùng hiện tại & đồng bộ khi đổi tài khoản
   useEffect(() => {
@@ -186,9 +229,25 @@ export function useMessengerNetwork() {
     [network, currentUserId]
   );
 
+  const unreadReactionFriendIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const item of friends) {
+      if (hasUnreadReactionFromFriend(item, currentUserId, seenReactionMap)) {
+        ids.add(item.friend_id);
+      }
+    }
+    return ids;
+  }, [friends, currentUserId, seenReactionMap]);
+
   const totalUnreadMessages = useMemo(
-    () => friends.reduce((sum, item) => sum + (item.unread_count || 0), 0),
-    [friends]
+    () =>
+      friends.reduce((sum, item) => {
+        const msgUnread = item.unread_count || 0;
+        const reactUnread =
+          msgUnread === 0 && unreadReactionFriendIds.has(item.friend_id) ? 1 : 0;
+        return sum + msgUnread + reactUnread;
+      }, 0),
+    [friends, unreadReactionFriendIds]
   );
 
   const totalBadgeCount = totalUnreadMessages + incomingRequests.length;
@@ -316,10 +375,12 @@ export function useMessengerNetwork() {
     friends,
     incomingRequests,
     outgoingRequests,
+    unreadReactionFriendIds,
     totalUnreadMessages,
     totalBadgeCount,
     isLoading,
     refetch,
+    markFriendReactionsAsSeen,
     searchUserForFriend,
     sendFriendRequest: (targetUserId: string) =>
       sendFriendRequestMutation.mutateAsync(targetUserId),
@@ -489,9 +550,11 @@ export function useConversation(
     }
   }, [currentUserId, friendId, supabase, queryClient]);
 
-  // Tự động đánh dấu đã đọc khi mở khung chat hoặc có tin nhắn mới đến từ bạn bè
+  // Tự động đánh dấu đã đọc tin nhắn & đã xem cảm xúc khi đang mở khung chat với người bạn này
   useEffect(() => {
-    if (!currentUserId || !friendId || messages.length === 0) return;
+    if (!currentUserId || !friendId) return;
+    markFriendReactionsAsSeen(friendId);
+    if (messages.length === 0) return;
     const hasUnreadFromFriend = messages.some(
       (m) => m.sender_id === friendId && m.receiver_id === currentUserId && !m.is_read
     );
@@ -569,6 +632,9 @@ export function useConversation(
           queryClient.setQueryData<ChatMessage[]>(queryKey, (old = []) =>
             old.map((m) => (m.id === updated.id ? { ...m, ...updated } : m))
           );
+          if (friendId) {
+            markFriendReactionsAsSeen(friendId, new Date().toISOString());
+          }
           if (updated.is_recalled || isMessageHiddenForUser(updated, currentUserId)) {
             queryClient.invalidateQueries({ queryKey: mediaQueryKey });
           }

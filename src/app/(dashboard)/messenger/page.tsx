@@ -42,9 +42,11 @@ function MessengerContent() {
     friends,
     incomingRequests,
     outgoingRequests,
+    unreadReactionFriendIds,
     totalUnreadMessages,
     isLoading,
     refetch,
+    markFriendReactionsAsSeen,
     searchUserForFriend,
     sendFriendRequest,
     acceptFriendRequest,
@@ -399,7 +401,8 @@ function MessengerContent() {
                   const isActive = item.friend_id === selectedFriendId;
                   const online = isUserOnline(item.last_seen_at);
                   const isMineLast = item.last_message_sender_id === currentUserId;
-                  const hasUnread = item.unread_count > 0;
+                  const hasUnreadReaction = unreadReactionFriendIds.has(item.friend_id);
+                  const hasUnread = item.unread_count > 0 || hasUnreadReaction;
 
                   const msgTime = item.last_message_at ? new Date(item.last_message_at).getTime() : 0;
                   const reactTime = item.last_reaction_at ? new Date(item.last_reaction_at).getTime() : 0;
@@ -423,7 +426,10 @@ function MessengerContent() {
                     <button
                       key={item.friendship_id}
                       type="button"
-                      onClick={() => setSelectedFriendId(item.friend_id)}
+                      onClick={() => {
+                        setSelectedFriendId(item.friend_id);
+                        markFriendReactionsAsSeen(item.friend_id);
+                      }}
                       className={cn(
                         "w-full flex items-center gap-3 p-2.5 rounded-2xl text-left transition-all cursor-pointer touch-manipulation",
                         isActive
@@ -502,7 +508,11 @@ function MessengerContent() {
                           </p>
                           {hasUnread && (
                             <span className="min-w-[18px] h-[18px] px-1 rounded-full gradient-brand text-white text-[10px] font-extrabold flex items-center justify-center shrink-0">
-                              {item.unread_count > 9 ? "9+" : item.unread_count}
+                              {item.unread_count > 9
+                                ? "9+"
+                                : item.unread_count > 0
+                                ? item.unread_count
+                                : item.last_reaction_emoji || "1"}
                             </span>
                           )}
                         </div>
