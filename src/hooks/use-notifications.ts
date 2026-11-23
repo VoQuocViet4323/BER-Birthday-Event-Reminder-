@@ -3,6 +3,8 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import { useMessengerNetwork } from "@/hooks/use-messenger";
+import { useToast } from "@/components/ui/toast";
 
 export interface AppNotification {
   id: string;
@@ -18,6 +20,8 @@ export interface AppNotification {
   isRead: boolean;
   eventName?: string;
   error?: string | null;
+  href?: string;
+  kind?: "event" | "friend_request" | "friend_accepted";
 }
 
 const STORAGE_KEY = "ber_read_notification_ids";
@@ -66,11 +70,14 @@ function formatTimeAgo(dateStr: string): string {
 }
 
 export function useNotifications() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const { currentUserId, friends, incomingRequests } = useMessengerNetwork();
   const [readIds, setReadIds] = useState<Set<string>>(() => getReadIdsFromStorage());
   const [shouldRing, setShouldRing] = useState(false);
   const prevCountRef = useRef<number>(0);
+  const seenRealtimeFriendNotifIdsRef = useRef<Set<string> | null>(null);
 
   // Lắng nghe sự kiện hệ thống vừa gửi nhắc nhở để làm mới ngay
   useEffect(() => {
@@ -170,7 +177,7 @@ export function useNotifications() {
       deduplicatedLogs.push(log);
     }
 
-    return deduplicatedLogs.map((log: any) => {
+    const eventNotifications: AppNotification[] = deduplicatedLogs.map((log: any) => {
       const isRead = readIds.has(log.id);
       const eventInfo =
         log.events ||
@@ -181,25 +188,25 @@ export function useNotifications() {
       const isSent = log.status === "sent";
       const isFailed = log.status === "failed";
 
-      let title = isSent
+      const title = isSent
         ? `Đã gửi email nhắc: ${eventName}`
         : isFailed
         ? `Gửi email thất bại: ${eventName}`
         : `Đang gửi email nhắc: ${eventName}`;
 
-      let message = isSent
+      const message = isSent
         ? "Email thông báo sinh nhật / sự kiện đã được chuyển phát thành công."
         : isFailed
         ? log.error || "Gửi email không thành công. Hệ thống sẽ thử lại."
         : "Đang tiến hành gửi email nhắc nhở...";
 
-      let avatarColor = isSent
+      const avatarColor = isSent
         ? "linear-gradient(140deg,#10B981,#059669)"
         : isFailed
         ? "linear-gradient(140deg,#F43F5E,#BE123C)"
         : "linear-gradient(140deg,#F59E0B,#D97706)";
 
-      let emoji = isSent ? "✅" : isFailed ? "⚠️" : "⏳";
+      const emoji = isSent ? "✅" : isFailed ? "⚠️" : "⏳";
 
       const avatarUrl =
         eventInfo?.avatar_url ||
@@ -221,9 +228,92 @@ export function useNotifications() {
         isRead,
         eventName,
         error: log.error,
+        kind: "event",
       };
     });
-  }, [rawLogs, readIds, queryClient]);
+
+    // Thông báo lời mời kết bạn đến
+    const incomingFriendNotifications: AppNotification[] = incomingRequests.map((req) => {
+      const id = `friend-req-${req.friendship_id}`;
+      const ts = req.created_at || new Date().toISOString();
+      return {
+        id,
+        title: `Lời mời kết bạn từ ${req.display_name}`,
+        message: `${req.display_name} muốn kết bạn với bạn trên Messenger. Bấm để xem và chấp nhận.`,
+        timestamp: ts,
+        timeAgo: formatTimeAgo(ts),
+        status: "pending",
+        channel: "messenger",
+        avatarColor: "linear-gradient(140deg,#8B5CF6,#EC4899)",
+        avatarUrl: req.avatar_url || "",
+        emoji: "👋",
+        isRead: readIds.has(id),
+        eventName: req.display_name,
+        href: "/messenger?tab=requests",
+        kind: "friend_request",
+      };
+    });
+
+    // Thông báo khi lời mời kết bạn mình gửi đi ĐÃ ĐƯỢC CHẤP NHẬN
+    const acceptedFriendNotifications: AppNotification[] = friends
+      .filter((f) => Boolean(currentUserId && f.requester_id === currentUserId))
+      .map((f) => {
+        const id = `friend-acc-${f.friendship_id}`;
+        const ts = f.updated_at || f.created_at || new Date().toISOString();
+        return {
+          id,
+          title: `${f.display_name} đã chấp nhận lời mời kết bạn!`,
+          message: `Hai bạn đã trở thành bạn bè trên Messenger. Bấm để bắt đầu nhắn tin ngay.`,
+          timestamp: ts,
+          timeAgo: formatTimeAgo(ts),
+          status: "sent",
+          channel: "messenger",
+          avatarColor: "linear-gradient(140deg,#10B981,#06B6D4)",
+          avatarUrl: f.avatar_url || "",
+          emoji: "🤝",
+          isRead: readIds.has(id),
+          eventName: f.display_name,
+          href: `/messenger?chat=${encodeURIComponent(f.friend_id)}`,
+          kind: "friend_accepted",
+        };
+      });
+
+    return [
+      ...incomingFriendNotifications,
+      ...acceptedFriendNotifications,
+      ...eventNotifications,
+    ].sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+  }, [rawLogs, readIds, queryClient, incomingRequests, friends, currentUserId]);
+
+  // Phát thông báo Realtime tức thì khi có lời mời mới hoặc lời mời mình gửi vừa được chấp nhận
+  useEffect(() => {
+    if (!currentUserId) return;
+    const friendNotifs = notifications.filter(
+      (n) => n.kind === "friend_request" || n.kind === "friend_accepted"
+    );
+
+    if (seenRealtimeFriendNotifIdsRef.current === null) {
+      seenRealtimeFriendNotifIdsRef.current = new Set(friendNotifs.map((n) => n.id));
+      return;
+    }
+
+    for (const n of friendNotifs) {
+      if (!seenRealtimeFriendNotifIdsRef.current.has(n.id)) {
+        seenRealtimeFriendNotifIdsRef.current.add(n.id);
+        if (!n.isRead) {
+          setShouldRing(true);
+          setTimeout(() => setShouldRing(false), 1200);
+          toast({
+            title: n.title,
+            description: n.message,
+            variant: "success",
+          });
+        }
+      }
+    }
+  }, [notifications, currentUserId, toast]);
 
   // Đếm số thông báo chưa đọc
   const unreadCount = useMemo(() => {

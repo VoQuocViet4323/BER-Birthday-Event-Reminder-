@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Bell, CheckCheck, Inbox, X, Calendar, Mail, Clock, ShieldCheck, AlertCircle } from "lucide-react";
 import { useNotifications, AppNotification } from "@/hooks/use-notifications";
@@ -13,6 +14,7 @@ interface NotificationBellDropdownProps {
 }
 
 export function NotificationBellDropdown({ onCountChange }: NotificationBellDropdownProps) {
+  const router = useRouter();
   const {
     notifications,
     unreadCount,
@@ -251,26 +253,40 @@ export function NotificationBellDropdown({ onCountChange }: NotificationBellDrop
                           }`}
                           onClick={() => {
                             markAsRead(n.id);
-                            setSelectedNotification(n);
                             setIsOpen(false);
+                            if (n.href) {
+                              router.push(n.href);
+                            } else {
+                              setSelectedNotification(n);
+                            }
                           }}
                         >
                           {/* Avatar */}
                           <div className="relative w-9 h-9 shrink-0 rounded-full bg-secondary overflow-visible">
-                            <img
-                              src={getEventAvatarUrl({
-                                name: n.eventName || "BER",
-                                avatar_url: n.avatarUrl,
-                              })}
-                              alt={n.eventName || "Avatar"}
-                              className="w-full h-full rounded-full object-cover border border-border/60 bg-secondary/80"
-                              loading="lazy"
-                              onError={(e) => {
-                                const target = e.currentTarget;
-                                target.onerror = null;
-                                target.src = getEventAvatarUrl({ name: n.eventName || "BER" });
-                              }}
-                            />
+                            {(n.kind === "friend_request" || n.kind === "friend_accepted") && !n.avatarUrl ? (
+                              <div className="w-full h-full rounded-full gradient-brand text-white font-bold text-xs flex items-center justify-center border border-border/60 shadow-2xs">
+                                {(n.eventName || "U").charAt(0).toUpperCase()}
+                              </div>
+                            ) : (
+                              <img
+                                src={
+                                  n.kind === "friend_request" || n.kind === "friend_accepted"
+                                    ? n.avatarUrl
+                                    : getEventAvatarUrl({
+                                        name: n.eventName || "BER",
+                                        avatar_url: n.avatarUrl,
+                                      })
+                                }
+                                alt={n.eventName || "Avatar"}
+                                className="w-full h-full rounded-full object-cover border border-border/60 bg-secondary/80"
+                                loading="lazy"
+                                onError={(e) => {
+                                  const target = e.currentTarget;
+                                  target.onerror = null;
+                                  target.src = getEventAvatarUrl({ name: n.eventName || "BER" });
+                                }}
+                              />
+                            )}
                             <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-card border border-border text-[9px] flex items-center justify-center shadow-xs">
                               {n.emoji}
                             </span>

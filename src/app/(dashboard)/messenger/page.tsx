@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   MessageCircle,
   UserPlus,
+  UserMinus,
   QrCode,
   Search,
   Check,
@@ -48,19 +49,38 @@ function MessengerContent() {
     removeFriendship,
   } = useMessengerNetwork();
 
-  const [activeTab, setActiveTab] = useState<"chats" | "requests">("chats");
+  const [activeTab, setActiveTab] = useState<"chats" | "friends" | "requests">("chats");
   const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [showMyQr, setShowMyQr] = useState(false);
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [deepLinkAddCode, setDeepLinkAddCode] = useState<string | null>(null);
 
-  // Bắt đường dẫn quét QR từ bên ngoài: /messenger?add=BER-XXXXXXXX
+  // Bắt đường dẫn từ QR hoặc Chuông Thông Báo (?add=BER-..., ?tab=requests, ?chat=friendId)
   useEffect(() => {
     const addParam = searchParams.get("add");
+    const tabParam = searchParams.get("tab");
+    const chatParam = searchParams.get("chat");
+    let handled = false;
+
     if (addParam && addParam.trim()) {
       setDeepLinkAddCode(addParam.trim());
       setShowAddFriend(true);
+      handled = true;
+    }
+    if (tabParam === "requests" || tabParam === "friends" || tabParam === "chats") {
+      setActiveTab(tabParam);
+      if (tabParam !== "chats") setSelectedFriendId(null);
+      handled = true;
+    }
+    if (chatParam && chatParam.trim()) {
+      setActiveTab("chats");
+      setSelectedFriendId(chatParam.trim());
+      handled = true;
+    }
+
+    if (handled) {
       router.replace("/messenger", { scroll: false });
     }
   }, [searchParams, router]);
@@ -98,6 +118,21 @@ function MessengerContent() {
         f.friend_code.toLowerCase().includes(q)
     );
   }, [friends, searchTerm]);
+
+  // Danh sách tất cả bạn bè: ưu tiên người đang Online lên trên, sau đó sắp xếp A-Z tiếng Việt
+  const sortedAllFriends = useMemo(() => {
+    return [...filteredFriends].sort((a, b) => {
+      const aOnline = isUserOnline(a.last_seen_at) ? 1 : 0;
+      const bOnline = isUserOnline(b.last_seen_at) ? 1 : 0;
+      if (aOnline !== bOnline) return bOnline - aOnline;
+      return (a.display_name || "").localeCompare(b.display_name || "", "vi");
+    });
+  }, [filteredFriends]);
+
+  const onlineFriendsCount = useMemo(
+    () => friends.filter((f) => isUserOnline(f.last_seen_at)).length,
+    [friends]
+  );
 
   const myFriendCode = getFixedFriendCode(currentUserId || profile?.id, profile?.friend_code);
 
@@ -147,8 +182,8 @@ function MessengerContent() {
       )}
 
       {/* Khung Messenger chính: 2 cột trên PC, Master/Detail chuyển mượt trên Mobile */}
-      <div className="flex-1 min-h-0 bg-card/75 backdrop-blur-xl lg:rounded-3xl lg:border border-border/70 lg:shadow-soft overflow-hidden grid grid-cols-1 lg:grid-cols-[340px_1fr]">
-        {/* CỘT TRÁI: Danh sách đoạn chat & Lời mời kết bạn */}
+      <div className="flex-1 min-h-0 bg-card/75 backdrop-blur-xl lg:rounded-3xl lg:border border-border/70 lg:shadow-soft overflow-hidden grid grid-cols-1 lg:grid-cols-[356px_1fr]">
+        {/* CỘT TRÁI: Danh sách đoạn chat, Tất cả bạn bè & Lời mời kết bạn */}
         <section
           className={cn(
             "flex flex-col min-h-0 border-r border-border/60 bg-card/60",
@@ -158,25 +193,25 @@ function MessengerContent() {
           {/* Thanh tiêu đề & 2 nút hành động nhanh (QR cố định + Thêm bạn) */}
           <div className="px-4 pt-4 pb-3 border-b border-border/60 space-y-3 shrink-0">
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-2xl gradient-brand text-white flex items-center justify-center shadow-soft">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-9 h-9 rounded-2xl gradient-brand text-white flex items-center justify-center shadow-soft shrink-0">
                   <MessageCircle className="w-5 h-5" />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <h1 className="text-base sm:text-lg font-extrabold text-foreground leading-tight">
                     Messenger
                   </h1>
-                  <p className="text-[11px] text-muted-foreground">
-                    Mã của bạn: <span className="font-bold text-primary">{myFriendCode}</span>
+                  <p className="text-[10.5px] text-muted-foreground whitespace-nowrap truncate">
+                    Mã: <span className="font-bold text-primary tracking-wide">{myFriendCode}</span>
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 shrink-0">
                 <button
                   type="button"
                   onClick={() => setShowMyQr(true)}
-                  className="w-9 h-9 rounded-xl bg-secondary/80 hover:bg-secondary border border-border/70 text-foreground hover:text-primary flex items-center justify-center transition-all active:scale-95 cursor-pointer touch-manipulation"
+                  className="w-9 h-9 rounded-xl bg-secondary/80 hover:bg-secondary border border-border/70 text-foreground hover:text-primary flex items-center justify-center transition-all active:scale-95 cursor-pointer touch-manipulation shrink-0"
                   title="Mã QR cố định của tôi"
                   aria-label="Mã QR cố định của tôi"
                 >
@@ -188,10 +223,10 @@ function MessengerContent() {
                     setDeepLinkAddCode(null);
                     setShowAddFriend(true);
                   }}
-                  className="h-9 px-3 rounded-xl gradient-brand text-white text-xs font-bold shadow-soft hover:shadow-soft-hover flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer touch-manipulation"
+                  className="h-9 px-3 rounded-xl gradient-brand text-white text-xs font-bold shadow-soft hover:shadow-soft-hover flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer touch-manipulation whitespace-nowrap shrink-0"
                   title="Thêm bạn qua Email hoặc Quét mã QR"
                 >
-                  <UserPlus className="w-3.5 h-3.5" />
+                  <UserPlus className="w-3.5 h-3.5 shrink-0" />
                   <span>Thêm bạn</span>
                 </button>
               </div>
@@ -204,18 +239,22 @@ function MessengerContent() {
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Tìm bạn bè trong đoạn chat..."
+                placeholder={
+                  activeTab === "friends"
+                    ? "Tìm theo tên, email hoặc mã BER-..."
+                    : "Tìm bạn bè trong đoạn chat..."
+                }
                 className="w-full pl-9 pr-3 py-2 rounded-xl bg-secondary/60 border border-border/60 focus:border-primary/70 focus:outline-none text-xs text-foreground placeholder:text-muted-foreground/70 transition-colors"
               />
             </div>
 
-            {/* Tabs Đoạn chat / Lời mời */}
-            <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-secondary/70 border border-border/50">
+            {/* Tabs Đoạn chat / Bạn bè / Lời mời */}
+            <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-secondary/70 border border-border/50">
               <button
                 type="button"
                 onClick={() => setActiveTab("chats")}
                 className={cn(
-                  "py-1.5 px-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer",
+                  "py-1.5 px-2 rounded-lg text-[11.5px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer whitespace-nowrap",
                   activeTab === "chats"
                     ? "bg-card text-foreground shadow-xs"
                     : "text-muted-foreground hover:text-foreground"
@@ -230,9 +269,26 @@ function MessengerContent() {
               </button>
               <button
                 type="button"
+                onClick={() => setActiveTab("friends")}
+                className={cn(
+                  "py-1.5 px-2 rounded-lg text-[11.5px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer whitespace-nowrap",
+                  activeTab === "friends"
+                    ? "bg-card text-foreground shadow-xs"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <span>Bạn bè</span>
+                {friends.length > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-primary/15 text-primary font-extrabold">
+                    {friends.length}
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
                 onClick={() => setActiveTab("requests")}
                 className={cn(
-                  "py-1.5 px-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer",
+                  "py-1.5 px-2 rounded-lg text-[11.5px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer whitespace-nowrap",
                   activeTab === "requests"
                     ? "bg-card text-foreground shadow-xs"
                     : "text-muted-foreground hover:text-foreground"
@@ -390,6 +446,173 @@ function MessengerContent() {
                   );
                 })
               )
+            ) : activeTab === "friends" ? (
+              /* TAB TẤT CẢ BẠN BÈ */
+              <div className="space-y-2.5 p-1">
+                <div className="flex items-center justify-between px-1.5">
+                  <h2 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Tất cả bạn bè ({sortedAllFriends.length})
+                  </h2>
+                  {onlineFriendsCount > 0 && (
+                    <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold text-emerald-500">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                      {onlineFriendsCount} trực tuyến
+                    </span>
+                  )}
+                </div>
+
+                {isLoading ? (
+                  <div className="space-y-2">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="h-16 rounded-2xl bg-secondary/50 animate-pulse" />
+                    ))}
+                  </div>
+                ) : sortedAllFriends.length === 0 ? (
+                  <div className="py-10 px-4 text-center space-y-3">
+                    <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto">
+                      <Users className="w-6 h-6" />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs font-bold text-foreground">
+                        {searchTerm
+                          ? "Không tìm thấy bạn bè nào khớp từ khóa"
+                          : "Danh sách bạn bè đang trống"}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        Thêm bạn bè qua Email hoặc quét mã QR cố định để kết nối ngay.
+                      </p>
+                    </div>
+                    {!searchTerm && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAddFriend(true)}
+                        className="py-2 px-4 rounded-xl gradient-brand text-white text-xs font-bold shadow-soft cursor-pointer active:scale-95 transition-all"
+                      >
+                        + Thêm bạn mới
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {sortedAllFriends.map((friend) => {
+                      const online = isUserOnline(friend.last_seen_at);
+                      const isConfirming = confirmRemoveId === friend.friendship_id;
+
+                      return (
+                        <div
+                          key={friend.friendship_id}
+                          className="p-2.5 rounded-2xl bg-secondary/40 hover:bg-secondary/70 border border-border/60 transition-all space-y-2"
+                        >
+                          <div className="flex items-center justify-between gap-2.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedFriendId(friend.friend_id);
+                                setActiveTab("chats");
+                              }}
+                              className="flex items-center gap-2.5 min-w-0 flex-1 text-left cursor-pointer"
+                            >
+                              <div className="relative shrink-0">
+                                <div className="w-10 h-10 rounded-2xl gradient-brand p-0.5 overflow-hidden">
+                                  <div className="w-full h-full rounded-[14px] bg-card overflow-hidden flex items-center justify-center">
+                                    {friend.avatar_url ? (
+                                      <img
+                                        src={friend.avatar_url}
+                                        alt={friend.display_name}
+                                        className="w-full h-full object-cover"
+                                      />
+                                    ) : (
+                                      <div className="w-full h-full gradient-brand text-white font-bold text-sm flex items-center justify-center">
+                                        {(friend.display_name || "U").charAt(0).toUpperCase()}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                                {online && (
+                                  <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-card" />
+                                )}
+                              </div>
+
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs sm:text-[13px] font-bold text-foreground truncate">
+                                  {friend.display_name}
+                                </p>
+                                <p className="text-[11px] text-muted-foreground truncate">
+                                  {online ? (
+                                    <span className="text-emerald-500 font-medium">
+                                      Đang hoạt động
+                                    </span>
+                                  ) : (
+                                    friend.email || friend.friend_code
+                                  )}
+                                </p>
+                              </div>
+                            </button>
+
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedFriendId(friend.friend_id);
+                                  setActiveTab("chats");
+                                }}
+                                className="w-8 h-8 rounded-xl bg-primary/15 hover:bg-primary/25 text-primary flex items-center justify-center transition-all active:scale-95 cursor-pointer"
+                                title="Nhắn tin ngay"
+                                aria-label={`Nhắn tin với ${friend.display_name}`}
+                              >
+                                <MessageCircle className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setConfirmRemoveId(
+                                    isConfirming ? null : friend.friendship_id
+                                  )
+                                }
+                                className={cn(
+                                  "w-8 h-8 rounded-xl flex items-center justify-center transition-all active:scale-95 cursor-pointer",
+                                  isConfirming
+                                    ? "bg-rose-500/20 text-rose-500"
+                                    : "bg-secondary hover:bg-rose-500/15 text-muted-foreground hover:text-rose-500"
+                                )}
+                                title="Hủy kết bạn"
+                                aria-label={`Hủy kết bạn với ${friend.display_name}`}
+                              >
+                                <UserMinus className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {isConfirming && (
+                            <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-border/50 text-[11px]">
+                              <span className="text-muted-foreground">Hủy kết bạn?</span>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmRemoveId(null)}
+                                  className="px-2.5 py-1 rounded-lg bg-secondary text-foreground font-semibold cursor-pointer"
+                                >
+                                  Giữ lại
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    setConfirmRemoveId(null);
+                                    await handleUnfriend(friend.friendship_id);
+                                  }}
+                                  className="px-2.5 py-1 rounded-lg bg-rose-500 text-white font-bold cursor-pointer"
+                                >
+                                  Xác nhận
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             ) : (
               /* TAB LỜI MỜI KẾT BẠN */
               <div className="space-y-4 p-1">
