@@ -73,23 +73,41 @@ export function ChatWindow({
   const [mounted, setMounted] = useState(false);
   const lastMsgIdRef = useRef<string | null>(null);
 
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const headerMenuRef = useRef<HTMLDivElement | null>(null);
+
+  const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior });
+  };
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Chỉ cuộn xuống cuối khi mở cuộc trò chuyện mới, có tin nhắn MỚI ở cuối, hoặc bạn đang nhập (không cuộn khi đang tải tin cũ)
+  // Chỉ cuộn nội bộ vùng tin nhắn (không dùng scrollIntoView để tránh iOS Safari đẩy cả viewport khi bật bàn phím)
   const latestMessageId = messages.length > 0 ? messages[messages.length - 1].id : null;
   useEffect(() => {
     if (latestMessageId !== lastMsgIdRef.current || friendIsTyping) {
       lastMsgIdRef.current = latestMessageId;
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      scrollToBottom("smooth");
     }
   }, [latestMessageId, friendIsTyping, friend.friend_id]);
+
+  // Khi bàn phím ảo trên Mobile thay đổi kích thước viewport, giữ khung tin nhắn cuộn sát tin mới nhất
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.visualViewport) return;
+    const handleViewportResize = () => {
+      requestAnimationFrame(() => scrollToBottom("auto"));
+    };
+    window.visualViewport.addEventListener("resize", handleViewportResize);
+    return () => {
+      window.visualViewport?.removeEventListener("resize", handleViewportResize);
+    };
+  }, []);
 
   // Đóng menu header khi click ra ngoài
   useEffect(() => {
@@ -204,14 +222,17 @@ export function ChatWindow({
       <div className="flex items-center justify-between gap-3 px-3 sm:px-5 py-3 border-b border-border/70 bg-card/85 backdrop-blur-md shrink-0">
         <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
           {onBackMobile && (
-            <button
+            <motion.button
               type="button"
               onClick={onBackMobile}
-              className="lg:hidden w-9 h-9 rounded-xl hover:bg-secondary flex items-center justify-center text-foreground shrink-0 active:scale-95 transition-all cursor-pointer touch-manipulation"
+              whileHover={{ x: -2, scale: 1.06 }}
+              whileTap={{ x: -6, scale: 0.86 }}
+              transition={{ type: "spring", stiffness: 460, damping: 22 }}
+              className="lg:hidden group w-9 h-9 rounded-xl bg-secondary/60 hover:bg-secondary border border-border/60 flex items-center justify-center text-foreground shrink-0 cursor-pointer touch-manipulation"
               aria-label="Quay lại danh sách"
             >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
+              <ArrowLeft className="w-5 h-5 transition-transform duration-150 group-hover:-translate-x-0.5" />
+            </motion.button>
           )}
 
           {/* Avatar + Chấm Online */}
@@ -342,7 +363,10 @@ export function ChatWindow({
       </div>
 
       {/* Khu vực luồng tin nhắn */}
-      <div className="flex-1 overflow-y-auto px-3 sm:px-5 py-4 space-y-2.5 overscroll-contain">
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 min-h-0 overflow-y-auto px-3 sm:px-5 py-4 space-y-2.5 overscroll-contain"
+      >
         {isLoading ? (
           <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
             <Loader2 className="w-6 h-6 animate-spin text-primary" />
@@ -555,7 +579,6 @@ export function ChatWindow({
                 </div>
               </div>
             )}
-            <div ref={messagesEndRef} />
           </>
         )}
       </div>
@@ -672,8 +695,11 @@ export function ChatWindow({
                   onChange={(e) => handleTextChange(e.target.value)}
                   onKeyDown={handleKeyDown}
                   onPaste={handlePaste}
+                  onFocus={() => {
+                    setTimeout(() => scrollToBottom("auto"), 120);
+                  }}
                   placeholder={`Nhắn tin tới ${friend.display_name}...`}
-                  className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground/70 focus:outline-none resize-none max-h-28 leading-snug block"
+                  className="w-full bg-transparent text-[16px] sm:text-sm text-foreground placeholder:text-muted-foreground/70 focus:outline-none resize-none max-h-28 leading-snug block"
                 />
               </div>
 

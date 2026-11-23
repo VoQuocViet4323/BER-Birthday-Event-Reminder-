@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   MessageCircle,
   UserPlus,
@@ -56,6 +57,7 @@ function MessengerContent() {
   const [showMyQr, setShowMyQr] = useState(false);
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [deepLinkAddCode, setDeepLinkAddCode] = useState<string | null>(null);
+  const [mobileViewport, setMobileViewport] = useState<{ top: number; height: number } | null>(null);
 
   // Bắt đường dẫn từ QR hoặc Chuông Thông Báo (?add=BER-..., ?tab=requests, ?chat=friendId)
   useEffect(() => {
@@ -91,14 +93,60 @@ function MessengerContent() {
     [friends, selectedFriendId]
   );
 
-  // Khi đang mở khung chat trên Mobile, ẩn thanh MobileBottomNav để ô nhập tin nhắn full chiều cao tự nhiên
+  // Khi đang mở khung chat trên Mobile, ẩn thanh MobileBottomNav & bám sát visualViewport (fix lỗi bàn phím ảo iOS đẩy mất tin nhắn)
   useEffect(() => {
     window.dispatchEvent(
       new CustomEvent("ber-messenger-chat-active", {
         detail: { active: Boolean(selectedFriend) },
       })
     );
+
+    if (!selectedFriend) {
+      setMobileViewport(null);
+      return () => {
+        window.dispatchEvent(
+          new CustomEvent("ber-messenger-chat-active", {
+            detail: { active: false },
+          })
+        );
+      };
+    }
+
+    const syncMobileViewport = () => {
+      if (window.innerWidth >= 1024) {
+        setMobileViewport(null);
+        return;
+      }
+      const vv = window.visualViewport;
+      if (vv) {
+        setMobileViewport({
+          top: Math.max(0, vv.offsetTop),
+          height: vv.height,
+        });
+      } else {
+        setMobileViewport({
+          top: 0,
+          height: window.innerHeight,
+        });
+      }
+    };
+
+    syncMobileViewport();
+    window.visualViewport?.addEventListener("resize", syncMobileViewport);
+    window.visualViewport?.addEventListener("scroll", syncMobileViewport);
+    window.addEventListener("resize", syncMobileViewport);
+
+    // Khóa cuộn body phía sau trên Mobile để bàn phím ảo không đẩy trang web nhảy lên trên
+    const prevBodyOverflow = document.body.style.overflow;
+    if (window.innerWidth < 1024) {
+      document.body.style.overflow = "hidden";
+    }
+
     return () => {
+      window.visualViewport?.removeEventListener("resize", syncMobileViewport);
+      window.visualViewport?.removeEventListener("scroll", syncMobileViewport);
+      window.removeEventListener("resize", syncMobileViewport);
+      document.body.style.overflow = prevBodyOverflow;
       window.dispatchEvent(
         new CustomEvent("ber-messenger-chat-active", {
           detail: { active: false },
@@ -184,12 +232,7 @@ function MessengerContent() {
       {/* Khung Messenger chính: 2 cột trên PC, Master/Detail chuyển mượt trên Mobile */}
       <div className="flex-1 min-h-0 bg-card/75 backdrop-blur-xl lg:rounded-3xl lg:border border-border/70 lg:shadow-soft overflow-hidden grid grid-cols-1 lg:grid-cols-[356px_1fr]">
         {/* CỘT TRÁI: Danh sách đoạn chat, Tất cả bạn bè & Lời mời kết bạn */}
-        <section
-          className={cn(
-            "flex flex-col min-h-0 border-r border-border/60 bg-card/60",
-            selectedFriend ? "hidden lg:flex" : "flex"
-          )}
-        >
+        <section className="flex flex-col min-h-0 border-r border-border/60 bg-card/60">
           {/* Thanh tiêu đề & 2 nút hành động nhanh (QR cố định + Thêm bạn) */}
           <div className="px-4 pt-4 pb-3 border-b border-border/60 space-y-3 shrink-0">
             <div className="flex items-center justify-between gap-2">
@@ -731,13 +774,8 @@ function MessengerContent() {
           </div>
         </section>
 
-        {/* CỘT PHẢI: Khung trò chuyện Realtime */}
-        <section
-          className={cn(
-            "min-h-0 flex-col",
-            selectedFriend ? "flex" : "hidden lg:flex"
-          )}
-        >
+        {/* CỘT PHẢI: Khung trò chuyện Realtime (PC Split-View) */}
+        <section className="hidden lg:flex min-h-0 flex-col">
           {selectedFriend && currentUserId ? (
             <ChatWindow
               currentUserId={currentUserId}
@@ -783,6 +821,32 @@ function MessengerContent() {
           )}
         </section>
       </div>
+
+      {/* Lớp phủ Phòng Chat Mobile với hiệu ứng trượt mượt mà (slide-in/out) & bám sát VisualViewport khi bật bàn phím */}
+      <AnimatePresence>
+        {selectedFriend && currentUserId && (
+          <motion.div
+            key={`mobile-chat-${selectedFriend.friend_id}`}
+            initial={{ x: "100%", opacity: 0.92 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: "100%", opacity: 0.92 }}
+            transition={{ type: "spring", damping: 30, stiffness: 320 }}
+            style={
+              mobileViewport
+                ? { top: `${mobileViewport.top}px`, height: `${mobileViewport.height}px` }
+                : undefined
+            }
+            className="lg:hidden fixed inset-x-0 top-0 h-[100dvh] z-[60] bg-background flex flex-col overflow-hidden shadow-2xl"
+          >
+            <ChatWindow
+              currentUserId={currentUserId}
+              friend={selectedFriend}
+              onBackMobile={() => setSelectedFriendId(null)}
+              onUnfriend={handleUnfriend}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Modal Mã QR cố định của tôi */}
       <MyQrModal
