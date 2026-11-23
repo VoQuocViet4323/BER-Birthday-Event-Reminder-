@@ -10,7 +10,10 @@ import {
   FriendSearchResult,
 } from "@/types/messenger";
 import {
+  canPinMoreMessages,
+  isMessageHiddenForUser,
   isMessengerSchemaMissingError,
+  MAX_PINNED_MESSAGES,
   parseFriendQrPayload,
   uploadChatImageDetailed,
 } from "@/lib/messenger-utils";
@@ -368,7 +371,7 @@ export function useConversation(
   }, [friendId, currentUserId]);
 
   // Tải 100 tin nhắn MỚI NHẤT giữa 2 người từ DB (tránh mất tin mới khi lịch sử dài > 100 tin)
-  const { data: messages = [], isLoading } = useQuery({
+  const { data: rawMessages = [], isLoading } = useQuery({
     queryKey,
     enabled: Boolean(currentUserId && friendId && isSupabaseConfigured()),
     queryFn: async (): Promise<ChatMessage[]> => {
@@ -388,6 +391,25 @@ export function useConversation(
       return rows.slice(0, MESSAGE_PAGE_SIZE).reverse();
     },
   });
+
+  // Lọc bỏ các tin nhắn người dùng hiện tại đã chọn "Xóa chỉ ở phía mình"
+  const messages = useMemo(
+    () => rawMessages.filter((m) => !isMessageHiddenForUser(m, currentUserId)),
+    [rawMessages, currentUserId]
+  );
+
+  // Danh sách tin nhắn đã ghim trong cuộc trò chuyện (tối đa 5 tin, sắp xếp mới ghim lên trước)
+  const pinnedMessages = useMemo(
+    () =>
+      messages
+        .filter((m) => Boolean(m.is_pinned) && !m.is_recalled)
+        .sort(
+          (a, b) =>
+            new Date(b.pinned_at || b.created_at).getTime() -
+            new Date(a.pinned_at || a.created_at).getTime()
+        ),
+    [messages]
+  );
 
   // Tải thêm các tin nhắn cũ hơn trực tiếp từ DB (phân trang lùi theo created_at)
   const loadOlderMessages = useCallback(async () => {
@@ -429,7 +451,7 @@ export function useConversation(
     }
   }, [currentUserId, friendId, isLoadingOlder, hasMoreMessages, messages, supabase, queryClient, queryKey, toast]);
 
-  // Truy vấn Kho ảnh đã gửi qua lại giữa 2 tài khoản trực tiếp từ DB
+  // Truy vấn Kho ảnh đã gửi qua lại giữa 2 tài khoản trực tiếp từ DB (loại bỏ ảnh đã thu hồi / đã ẩn ở phía mình)
   const { data: sharedImages = [], isLoading: isLoadingMedia } = useQuery({
     queryKey: mediaQueryKey,
     enabled: Boolean(currentUserId && friendId && isSupabaseConfigured()),
@@ -437,7 +459,7 @@ export function useConversation(
       if (!currentUserId || !friendId) return [];
       const { data, error } = await (supabase as any)
         .from("messages")
-        .select("id, sender_id, receiver_id, content, image_url, is_read, read_at, created_at")
+        .select("*")
         .or(
           `and(sender_id.eq.${currentUserId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${currentUserId})`
         )
@@ -446,7 +468,9 @@ export function useConversation(
         .limit(120);
 
       if (error) return [];
-      return (data || []) as ChatMessage[];
+      return ((data || []) as ChatMessage[]).filter(
+        (m) => !m.is_recalled && !isMessageHiddenForUser(m, currentUserId)
+      );
     },
   });
 
@@ -537,9 +561,17 @@ export function useConversation(
         { event: "UPDATE", schema: "public", table: "messages" },
         (payload: any) => {
           const updated = payload.new as ChatMessage;
+          const isThisConversation =
+            (updated.sender_id === currentUserId && updated.receiver_id === friendId) ||
+            (updated.sender_id === friendId && updated.receiver_id === currentUserId);
+          if (!isThisConversation) return;
+
           queryClient.setQueryData<ChatMessage[]>(queryKey, (old = []) =>
             old.map((m) => (m.id === updated.id ? { ...m, ...updated } : m))
           );
+          if (updated.is_recalled || isMessageHiddenForUser(updated, currentUserId)) {
+            queryClient.invalidateQueries({ queryKey: mediaQueryKey });
+          }
         }
       )
       .on(
@@ -594,9 +626,13 @@ export function useConversation(
     });
   }, [currentUserId, isAcceptedFriend]);
 
-  // Gửi tin nhắn văn bản và/hoặc hình ảnh — LƯU VĨNH VIỄN TRÊN DB (chỉ cho phép khi đã là bạn bè)
+  // Gửi tin nhắn văn bản và/hoặc hình ảnh (có hỗ trợ reply_to_id) — LƯU VĨNH VIỄN TRÊN DB
   const sendMessageMutation = useMutation({
-    mutationFn: async (params: { content?: string; imageFile?: File | null }) => {
+    mutationFn: async (params: {
+      content?: string;
+      imageFile?: File | null;
+      replyToId?: string | null;
+    }) => {
       if (!currentUserId || !friendId) {
         throw new Error("Chưa chọn người nhận tin nhắn.");
       }
@@ -618,6 +654,7 @@ export function useConversation(
         receiver_id: friendId,
         content: trimmedText,
         image_url: previewBlobUrl,
+        reply_to_id: params.replyToId || null,
         is_read: false,
         read_at: null,
         created_at: new Date().toISOString(),
@@ -637,16 +674,35 @@ export function useConversation(
           );
         }
 
-        const { data, error } = await (supabase as any)
+        const insertPayload: Record<string, any> = {
+          sender_id: currentUserId,
+          receiver_id: friendId,
+          content: trimmedText,
+          image_url: uploadedImage?.url || null,
+          ...(params.replyToId ? { reply_to_id: params.replyToId } : {}),
+        };
+
+        let { data, error } = await (supabase as any)
           .from("messages")
-          .insert({
-            sender_id: currentUserId,
-            receiver_id: friendId,
-            content: trimmedText,
-            image_url: uploadedImage?.url || null,
-          })
+          .insert(insertPayload)
           .select("*")
           .single();
+
+        // Fallback tương thích nếu DB chưa chạy migration 024 có cột reply_to_id
+        if (error && params.replyToId && (String(error.code) === "42703" || String(error.code) === "PGRST204")) {
+          const retry = await (supabase as any)
+            .from("messages")
+            .insert({
+              sender_id: currentUserId,
+              receiver_id: friendId,
+              content: trimmedText,
+              image_url: uploadedImage?.url || null,
+            })
+            .select("*")
+            .single();
+          data = retry.data;
+          error = retry.error;
+        }
 
         if (error) {
           if (String(error.code) === "42501") {
@@ -688,47 +744,247 @@ export function useConversation(
     },
   });
 
-  // Thu hồi / xóa tin nhắn của chính mình (đồng bộ dọn cả file ảnh trên Storage nếu có)
-  const deleteMessageMutation = useMutation({
-    mutationFn: async (msg: ChatMessage) => {
-      const { error } = await (supabase as any)
-        .from("messages")
-        .delete()
-        .eq("id", msg.id);
-      if (error) throw error;
+  // 1. Chỉnh sửa tin nhắn của chính mình (lưu DB + đánh dấu edited_at)
+  const editMessageMutation = useMutation({
+    mutationFn: async (params: { messageId: string; content: string }) => {
+      const clean = params.content.trim();
+      if (!clean) throw new Error("Nội dung tin nhắn không được để trống.");
 
-      // Trích đường dẫn file từ image_storage_path hoặc public URL của bucket chat-images để dọn sạch Storage
+      const { data, error } = await (supabase as any).rpc("edit_my_message", {
+        p_message_id: params.messageId,
+        p_new_content: clean,
+      });
+
+      if (error) {
+        if (String(error.code) === "42883" || String(error.code) === "PGRST202") {
+          throw new Error("Vui lòng chạy migration 024 trên Supabase để dùng tính năng chỉnh sửa tin nhắn.");
+        }
+        throw error;
+      }
+      if (data && data.success === false) {
+        throw new Error(data.message || "Không thể chỉnh sửa tin nhắn.");
+      }
+      return data?.data as ChatMessage | undefined;
+    },
+    onSuccess: (updated, vars) => {
+      queryClient.setQueryData<ChatMessage[]>(queryKey, (old = []) =>
+        old.map((m) =>
+          m.id === vars.messageId
+            ? {
+                ...m,
+                ...(updated || {}),
+                content: vars.content.trim(),
+                edited_at: updated?.edited_at || new Date().toISOString(),
+              }
+            : m
+        )
+      );
+      queryClient.invalidateQueries({ queryKey: ["messenger-network", currentUserId] });
+      toast({ title: "Đã chỉnh sửa tin nhắn", variant: "success" });
+    },
+    onError: (err: any) => {
+      toast({ title: err?.message || "Không thể chỉnh sửa tin nhắn", variant: "error" });
+    },
+  });
+
+  // 2. Thu hồi tin nhắn với MỌI NGƯỜI (chỉ người gửi có quyền)
+  const recallForEveryoneMutation = useMutation({
+    mutationFn: async (msg: ChatMessage) => {
+      const { data, error } = await (supabase as any).rpc("recall_message_for_everyone", {
+        p_message_id: msg.id,
+      });
+
+      if (error) {
+        if (String(error.code) === "42883" || String(error.code) === "PGRST202") {
+          throw new Error("Vui lòng chạy migration 024 trên Supabase để dùng tính năng thu hồi với mọi người.");
+        }
+        throw error;
+      }
+      if (data && data.success === false) {
+        throw new Error(data.message || "Không thể thu hồi tin nhắn.");
+      }
+
+      // Dọn file ảnh cũ trên Storage nếu tin thu hồi có ảnh
+      const oldUrl = data?.old_image_url || msg.image_url;
       const storagePath =
         msg.image_storage_path ||
-        (msg.image_url?.includes("/storage/v1/object/public/chat-images/")
+        (oldUrl?.includes("/storage/v1/object/public/chat-images/")
           ? decodeURIComponent(
-              msg.image_url.split("/storage/v1/object/public/chat-images/")[1].split("?")[0]
+              oldUrl.split("/storage/v1/object/public/chat-images/")[1].split("?")[0]
             )
           : null);
-
       if (storagePath && supabase?.storage) {
         try {
           await supabase.storage.from("chat-images").remove([storagePath]);
-        } catch {
-          // Không chặn flow nếu file đã bị xóa trước đó
+        } catch {}
+      }
+
+      return data?.data as ChatMessage | undefined;
+    },
+    onSuccess: (updated, msg) => {
+      queryClient.setQueryData<ChatMessage[]>(queryKey, (old = []) =>
+        old.map((m) =>
+          m.id === msg.id
+            ? {
+                ...m,
+                ...(updated || {}),
+                is_recalled: true,
+                content: "",
+                image_url: null,
+                is_pinned: false,
+                reactions: {},
+              }
+            : m
+        )
+      );
+      queryClient.invalidateQueries({ queryKey: ["messenger-network", currentUserId] });
+      queryClient.invalidateQueries({ queryKey: mediaQueryKey });
+      toast({ title: "Đã thu hồi tin nhắn với mọi người", variant: "success" });
+    },
+    onError: (err: any) => {
+      toast({ title: err?.message || "Thu hồi tin nhắn thất bại", variant: "error" });
+    },
+  });
+
+  // 3. Xóa tin nhắn CHỈ Ở PHÍA MÌNH (áp dụng cho cả tin mình & tin người khác — họ vẫn thấy bình thường)
+  const hideForMeMutation = useMutation({
+    mutationFn: async (messageId: string) => {
+      const { data, error } = await (supabase as any).rpc("hide_message_for_me", {
+        p_message_id: messageId,
+      });
+
+      if (error) {
+        if (String(error.code) === "42883" || String(error.code) === "PGRST202") {
+          throw new Error("Vui lòng chạy migration 024 trên Supabase để dùng tính năng xóa ở phía bạn.");
         }
+        throw error;
+      }
+      if (data && data.success === false) {
+        throw new Error(data.message || "Không thể xóa tin nhắn ở phía bạn.");
+      }
+      return data?.data as ChatMessage | undefined;
+    },
+    onSuccess: (_updated, messageId) => {
+      if (!currentUserId) return;
+      queryClient.setQueryData<ChatMessage[]>(queryKey, (old = []) =>
+        old.map((m) =>
+          m.id === messageId
+            ? {
+                ...m,
+                hidden_for_user_ids: Array.from(
+                  new Set([...(m.hidden_for_user_ids || []), currentUserId])
+                ),
+              }
+            : m
+        )
+      );
+      queryClient.invalidateQueries({ queryKey: ["messenger-network", currentUserId] });
+      queryClient.invalidateQueries({ queryKey: mediaQueryKey });
+      toast({ title: "Đã xóa tin nhắn ở phía bạn", variant: "success" });
+    },
+    onError: (err: any) => {
+      toast({ title: err?.message || "Không thể xóa tin nhắn", variant: "error" });
+    },
+  });
+
+  // 4. Thả / Đổi / Gỡ cảm xúc tin nhắn (Realtime 2 chiều)
+  const toggleReactionMutation = useMutation({
+    mutationFn: async (params: { messageId: string; emoji: string }) => {
+      if (!currentUserId) throw new Error("Bạn chưa đăng nhập.");
+
+      // Optimistic update ngay trên UI
+      const prevData = queryClient.getQueryData<ChatMessage[]>(queryKey);
+      queryClient.setQueryData<ChatMessage[]>(queryKey, (old = []) =>
+        old.map((m) => {
+          if (m.id !== params.messageId) return m;
+          const nextReactions = { ...(m.reactions || {}) };
+          if (nextReactions[currentUserId] === params.emoji) {
+            delete nextReactions[currentUserId];
+          } else {
+            nextReactions[currentUserId] = params.emoji;
+          }
+          return { ...m, reactions: nextReactions };
+        })
+      );
+
+      const { data, error } = await (supabase as any).rpc("toggle_message_reaction", {
+        p_message_id: params.messageId,
+        p_emoji: params.emoji,
+      });
+
+      if (error || data?.success === false) {
+        if (prevData) queryClient.setQueryData(queryKey, prevData);
+        if (error && (String(error.code) === "42883" || String(error.code) === "PGRST202")) {
+          throw new Error("Vui lòng chạy migration 024 trên Supabase để thả cảm xúc tin nhắn.");
+        }
+        throw new Error(data?.message || error?.message || "Không thể thả cảm xúc.");
+      }
+
+      return data?.data as ChatMessage | undefined;
+    },
+    onSuccess: (updated, vars) => {
+      if (updated) {
+        queryClient.setQueryData<ChatMessage[]>(queryKey, (old = []) =>
+          old.map((m) => (m.id === vars.messageId ? { ...m, ...updated } : m))
+        );
       }
     },
-    onSuccess: (_data, msg) => {
-      queryClient.setQueryData<ChatMessage[]>(queryKey, (old = []) =>
-        old.filter((m) => m.id !== msg.id)
-      );
-      queryClient.invalidateQueries({
-        queryKey: ["messenger-network", currentUserId],
-      });
-      if (msg.image_url) {
-        queryClient.invalidateQueries({ queryKey: mediaQueryKey });
+    onError: (err: any) => {
+      toast({ title: err?.message || "Không thể thả cảm xúc", variant: "error" });
+    },
+  });
+
+  // 5. Ghim / Bỏ ghim tin nhắn (giới hạn nghiêm ngặt tối đa 5 tin nhắn ghim mỗi đoạn chat)
+  const togglePinMutation = useMutation({
+    mutationFn: async (msg: ChatMessage) => {
+      if (!msg.is_pinned && !canPinMoreMessages(pinnedMessages.length)) {
+        throw new Error(
+          `Chỉ có thể ghim tối đa ${MAX_PINNED_MESSAGES} tin nhắn. Hãy bỏ ghim bớt 1 tin trước.`
+        );
       }
+
+      const { data, error } = await (supabase as any).rpc("toggle_pin_message", {
+        p_message_id: msg.id,
+      });
+
+      if (error) {
+        if (String(error.code) === "42883" || String(error.code) === "PGRST202") {
+          throw new Error("Vui lòng chạy migration 024 trên Supabase để sử dụng tính năng ghim tin nhắn.");
+        }
+        throw error;
+      }
+      if (data && data.success === false) {
+        throw new Error(data.message || "Không thể ghim tin nhắn.");
+      }
+      return data as { pinned: boolean; data?: ChatMessage };
+    },
+    onSuccess: (res, msg) => {
+      queryClient.setQueryData<ChatMessage[]>(queryKey, (old = []) =>
+        old.map((m) =>
+          m.id === msg.id
+            ? {
+                ...m,
+                ...(res.data || {}),
+                is_pinned: res.pinned,
+                pinned_at: res.pinned ? res.data?.pinned_at || new Date().toISOString() : null,
+                pinned_by: res.pinned ? currentUserId : null,
+              }
+            : m
+        )
+      );
+      toast({
+        title: res.pinned ? "Đã ghim tin nhắn 📌" : "Đã bỏ ghim tin nhắn",
+        variant: "success",
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: err?.message || "Không thể cập nhật ghim tin nhắn", variant: "error" });
     },
   });
 
   return {
     messages,
+    pinnedMessages,
     sharedImages,
     isLoading,
     isLoadingMedia,
@@ -738,9 +994,19 @@ export function useConversation(
     friendIsTyping,
     notifyTyping,
     markAsRead,
-    sendMessage: (params: { content?: string; imageFile?: File | null }) =>
-      sendMessageMutation.mutateAsync(params),
+    sendMessage: (params: {
+      content?: string;
+      imageFile?: File | null;
+      replyToId?: string | null;
+    }) => sendMessageMutation.mutateAsync(params),
     isSending: sendMessageMutation.isPending,
-    deleteMessage: (msg: ChatMessage) => deleteMessageMutation.mutateAsync(msg),
+    editMessage: (params: { messageId: string; content: string }) =>
+      editMessageMutation.mutateAsync(params),
+    isEditing: editMessageMutation.isPending,
+    recallForEveryone: (msg: ChatMessage) => recallForEveryoneMutation.mutateAsync(msg),
+    hideForMe: (messageId: string) => hideForMeMutation.mutateAsync(messageId),
+    toggleReaction: (params: { messageId: string; emoji: string }) =>
+      toggleReactionMutation.mutateAsync(params),
+    togglePin: (msg: ChatMessage) => togglePinMutation.mutateAsync(msg),
   };
 }

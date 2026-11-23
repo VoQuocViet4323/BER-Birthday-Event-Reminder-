@@ -7,6 +7,8 @@
  */
 
 export const MAX_CHAT_IMAGE_BYTES = 30 * 1024 * 1024; // 30MB
+export const MAX_PINNED_MESSAGES = 5;
+export const MESSAGE_REACTIONS = ["❤️", "😆", "😮", "😢", "😠", "👍"] as const;
 const FRIEND_CODE_REGEX = /^BER-[A-Z0-9]{6,12}$/i;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -375,4 +377,76 @@ export function canChatWithUser(
   if (!currentUserId || !friendId) return false;
   if (currentUserId === friendId) return false;
   return friendshipStatus === "accepted";
+}
+
+/**
+ * Kiểm tra tin nhắn có đang bị ẩn ở phía người dùng hiện tại hay không
+ */
+export function isMessageHiddenForUser(
+  msg: { hidden_for_user_ids?: string[] | null },
+  userId?: string | null
+): boolean {
+  if (!userId || !Array.isArray(msg.hidden_for_user_ids)) return false;
+  return msg.hidden_for_user_ids.includes(userId);
+}
+
+/**
+ * Gom nhóm cảm xúc thả vào tin nhắn (từ map { userId: emoji })
+ */
+export function summarizeReactions(reactions?: Record<string, string> | null): {
+  items: { emoji: string; count: number; userIds: string[] }[];
+  total: number;
+} {
+  if (!reactions || typeof reactions !== "object") {
+    return { items: [], total: 0 };
+  }
+  const map = new Map<string, string[]>();
+  let total = 0;
+  for (const [uid, emoji] of Object.entries(reactions)) {
+    if (!emoji) continue;
+    total += 1;
+    const list = map.get(emoji) || [];
+    list.push(uid);
+    map.set(emoji, list);
+  }
+  const items = Array.from(map.entries())
+    .map(([emoji, userIds]) => ({ emoji, count: userIds.length, userIds }))
+    .sort((a, b) => b.count - a.count);
+  return { items, total };
+}
+
+/**
+ * Tạo chuỗi tóm tắt ngắn gọn cho tin nhắn (dùng trong trích dẫn Trả lời và Thanh ghim)
+ */
+export function getMessagePreviewText(msg?: {
+  content?: string | null;
+  image_url?: string | null;
+  is_recalled?: boolean;
+} | null): string {
+  if (!msg) return "Tin nhắn gốc";
+  if (msg.is_recalled) return "Tin nhắn đã được thu hồi";
+  const text = (msg.content || "").trim();
+  if (text) return text;
+  if (msg.image_url) return "📷 Hình ảnh";
+  return "Tin nhắn";
+}
+
+/**
+ * Kiểm tra quy tắc ghim tối đa 5 tin nhắn trong 1 cuộc trò chuyện
+ */
+export function canPinMoreMessages(currentPinnedCount: number): boolean {
+  return currentPinnedCount < MAX_PINNED_MESSAGES;
+}
+
+/**
+ * Kiểm tra cử chỉ vuốt trả lời giống Messenger:
+ * - Tin nhắn của mình (bên phải): vuốt sang TRÁI (deltaX <= -threshold)
+ * - Tin nhắn của đối phương (bên trái): vuốt sang PHẢI (deltaX >= threshold)
+ */
+export function isSwipeReplyTriggered(
+  isMine: boolean,
+  deltaX: number,
+  threshold = 50
+): boolean {
+  return isMine ? deltaX <= -threshold : deltaX >= threshold;
 }

@@ -7941,3 +7941,26 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
   - `npm test`: **69/69 tests PASSED (7/7 test suites)**.
 - **Lưu ý triển khai**:
   - Cần chạy file SQL [20261123_023_messenger_and_friends.sql](file:///e:/BER-Birthday-Event-Reminder-/supabase/migrations/20261123_023_messenger_and_friends.sql) 1 lần trong Supabase SQL Editor để tạo bảng `friendships`, `messages`, cột `friend_code`, RPC và bucket `chat-images`.
+
+
+### 📅 2026-11-23 10:52:00 - Nâng Cấp Tương Tác Tin Nhắn Messenger Chuẩn Ứng Dụng Gốc (Bấm Giữ, Vuốt Trả Lời, Sửa, Thu Hồi 2 Chế Độ, Cảm Xúc & Ghim Tối Đa 5 Tin)
+- **Yêu cầu của người dùng**:
+  - Trên Mobile bấm giữ tin nhắn của mình hiện: chỉnh sửa tin nhắn, thu hồi với mọi người hoặc xóa chỉ ở phía mình, thả cảm xúc (`❤️ 😆 😮 😢 😠 👍`), trả lời, ghim tin nhắn.
+  - Bấm giữ tin nhắn người khác chỉ cho phép xóa ở phía mình (họ vẫn thấy tin nhắn của họ), trả lời, thả cảm xúc, và ghim tin nhắn.
+  - Vuốt quẹt sang phải (tin của họ) hoặc vuốt sang trái (tin của mình) để trả lời tin nhắn.
+  - Ghim tin nhắn cho cả 2 phía với giới hạn tối đa 5 tin nhắn mỗi đoạn chat.
+- **Các công việc đã hoàn thành**:
+  1. **SQL Migration 024 ([supabase/migrations/20261123_024_messenger_interactions.sql](file:///e:/BER-Birthday-Event-Reminder-/supabase/migrations/20261123_024_messenger_interactions.sql))**:
+     - Bổ sung các cột lưu trữ trên DB: `reply_to_id`, `edited_at`, `is_recalled`, `recalled_at`, `hidden_for_user_ids`, `reactions`, `is_pinned`, `pinned_at`, `pinned_by`.
+     - Xây dựng 5 RPC `SECURITY DEFINER` kiểm soát quyền chặt chẽ ở tầng DB: `edit_my_message`, `recall_message_for_everyone`, `hide_message_for_me`, `toggle_message_reaction`, `toggle_pin_message` (giới hạn `v_pinned_count >= 5`).
+     - Cập nhật `get_my_friend_network()` bỏ qua tin đã xóa ở phía mình và hiển thị chính xác tin đã thu hồi.
+  2. **Hooks Realtime & Utilities**:
+     - [src/lib/messenger-utils.ts](file:///e:/BER-Birthday-Event-Reminder-/src/lib/messenger-utils.ts): `MESSAGE_REACTIONS`, `MAX_PINNED_MESSAGES = 5`, `isMessageHiddenForUser`, `summarizeReactions`, `getMessagePreviewText`, `canPinMoreMessages`, `isSwipeReplyTriggered`.
+     - [src/hooks/use-messenger.ts](file:///e:/BER-Birthday-Event-Reminder-/src/hooks/use-messenger.ts): Tích hợp 5 mutations realtime + Optimistic UI + lọc `hidden_for_user_ids` + `pinnedMessages` đồng bộ 2 chiều.
+  3. **Giao diện PC & Mobile**:
+     - [src/components/messenger/message-bubble-item.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/messenger/message-bubble-item.tsx): Cử chỉ bấm giữ trên Mobile (~420ms kèm rung nhẹ), vuốt quẹt 2 chiều để trả lời (tin đối phương vuốt phải, tin mình vuốt trái), hover menu nhanh trên PC, hiển thị trích dẫn tin gốc (bấm nhảy tới tin gốc & highlight), huy hiệu cảm xúc, nhãn Đã ghim / Đã chỉnh sửa / Đã thu hồi.
+     - [src/components/messenger/message-action-sheet.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/messenger/message-action-sheet.tsx): Menu chuẩn Messenger tách rõ quyền giữa tin nhắn của mình và của người khác.
+     - [src/components/messenger/chat-window.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/messenger/chat-window.tsx): Thanh Tin Nhắn Đã Ghim (`x/5`) + Modal quản lý danh sách tin ghim, thanh trạng thái Đang trả lời / Đang chỉnh sửa ngay trên ô nhập liệu.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **74/74 tests PASSED (7/7 test suites)**.

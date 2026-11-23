@@ -42,6 +42,15 @@ export interface ChatMessage {
   image_width?: number | null;
   image_height?: number | null;
   image_size_bytes?: number | null;
+  reply_to_id?: string | null;
+  edited_at?: string | null;
+  is_recalled?: boolean;
+  recalled_at?: string | null;
+  hidden_for_user_ids?: string[] | null;
+  reactions?: Record<string, string> | null;
+  is_pinned?: boolean;
+  pinned_at?: string | null;
+  pinned_by?: string | null;
   is_read: boolean;
   read_at: string | null;
   created_at: string;

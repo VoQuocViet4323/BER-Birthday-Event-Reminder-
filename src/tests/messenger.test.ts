@@ -13,7 +13,14 @@ import {
   uploadChatImageWithFallback,
   isMessengerSchemaMissingError,
   canChatWithUser,
+  isMessageHiddenForUser,
+  summarizeReactions,
+  getMessagePreviewText,
+  canPinMoreMessages,
+  isSwipeReplyTriggered,
   MAX_CHAT_IMAGE_BYTES,
+  MAX_PINNED_MESSAGES,
+  MESSAGE_REACTIONS,
 } from "../lib/messenger-utils";
 
 describe("Messenger & Fixed QR Friend System Test Suite", () => {
@@ -239,5 +246,66 @@ describe("Messenger & Fixed QR Friend System Test Suite", () => {
     const dropCount = (sql.match(/DROP POLICY IF EXISTS\s+"/g) || []).length;
     expect(createCount).toBeGreaterThan(0);
     expect(dropCount).toBe(createCount);
+  });
+
+  it("Xóa chỉ ở phía mình (isMessageHiddenForUser) chỉ ẩn với đúng tài khoản đã xóa, đối phương vẫn thấy", () => {
+    const msg = { hidden_for_user_ids: ["user-b"] };
+    expect(isMessageHiddenForUser(msg, "user-b")).toBe(true);
+    expect(isMessageHiddenForUser(msg, "user-a")).toBe(false);
+    expect(isMessageHiddenForUser({ hidden_for_user_ids: [] }, "user-b")).toBe(false);
+  });
+
+  it("Thả cảm xúc tin nhắn (summarizeReactions) gom đúng số lượng và đủ 6 icon chuẩn Messenger", () => {
+    expect(MESSAGE_REACTIONS).toEqual(["❤️", "😆", "😮", "😢", "😠", "👍"]);
+    const summary = summarizeReactions({
+      "user-a": "❤️",
+      "user-b": "❤️",
+      "user-c": "😆",
+    });
+    expect(summary.total).toBe(3);
+    expect(summary.items[0]).toEqual({ emoji: "❤️", count: 2, userIds: ["user-a", "user-b"] });
+    expect(summary.items[1]).toEqual({ emoji: "😆", count: 1, userIds: ["user-c"] });
+  });
+
+  it("Vuốt quẹt trả lời (isSwipeReplyTriggered) đúng chiều: tin người khác vuốt phải, tin của mình vuốt trái", () => {
+    // Tin của người khác (bên trái): vuốt sang PHẢI (>= 50px) mới kích hoạt
+    expect(isSwipeReplyTriggered(false, 55)).toBe(true);
+    expect(isSwipeReplyTriggered(false, 30)).toBe(false);
+    expect(isSwipeReplyTriggered(false, -60)).toBe(false);
+
+    // Tin của mình (bên phải): vuốt sang TRÁI (<= -50px) mới kích hoạt
+    expect(isSwipeReplyTriggered(true, -55)).toBe(true);
+    expect(isSwipeReplyTriggered(true, -30)).toBe(false);
+    expect(isSwipeReplyTriggered(true, 60)).toBe(false);
+  });
+
+  it("Ghim tin nhắn (canPinMoreMessages) giới hạn tối đa đúng 5 tin nhắn & preview đúng ngữ cảnh", () => {
+    expect(MAX_PINNED_MESSAGES).toBe(5);
+    expect(canPinMoreMessages(0)).toBe(true);
+    expect(canPinMoreMessages(4)).toBe(true);
+    expect(canPinMoreMessages(5)).toBe(false);
+    expect(canPinMoreMessages(6)).toBe(false);
+
+    expect(getMessagePreviewText({ content: "Hẹn 8h tối nhé" })).toBe("Hẹn 8h tối nhé");
+    expect(getMessagePreviewText({ content: "", image_url: "https://img/a.webp" })).toBe("📷 Hình ảnh");
+    expect(getMessagePreviewText({ content: "abc", is_recalled: true })).toBe("Tin nhắn đã được thu hồi");
+  });
+
+  it("SQL Migration 024 chứa đầy đủ 5 RPC bảo mật quyền người gửi/người nhận và giới hạn 5 tin ghim", () => {
+    const sqlPath = path.resolve(
+      process.cwd(),
+      "supabase/migrations/20261123_024_messenger_interactions.sql"
+    );
+    const sql = fs.readFileSync(sqlPath, "utf8");
+
+    expect(sql).toContain("edit_my_message");
+    expect(sql).toContain("recall_message_for_everyone");
+    expect(sql).toContain("hide_message_for_me");
+    expect(sql).toContain("toggle_message_reaction");
+    expect(sql).toContain("toggle_pin_message");
+    expect(sql).toContain("PIN_LIMIT_REACHED");
+    expect(sql).toContain("v_pinned_count >= 5");
+    expect(sql).toContain("v_row.sender_id <> v_me");
+    expect(sql).toContain("hidden_for_user_ids");
   });
 });
