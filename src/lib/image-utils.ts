@@ -33,6 +33,9 @@ export async function compressAndCropAvatar(
 
     const processImage = (img: HTMLImageElement, revokeUrl?: string) => {
       try {
+        // Kiểm tra khả năng hỗ trợ WebP trước khi tạo canvas chính (chỉ chạy 1 lần duy nhất)
+        const canUseWebP = supportsCanvasWebP();
+
         const canvas = document.createElement("canvas");
         canvas.width = targetSize;
         canvas.height = targetSize;
@@ -185,6 +188,426 @@ export async function uploadAvatarWithFallback(
 
   // 3. Fallback an toàn tuyệt đối: Lưu dataUrl đã nén vào cột avatar_url (PostgreSQL TEXT)
   return processed.dataUrl;
+}
+
+/**
+ * Kiểm tra 1 lần duy nhất xem trình duyệt có thực sự hỗ trợ xuất WebP từ Canvas không.
+ * Trên iOS Safari/WebKit, hàm này trả về false ngay lập tức (<1ms) để bỏ qua việc
+ * gọi canvas.toBlob('image/webp') gây mã hóa PNG thừa mất 1-2 giây cho mỗi ảnh!
+ */
+let cachedWebPSupport: boolean | null = null;
+function supportsCanvasWebP(): boolean {
+  if (cachedWebPSupport !== null) return cachedWebPSupport;
+  if (typeof document === "undefined") {
+    cachedWebPSupport = true;
+    return true;
+  }
+  try {
+    const testCanvas = document.createElement("canvas");
+    testCanvas.width = 1;
+    testCanvas.height = 1;
+    const dataUrl = testCanvas.toDataURL("image/webp");
+    cachedWebPSupport = typeof dataUrl === "string" && dataUrl.startsWith("data:image/webp");
+  } catch {
+    cachedWebPSupport = false;
+  }
+  return cachedWebPSupport;
+}
+
+/**
+ * Helper chống treo vô hạn cho các tác vụ bất đồng bộ (nén ảnh, upload Storage...)
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, ms);
+    promise.then(
+      (val) => {
+        clearTimeout(timer);
+        resolve(val);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
+}
+
+/**
+ * Chuyển Blob sang Data URL bất đồng bộ (chỉ gọi khi thực sự cần fallback Base64)
+ */
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => resolve(String(e?.target?.result || reader.result || ""));
+    reader.onerror = () => reject(new Error("Không thể chuyển đổi ảnh sang Data URL."));
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * Kiểm tra định dạng tệp có phải hình ảnh hợp lệ không
+ */
+export function isValidImageFile(file: File): boolean {
+  return (
+    file.type.startsWith("image/") ||
+    /\.(jpe?g|png|webp|gif|bmp|heic|heif|avif)$/i.test(file.name)
+  );
+}
+
+/**
+ * Nén ảnh nhật ký giữ nguyên tỷ lệ khung hình (aspect ratio) bằng Canvas API.
+ * Hỗ trợ ảnh dung lượng rất lớn (>30MB, 50MB+) trên cả PC và Mobile:
+ * - Ưu tiên createImageBitmap (tiết kiệm RAM, tự động xoay EXIF) với timeout an toàn
+ * - Fallback sang ObjectURL -> Image và giải phóng bộ nhớ ngay sau khi vẽ
+ * - Tự động thu gọn cạnh dài tối đa về maxDimension (mặc định 1280px) và nén WebP/JPEG sắc nét (~100-220KB)
+ * - Bỏ qua bước canvas.toDataURL() đồng bộ khi includeDataUrl = false để tăng tốc 2-3x trên mobile
+ */
+export async function compressDiaryImage(
+  file: File,
+  maxDimension = 1280,
+  quality = 0.8,
+  includeDataUrl = true
+): Promise<ProcessedAvatar> {
+  if (!isValidImageFile(file)) {
+    throw new Error("Tệp được chọn không phải là hình ảnh hợp lệ.");
+  }
+
+  const drawSourceToCanvas = (
+    source: CanvasImageSource,
+    naturalW: number,
+    naturalH: number,
+    cleanup?: () => void
+  ): Promise<ProcessedAvatar> => {
+    return new Promise((resolve, reject) => {
+      try {
+        if (!naturalW || !naturalH) {
+          cleanup?.();
+          reject(new Error("Không thể đọc kích thước hình ảnh."));
+          return;
+        }
+
+        let targetW = naturalW;
+        let targetH = naturalH;
+
+        if (naturalW > maxDimension || naturalH > maxDimension) {
+          if (naturalW >= naturalH) {
+            targetW = maxDimension;
+            targetH = Math.max(1, Math.round((naturalH * maxDimension) / naturalW));
+          } else {
+            targetH = maxDimension;
+            targetW = Math.max(1, Math.round((naturalW * maxDimension) / naturalH));
+          }
+        }
+
+        // Kiểm tra khả năng hỗ trợ WebP trước khi tạo canvas chính (chỉ chạy 1 lần duy nhất)
+        const canUseWebP = supportsCanvasWebP();
+
+        const canvas = document.createElement("canvas");
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const ctx = canvas.getContext("2d");
+
+        if (!ctx) {
+          cleanup?.();
+          reject(new Error("Trình duyệt không hỗ trợ xử lý Canvas đồ họa."));
+          return;
+        }
+
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "medium";
+        ctx.drawImage(source, 0, 0, targetW, targetH);
+
+        // Giải phóng RAM ngay lập tức (rất quan trọng với ảnh >30MB)
+        cleanup?.();
+
+        // Helper xuất Blob nén thực sự:
+        // Nếu trình duyệt KHÔNG hỗ trợ WebP (như iOS Safari/WebKit), đi thẳng sang JPEG phần cứng (<100ms),
+        // tránh hoàn toàn việc gọi toBlob('image/webp') tạo PNG thừa tốn 1-2s trên mobile!
+        const exportCompressedBlob = () => {
+          const fallbackToJpeg = () => {
+            canvas.toBlob(
+              (jpegBlob) => {
+                if (jpegBlob) {
+                  const dataUrl = includeDataUrl ? canvas.toDataURL("image/jpeg", quality) : "";
+                  resolve({
+                    blob: jpegBlob,
+                    dataUrl,
+                    ext: "jpg",
+                    width: targetW,
+                    height: targetH,
+                  });
+                } else {
+                  reject(new Error("Không thể xuất tệp nén hình ảnh."));
+                }
+              },
+              "image/jpeg",
+              quality
+            );
+          };
+
+          if (!canUseWebP) {
+            fallbackToJpeg();
+            return;
+          }
+
+          canvas.toBlob(
+            (blob) => {
+              if (blob && blob.type === "image/webp") {
+                const dataUrl = includeDataUrl ? canvas.toDataURL("image/webp", quality) : "";
+                resolve({
+                  blob,
+                  dataUrl,
+                  ext: "webp",
+                  width: targetW,
+                  height: targetH,
+                });
+              } else {
+                fallbackToJpeg();
+              }
+            },
+            "image/webp",
+            quality
+          );
+        };
+
+        exportCompressedBlob();
+      } catch (err: any) {
+        cleanup?.();
+        reject(new Error(err?.message || "Lỗi trong quá trình nén và xử lý ảnh."));
+      }
+    });
+  };
+
+  const runCompression = async (): Promise<ProcessedAvatar> => {
+    // 1. Ưu tiên createImageBitmap trên trình duyệt hiện đại (tối ưu RAM cho ảnh >30MB và giữ đúng hướng EXIF)
+    if (typeof window !== "undefined" && typeof createImageBitmap === "function") {
+      try {
+        const bitmap = await withTimeout(
+          createImageBitmap(file),
+          10000,
+          "Quá thời gian giải mã ảnh bằng createImageBitmap."
+        );
+        return await drawSourceToCanvas(bitmap, bitmap.width, bitmap.height, () => {
+          if (typeof bitmap.close === "function") bitmap.close();
+        });
+      } catch {
+        // Fallback sang ObjectURL nếu trình duyệt không hỗ trợ decode định dạng này qua createImageBitmap
+      }
+    }
+
+    // 2. Fallback sang ObjectURL (không nhân đôi RAM như FileReader.readAsDataURL)
+    if (typeof window !== "undefined" && typeof URL !== "undefined" && typeof URL.createObjectURL === "function") {
+      return new Promise((resolve, reject) => {
+        const objectUrl = URL.createObjectURL(file);
+        const img = new Image();
+        img.onerror = () => {
+          URL.revokeObjectURL(objectUrl);
+          reject(new Error("Hình ảnh bị lỗi hoặc trình duyệt chưa hỗ trợ định dạng này (ví dụ HEIC chưa chuyển đổi)."));
+        };
+        img.onload = () => {
+          drawSourceToCanvas(
+            img,
+            img.naturalWidth || img.width,
+            img.naturalHeight || img.height,
+            () => URL.revokeObjectURL(objectUrl)
+          )
+            .then(resolve)
+            .catch(reject);
+        };
+        img.src = objectUrl;
+      });
+    }
+
+    // 3. Fallback FileReader (môi trường test / trình duyệt cũ)
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("Không thể đọc tệp hình ảnh từ thiết bị."));
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onerror = () => reject(new Error("Hình ảnh bị lỗi hoặc không hỗ trợ định dạng này."));
+        img.onload = () => {
+          drawSourceToCanvas(img, img.naturalWidth || img.width, img.naturalHeight || img.height)
+            .then(resolve)
+            .catch(reject);
+        };
+        img.src = e.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  return withTimeout(
+    runCompression(),
+    25000,
+    "Xử lý nén ảnh quá lâu. Vui lòng thử lại với định dạng JPG/PNG/WebP."
+  );
+}
+
+/**
+ * Chuẩn bị ảnh cục bộ trong nền ngay khi người dùng vừa chọn ảnh (KHÔNG upload lên mạng).
+ * - Nếu ảnh đã nhỏ (<400KB) và thuộc định dạng web phổ biến -> bỏ qua bước nén Canvas (0ms!)
+ * - Nếu ảnh lớn (kể cả >30MB) -> nén sẵn về 1280px WebP/JPEG trong lúc người dùng đang gõ nhật ký
+ */
+export async function prepareDiaryImageForUpload(file: File): Promise<ProcessedAvatar> {
+  if (!isValidImageFile(file)) {
+    throw new Error("Tệp được chọn không phải là hình ảnh hợp lệ.");
+  }
+
+  const isWebFriendly =
+    file.type === "image/jpeg" ||
+    file.type === "image/webp" ||
+    file.type === "image/png" ||
+    file.type === "image/gif";
+
+  // Fast-path: ảnh đã nhẹ (<400KB) -> không cần tốn CPU mobile vẽ lại Canvas
+  if (isWebFriendly && file.size > 0 && file.size <= 400 * 1024) {
+    const ext =
+      file.type === "image/webp"
+        ? "webp"
+        : file.type === "image/png"
+          ? "png"
+          : file.type === "image/gif"
+            ? "gif"
+            : "jpg";
+    return {
+      blob: file,
+      dataUrl: "",
+      ext,
+      width: 0,
+      height: 0,
+    };
+  }
+
+  // Nén nhanh không gọi toDataURL đồng bộ (1080px, quality 0.78 -> ~70-130KB, đẩy 4G/5G cực nhanh)
+  return compressDiaryImage(file, 1080, 0.78, false);
+}
+
+/**
+ * Tải ảnh nhật ký lên Supabase Storage (bucket "diary-images") với Smart Fallback sang Data URL.
+ * Hỗ trợ nhận ảnh đã được nén sẵn (preCompressed) để khi bấm Lưu gần như đẩy lên ngay lập tức.
+ */
+export async function uploadDiaryImageWithFallback(
+  supabase: any,
+  userId: string,
+  file: File,
+  preCompressed?: ProcessedAvatar
+): Promise<string> {
+  // 1. Dùng bản đã nén sẵn trong nền (0ms) hoặc nén mới nếu chưa có
+  const processed = preCompressed ?? (await compressDiaryImage(file, 1280, 0.8, false));
+
+  const isConfigured =
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    !process.env.NEXT_PUBLIC_SUPABASE_URL.includes("dummy-project");
+
+  if (!isConfigured || !supabase?.storage || !userId || userId === "local_user") {
+    return processed.dataUrl || (await blobToDataUrl(processed.blob));
+  }
+
+  // 2. Thử tải lên bucket "diary-images" (có timeout 25s chống treo)
+  try {
+    const randomSuffix = Math.random().toString(36).slice(2, 8);
+    const fileName = `diary-${Date.now()}-${randomSuffix}.${processed.ext}`;
+    const filePath = `${userId}/${fileName}`;
+
+    const uploadResult = (await withTimeout(
+      supabase.storage
+        .from("diary-images")
+        .upload(filePath, processed.blob, {
+          cacheControl: "31536000",
+          upsert: false,
+          contentType: processed.blob.type || `image/${processed.ext}`,
+        }),
+      25000,
+      "Tải ảnh lên Supabase Storage quá thời gian chờ."
+    )) as { error?: any };
+
+    if (!uploadResult?.error) {
+      const { data } = supabase.storage.from("diary-images").getPublicUrl(filePath);
+      if (data?.publicUrl) {
+        return data.publicUrl;
+      }
+    } else {
+      console.warn(
+        "Lỗi upload Supabase Storage diary-images, kích hoạt cơ chế Base64 fallback:",
+        uploadResult.error.message || uploadResult.error
+      );
+    }
+  } catch (storageErr: any) {
+    console.warn(
+      "Ngoại lệ/timeout khi tải ảnh nhật ký lên Supabase Storage, chuyển sang Base64 fallback:",
+      storageErr?.message || storageErr
+    );
+  }
+
+  // 3. Fallback an toàn sang Data URL đã nén (chỉ tạo Data URL tại đây nếu Storage thực sự lỗi)
+  // Giới hạn kích thước Data URL nhỏ gọn (<250KB) để INSERT vào DB trên mạng 4G/5G luôn tức thì
+  const fallbackDataUrl = processed.dataUrl || (await blobToDataUrl(processed.blob));
+  if (fallbackDataUrl.length > 250_000) {
+    try {
+      const compact = await compressDiaryImage(file, 960, 0.7, true);
+      return compact.dataUrl;
+    } catch {
+      return fallbackDataUrl;
+    }
+  }
+  return fallbackDataUrl;
+}
+
+/**
+ * Trích xuất danh sách đường dẫn file (object path) trong Supabase Storage bucket 'diary-images'
+ * từ mảng URL ảnh (tự động loại bỏ Base64 Data URL, query string và trùng lặp).
+ */
+export function extractDiaryStoragePaths(urls?: (string | null | undefined)[] | null): string[] {
+  if (!Array.isArray(urls) || urls.length === 0) return [];
+  const marker = "/storage/v1/object/public/diary-images/";
+  const pathSet = new Set<string>();
+
+  for (const rawUrl of urls) {
+    if (typeof rawUrl !== "string") continue;
+    const idx = rawUrl.indexOf(marker);
+    if (idx < 0) continue;
+    const afterMarker = rawUrl.slice(idx + marker.length).split("?")[0].split("#")[0];
+    if (!afterMarker) continue;
+    try {
+      pathSet.add(decodeURIComponent(afterMarker));
+    } catch {
+      pathSet.add(afterMarker);
+    }
+  }
+
+  return Array.from(pathSet);
+}
+
+/**
+ * Xóa danh sách ảnh nhật ký trên Supabase Storage bucket 'diary-images'.
+ * Trả về true nếu xóa thành công (hoặc không có ảnh nào thuộc Storage), false nếu Storage báo lỗi.
+ */
+export async function deleteDiaryImagesFromStorage(
+  supabase: any,
+  urls?: (string | null | undefined)[] | null
+): Promise<boolean> {
+  const storagePaths = extractDiaryStoragePaths(urls);
+  if (storagePaths.length === 0 || !supabase?.storage) return true;
+
+  try {
+    const { error } = await withTimeout(
+      supabase.storage.from("diary-images").remove(storagePaths),
+      15000,
+      "Xóa ảnh trên Supabase Storage quá thời gian chờ."
+    ) as { error?: any };
+
+    if (error) {
+      console.warn("Lỗi xóa file ảnh trên Supabase Storage diary-images:", error.message || error);
+      return false;
+    }
+    return true;
+  } catch (err: any) {
+    console.warn("Ngoại lệ khi xóa file ảnh trên Supabase Storage:", err?.message || err);
+    return false;
+  }
 }
 
 /**
