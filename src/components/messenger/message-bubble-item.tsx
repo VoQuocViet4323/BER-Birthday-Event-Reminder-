@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Check,
   CheckCheck,
@@ -55,12 +56,49 @@ export function MessageBubbleItem({
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
   const [showDesktopQuickReact, setShowDesktopQuickReact] = useState(false);
+  const [showHeartBurst, setShowHeartBurst] = useState(false);
 
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const touchMovedRef = useRef(false);
   const swipeLockedRef = useRef<"horizontal" | "vertical" | null>(null);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const longPressTriggeredRef = useRef(false);
   const swipeVibratedRef = useRef(false);
+  const lastTapTimeRef = useRef<number>(0);
+  const lastHeartTriggerRef = useRef<number>(0);
+  const imageClickTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const heartBurstTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+      if (imageClickTimerRef.current) clearTimeout(imageClickTimerRef.current);
+      if (heartBurstTimerRef.current) clearTimeout(heartBurstTimerRef.current);
+    };
+  }, []);
+
+  const triggerDoubleHeart = () => {
+    if (msg.optimistic || msg.is_recalled) return;
+    const now = Date.now();
+    // Tránh kích hoạt kép khi trình duyệt mobile vừa phát touchend vừa phát dblclick
+    if (now - lastHeartTriggerRef.current < 350) return;
+    lastHeartTriggerRef.current = now;
+
+    if (imageClickTimerRef.current) {
+      clearTimeout(imageClickTimerRef.current);
+      imageClickTimerRef.current = null;
+    }
+
+    if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+      navigator.vibrate(12);
+    }
+
+    setShowHeartBurst(true);
+    if (heartBurstTimerRef.current) clearTimeout(heartBurstTimerRef.current);
+    heartBurstTimerRef.current = setTimeout(() => setShowHeartBurst(false), 620);
+
+    onQuickReact(msg.id, "❤️");
+  };
 
   const clearLongPress = () => {
     if (longPressTimerRef.current) {
@@ -73,6 +111,7 @@ export function MessageBubbleItem({
     if (msg.optimistic || e.touches.length !== 1) return;
     const t = e.touches[0];
     touchStartRef.current = { x: t.clientX, y: t.clientY };
+    touchMovedRef.current = false;
     swipeLockedRef.current = null;
     longPressTriggeredRef.current = false;
     swipeVibratedRef.current = false;
@@ -94,6 +133,7 @@ export function MessageBubbleItem({
     const dy = t.clientY - touchStartRef.current.y;
 
     if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+      touchMovedRef.current = true;
       clearLongPress();
     }
 
@@ -133,10 +173,20 @@ export function MessageBubbleItem({
     clearLongPress();
     if (isSwiping && !msg.is_recalled && isSwipeReplyTriggered(isMine, swipeOffset, SWIPE_THRESHOLD)) {
       onReply(msg);
+    } else if (!touchMovedRef.current && !longPressTriggeredRef.current && !msg.is_recalled && !msg.optimistic) {
+      // Nhận diện double-tap trên Mobile để thả tim ❤️
+      const now = Date.now();
+      if (now - lastTapTimeRef.current <= 300) {
+        lastTapTimeRef.current = 0;
+        triggerDoubleHeart();
+      } else {
+        lastTapTimeRef.current = now;
+      }
     }
     setSwipeOffset(0);
     setIsSwiping(false);
     touchStartRef.current = null;
+    touchMovedRef.current = false;
     swipeLockedRef.current = null;
   };
 
@@ -335,8 +385,12 @@ export function MessageBubbleItem({
               </div>
             ) : (
               <div
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  triggerDoubleHeart();
+                }}
                 className={cn(
-                  "rounded-2xl overflow-hidden shadow-xs transition-opacity",
+                  "rounded-2xl overflow-hidden shadow-xs transition-opacity relative",
                   msg.optimistic && "opacity-75",
                   isMine
                     ? "gradient-brand text-white rounded-br-md"
@@ -344,13 +398,38 @@ export function MessageBubbleItem({
                   msg.image_url && !msg.content ? "p-1" : "px-3.5 py-2.5"
                 )}
               >
-                {/* Ảnh đính kèm */}
+                {/* Hiệu ứng tim bay khi double click / double tap */}
+                <AnimatePresence>
+                  {showHeartBurst && (
+                    <motion.span
+                      key="heart-burst"
+                      initial={{ opacity: 0, scale: 0.4, y: 6 }}
+                      animate={{ opacity: 1, scale: 1.45, y: -6 }}
+                      exit={{ opacity: 0, scale: 1.8, y: -22 }}
+                      transition={{ duration: 0.45, ease: "easeOut" }}
+                      className="pointer-events-none absolute inset-0 flex items-center justify-center text-3xl drop-shadow-lg z-20"
+                    >
+                      ❤️
+                    </motion.span>
+                  )}
+                </AnimatePresence>
+
+                {/* Ảnh đính kèm (click đơn mở Lightbox, double click thả tim ❤️) */}
                 {msg.image_url && (
                   <button
                     type="button"
                     onClick={() => {
-                      if (!longPressTriggeredRef.current && msg.image_url) {
-                        onOpenImage(msg.image_url);
+                      if (longPressTriggeredRef.current || !msg.image_url) return;
+                      const url = msg.image_url;
+                      if (imageClickTimerRef.current) {
+                        clearTimeout(imageClickTimerRef.current);
+                        imageClickTimerRef.current = null;
+                        triggerDoubleHeart();
+                      } else {
+                        imageClickTimerRef.current = setTimeout(() => {
+                          imageClickTimerRef.current = null;
+                          onOpenImage(url);
+                        }, 240);
                       }
                     }}
                     className={cn(
