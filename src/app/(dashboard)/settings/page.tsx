@@ -9,6 +9,8 @@ import { createClient } from "@/lib/supabase/client";
 import { generateReminderEmailHtml, ReminderItem } from "@/lib/email/template-builder";
 import { uploadAvatarWithFallback, PRESET_AVATARS } from "@/lib/image-utils";
 import { useTheme } from "@/components/providers/theme-provider";
+import { MyQrModal } from "@/components/messenger/my-qr-modal";
+import { getFixedFriendCode } from "@/lib/messenger-utils";
 import {
   Mail,
   User,
@@ -31,6 +33,7 @@ import {
   Trash2,
   Sun,
   Moon,
+  QrCode,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -47,6 +50,7 @@ export default function SettingsPage() {
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [showPresetModal, setShowPresetModal] = useState(false);
   const [showAvatarLightbox, setShowAvatarLightbox] = useState(false);
+  const [showMyQrModal, setShowMyQrModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [remindDays, setRemindDays] = useState<number[]>(settings?.default_remind_days || [7, 3, 1, 0]);
@@ -1083,6 +1087,31 @@ export default function SettingsPage() {
             />
           </div>
 
+          {/* Mã QR cố định để kết bạn trong Messenger */}
+          <div className="p-3.5 rounded-2xl bg-secondary/35 border border-border/60 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center shrink-0">
+                <QrCode className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-foreground">Mã QR kết bạn cố định</p>
+                <p className="text-[11px] text-muted-foreground truncate">
+                  Mã định danh:{" "}
+                  <strong className="text-primary tracking-wider">
+                    {getFixedFriendCode(profile?.id, profile?.friend_code)}
+                  </strong>
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowMyQrModal(true)}
+              className="px-3.5 py-2 rounded-xl bg-card hover:bg-secondary border border-border/80 text-xs font-bold text-foreground shrink-0 transition-all active:scale-95 cursor-pointer"
+            >
+              Xem mã QR
+            </button>
+          </div>
+
           <div className="pt-4 border-t border-border/60">
             {profile?.role === "admin" || profile?.username === "admin" ? (
               <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-amber-500">
@@ -1470,6 +1499,16 @@ export default function SettingsPage() {
         </AnimatePresence>,
         document.body
       )}
+      {/* Modal Mã QR kết bạn cố định */}
+      <MyQrModal
+        isOpen={showMyQrModal}
+        onClose={() => setShowMyQrModal(false)}
+        userId={profile?.id}
+        friendCode={profile?.friend_code}
+        displayName={displayName || profile?.display_name}
+        email={profile?.email}
+        avatarUrl={avatarUrl}
+      />
     </div>
   );
 }

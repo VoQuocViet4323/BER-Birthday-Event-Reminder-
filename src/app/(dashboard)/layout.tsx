@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, Suspense } from "react";
+import { usePathname } from "next/navigation";
 import { AppHeader } from "@/components/layout/app-header";
 import { DesktopSidebar } from "@/components/layout/desktop-sidebar";
 import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
@@ -18,6 +19,9 @@ export default function DashboardLayout({
 }) {
   // Tự động quét và gửi email nhắc nhở theo phút khi người dùng mở ứng dụng
   useAutoReminderScheduler();
+
+  const pathname = usePathname();
+  const isMessengerPage = pathname === "/messenger";
 
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<EventWithMeta | null>(null);
@@ -51,7 +55,13 @@ export default function DashboardLayout({
           <DesktopSidebar onOpenCreateModal={handleOpenCreate} />
         </Suspense>
 
-        <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 xl:p-10 pb-24 lg:pb-12 w-full max-w-7xl">
+        <main
+          className={
+            isMessengerPage
+              ? "flex-1 min-w-0 p-0 lg:p-6 xl:p-8 w-full max-w-7xl"
+              : "flex-1 min-w-0 p-4 sm:p-6 lg:p-8 xl:p-10 pb-24 lg:pb-12 w-full max-w-7xl"
+          }
+        >
           {children}
         </main>
       </div>

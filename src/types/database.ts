@@ -24,6 +24,7 @@ export interface Database {
           last_seen_at?: string | null;
           banned_until?: string | null;
           ban_reason?: string | null;
+          friend_code?: string | null;
         };
         Insert: {
           id: string;
@@ -39,6 +40,7 @@ export interface Database {
           last_seen_at?: string | null;
           banned_until?: string | null;
           ban_reason?: string | null;
+          friend_code?: string | null;
         };
         Update: {
           id?: string;
@@ -54,6 +56,7 @@ export interface Database {
           last_seen_at?: string | null;
           banned_until?: string | null;
           ban_reason?: string | null;
+          friend_code?: string | null;
         };
       };
       user_settings: {
@@ -248,6 +251,76 @@ export interface Database {
           banned_until?: string | null;
           ban_reason?: string | null;
           updated_at?: string;
+        };
+      };
+      friendships: {
+        Row: {
+          id: string;
+          requester_id: string;
+          addressee_id: string;
+          status: "pending" | "accepted" | "declined";
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          requester_id: string;
+          addressee_id: string;
+          status?: "pending" | "accepted" | "declined";
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          requester_id?: string;
+          addressee_id?: string;
+          status?: "pending" | "accepted" | "declined";
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      messages: {
+        Row: {
+          id: string;
+          sender_id: string;
+          receiver_id: string;
+          content: string;
+          image_url: string | null;
+          image_storage_path?: string | null;
+          image_width?: number | null;
+          image_height?: number | null;
+          image_size_bytes?: number | null;
+          is_read: boolean;
+          read_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          sender_id: string;
+          receiver_id: string;
+          content?: string;
+          image_url?: string | null;
+          image_storage_path?: string | null;
+          image_width?: number | null;
+          image_height?: number | null;
+          image_size_bytes?: number | null;
+          is_read?: boolean;
+          read_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          sender_id?: string;
+          receiver_id?: string;
+          content?: string;
+          image_url?: string | null;
+          image_storage_path?: string | null;
+          image_width?: number | null;
+          image_height?: number | null;
+          image_size_bytes?: number | null;
+          is_read?: boolean;
+          read_at?: string | null;
+          created_at?: string;
         };
       };
     };

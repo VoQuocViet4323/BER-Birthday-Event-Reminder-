@@ -1,15 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
 import { ThemeToggle } from "@/components/common/theme-toggle";
 import { CommandMenu } from "./command-menu";
 import { NotificationBellDropdown } from "./notification-bell-dropdown";
 import { useUserSettings } from "@/hooks/use-user-settings";
+import { useMessengerNetwork } from "@/hooks/use-messenger";
 import { createClient } from "@/lib/supabase/client";
-import { LogOut, Settings, Sparkles, ShieldCheck, RefreshCw } from "lucide-react";
+import { LogOut, Settings, Sparkles, ShieldCheck, RefreshCw, MessageCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { cn } from "@/lib/utils";
 
 interface AppHeaderProps {
   onOpenCreateModal?: () => void;
@@ -17,6 +19,8 @@ interface AppHeaderProps {
 
 export function AppHeader({ onOpenCreateModal }: AppHeaderProps) {
   const { profile } = useUserSettings();
+  const { totalBadgeCount } = useMessengerNetwork();
+  const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -136,6 +140,26 @@ export function AppHeader({ onOpenCreateModal }: AppHeaderProps) {
               }`}
             />
           </motion.button>
+
+          {/* Nút mở nhanh Messenger (Hỗ trợ 1 chạm cho cả Mobile & PC kèm badge realtime) */}
+          <Link
+            href="/messenger"
+            className={cn(
+              "relative w-9 h-9 sm:w-10 sm:h-10 rounded-2xl flex items-center justify-center transition-all active:scale-95 border focus-visible:outline-2 focus-visible:outline-primary cursor-pointer shadow-xs touch-manipulation",
+              pathname === "/messenger"
+                ? "gradient-brand text-white border-transparent shadow-soft"
+                : "bg-secondary/80 hover:bg-secondary text-foreground hover:text-primary border-border/70"
+            )}
+            title="Messenger • Nhắn tin & Kết bạn"
+            aria-label="Mở Messenger"
+          >
+            <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+            {totalBadgeCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-extrabold flex items-center justify-center shadow-sm ring-2 ring-background">
+                {totalBadgeCount > 9 ? "9+" : totalBadgeCount}
+              </span>
+            )}
+          </Link>
 
           <NotificationBellDropdown />
           <ThemeToggle />

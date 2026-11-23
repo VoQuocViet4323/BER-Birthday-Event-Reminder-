@@ -7907,3 +7907,37 @@ Mỗi lần lưu lại quá trình, AI cần ghi chép theo định dạng sau:
 - **Trạng thái kiểm thử**:
   - `npx tsc --noEmit`: **0 lỗi TypeScript**.
   - `npm test`: **38/38 tests PASSED (100%)**.
+
+
+### 📅 2026-11-23 09:32:00 - Xây Dựng Module Messenger Hoàn Chỉnh (Kết Bạn Email/QR Cố Định, Nhắn Tin & Gửi Ảnh Thời Gian Thực PC & Mobile)
+- **Yêu cầu của người dùng**:
+  - Tạo module **Messenger** nhắn tin giữa các tài khoản theo thời gian thực.
+  - Cơ chế kết bạn giữa 2 tài khoản: chỉ khi chấp nhận kết bạn mới được phép nhắn tin qua lại.
+  - Tìm kiếm & gửi lời mời kết bạn qua **Email** hoặc **Quét mã QR**.
+  - Mỗi tài khoản có **mã QR cố định riêng** (`BER-XXXXXXXX`).
+  - Hỗ trợ gửi ảnh trong tin nhắn, thiết kế tinh gọn hài hòa cho cả **PC** lẫn **Mobile**.
+- **Các công việc đã hoàn thành**:
+  1. **Database & Bảo mật Realtime ([supabase/migrations/20261123_023_messenger_and_friends.sql](file:///e:/BER-Birthday-Event-Reminder-/supabase/migrations/20261123_023_messenger_and_friends.sql))**:
+     - Thêm cột `profiles.friend_code` tự động sinh mã cố định duy nhất (`BER-XXXXXXXX`) cho mọi tài khoản cũ và mới.
+     - Tạo bảng `public.friendships` (chống tự kết bạn, unique cặp 2 tài khoản) và bảng `public.messages` (văn bản + `image_url`, trạng thái `is_read`).
+     - Khóa chặt RLS ở tầng PostgreSQL bằng hàm `public.are_friends(sender_id, receiver_id)`: **chặn tuyệt đối gửi tin nhắn nếu 2 tài khoản chưa chấp nhận kết bạn**.
+     - Tạo 3 RPC bảo mật `SECURITY DEFINER`: `find_user_for_friend(p_query)`, `get_my_friend_network()`, `mark_conversation_read(p_friend_id)`.
+     - Kích hoạt Supabase Realtime (`REPLICA IDENTITY FULL` + `ALTER PUBLICATION supabase_realtime`) cho `messages` và `friendships`.
+     - Tạo Storage bucket `chat-images` (giới hạn 15MB, RLS idempotent).
+  2. **Hệ thống Mã QR cố định, Máy Quét QR & Xử Lý Ảnh Chat**:
+     - [src/lib/messenger-utils.ts](file:///e:/BER-Birthday-Event-Reminder-/src/lib/messenger-utils.ts): `getFixedFriendCode`, `buildFriendQrPayload`, `parseFriendQrPayload`, nén ảnh chat giữ tỷ lệ gốc tối đa 1280px (`compressChatImage`), upload Storage kèm fallback an toàn (`uploadChatImageWithFallback`).
+     - [src/components/messenger/my-qr-modal.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/messenger/my-qr-modal.tsx): Thẻ mã QR cố định cá nhân (tạo offline bằng `qrcode`), hỗ trợ sao chép mã, tải ảnh PNG và chia sẻ native.
+     - [src/components/messenger/qr-scanner-modal.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/messenger/qr-scanner-modal.tsx): Quét mã QR trực tiếp qua Camera (hỗ trợ đổi camera trước/sau trên mobile) và quét từ ảnh có sẵn bằng `jsqr`.
+     - [src/components/messenger/add-friend-modal.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/messenger/add-friend-modal.tsx): Tìm kiếm theo Email / mã QR / quét QR và quản lý gửi/hủy/chấp nhận kết bạn 1 chạm.
+  3. **Realtime Hooks & Giao Diện PC/Mobile**:
+     - [src/hooks/use-messenger.ts](file:///e:/BER-Birthday-Event-Reminder-/src/hooks/use-messenger.ts): `useMessengerNetwork` & `useConversation` với Supabase Realtime `postgres_changes`, trạng thái `"Đang nhập..."` qua Broadcast, Optimistic UI, tự động đánh dấu đã xem.
+     - [src/components/messenger/chat-window.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/messenger/chat-window.tsx): Khung chat tinh gọn, hỗ trợ gửi ảnh (chọn file + dán ảnh `Ctrl+V`), Lightbox phóng to ảnh, Emoji nhanh, thu hồi tin nhắn, hủy kết bạn.
+     - [src/app/(dashboard)/messenger/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/messenger/page.tsx): Bố cục Split-View 2 cột trên PC và Master/Detail full-height (tự động ẩn Mobile Bottom Nav khi vào phòng chat) trên Mobile; hỗ trợ deep link `/messenger?add=BER-XXXXXXXX` bọc trong `<Suspense>`.
+     - Tích hợp vào [desktop-sidebar.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/layout/desktop-sidebar.tsx), [app-header.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/layout/app-header.tsx), [mobile-bottom-nav.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/layout/mobile-bottom-nav.tsx), [command-menu.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/components/layout/command-menu.tsx), [settings/page.tsx](file:///e:/BER-Birthday-Event-Reminder-/src/app/(dashboard)/settings/page.tsx).
+  4. **Kiểm thử tự động**:
+     - Tạo [src/tests/messenger.test.ts](file:///e:/BER-Birthday-Event-Reminder-/src/tests/messenger.test.ts) với 10 test cases kiểm tra mã QR cố định, parser QR/Email, sinh ảnh PNG QR, quyền nhắn tin chỉ khi đã kết bạn, nén/upload ảnh giữ tỷ lệ & fallback, và kiểm tra tính hợp lệ/idempotent của SQL migration 023.
+- **Trạng thái kiểm thử**:
+  - `npx tsc --noEmit`: **0 lỗi TypeScript**.
+  - `npm test`: **69/69 tests PASSED (7/7 test suites)**.
+- **Lưu ý triển khai**:
+  - Cần chạy file SQL [20261123_023_messenger_and_friends.sql](file:///e:/BER-Birthday-Event-Reminder-/supabase/migrations/20261123_023_messenger_and_friends.sql) 1 lần trong Supabase SQL Editor để tạo bảng `friendships`, `messages`, cột `friend_code`, RPC và bucket `chat-images`.

@@ -13,10 +13,12 @@ import {
   ChevronRight,
   Download,
   ShieldCheck,
+  MessageCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEvents } from "@/hooks/use-events";
 import { useUserSettings } from "@/hooks/use-user-settings";
+import { useMessengerNetwork } from "@/hooks/use-messenger";
 
 interface DesktopSidebarProps {
   onOpenCreateModal: () => void;
@@ -27,6 +29,7 @@ export function DesktopSidebar({ onOpenCreateModal }: DesktopSidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const { events } = useEvents();
   const { profile } = useUserSettings();
+  const { totalBadgeCount } = useMessengerNetwork();
 
   const isAdmin = profile?.role === "admin";
 
@@ -39,6 +42,13 @@ export function DesktopSidebar({ onOpenCreateModal }: DesktopSidebarProps) {
       badge: events.length > 0 ? events.length : undefined,
     },
     { label: "Lịch sự kiện", href: "/calendar", icon: Calendar },
+    {
+      label: "Messenger",
+      href: "/messenger",
+      icon: MessageCircle,
+      badge: totalBadgeCount > 0 ? (totalBadgeCount > 99 ? "99+" : totalBadgeCount) : undefined,
+      badgeColor: "gradient-brand text-white font-bold shadow-xs",
+    },
     { label: "Cài đặt & Hồ sơ", href: "/settings", icon: Settings },
     ...(isAdmin
       ? [
@@ -94,7 +104,12 @@ export function DesktopSidebar({ onOpenCreateModal }: DesktopSidebarProps) {
               )}
               title={collapsed ? item.label : undefined}
             >
-              <Icon className={cn("w-5 h-5 shrink-0 transition-colors", isActive ? "text-primary stroke-[2.2]" : "group-hover:text-foreground")} />
+              <div className="relative shrink-0">
+                <Icon className={cn("w-5 h-5 shrink-0 transition-colors", isActive ? "text-primary stroke-[2.2]" : "group-hover:text-foreground")} />
+                {collapsed && item.badge !== undefined && typeof item.badge !== "string" && (
+                  <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-card" />
+                )}
+              </div>
 
               {!collapsed && (
                 <>

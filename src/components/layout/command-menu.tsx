@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Calendar, List, Settings, Plus, X } from "lucide-react";
+import { Search, Calendar, List, Settings, Plus, X, MessageCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEvents } from "@/hooks/use-events";
 
@@ -183,6 +183,16 @@ export function CommandMenu({ onOpenCreateModal }: CommandMenuProps) {
                 >
                   <Calendar className="w-4 h-4 text-muted-foreground" />
                   <span>Xem Lịch tháng</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setIsOpen(false);
+                    router.push("/messenger");
+                  }}
+                  className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left text-sm hover:bg-muted text-foreground transition-colors"
+                >
+                  <MessageCircle className="w-4 h-4 text-primary" />
+                  <span>Messenger • Nhắn tin & Kết bạn QR</span>
                 </button>
                 <button
                   onClick={() => {

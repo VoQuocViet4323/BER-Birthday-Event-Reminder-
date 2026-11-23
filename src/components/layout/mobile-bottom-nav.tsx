@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { Home, Calendar, List, Settings, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -11,6 +12,24 @@ interface MobileBottomNavProps {
 
 export function MobileBottomNav({ onOpenCreateModal }: MobileBottomNavProps) {
   const pathname = usePathname();
+  const [hideForActiveChat, setHideForActiveChat] = useState(false);
+
+  useEffect(() => {
+    if (pathname !== "/messenger") {
+      setHideForActiveChat(false);
+      return;
+    }
+    const handleToggle = (e: Event) => {
+      const active = Boolean((e as CustomEvent<{ active?: boolean }>).detail?.active);
+      setHideForActiveChat(active);
+    };
+    window.addEventListener("ber-messenger-chat-active", handleToggle as EventListener);
+    return () => {
+      window.removeEventListener("ber-messenger-chat-active", handleToggle as EventListener);
+    };
+  }, [pathname]);
+
+  if (hideForActiveChat) return null;
 
   const navItems = [
     { label: "Trang chủ", href: "/dashboard", icon: Home },
