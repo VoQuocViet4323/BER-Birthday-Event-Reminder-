@@ -159,6 +159,41 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 GRANT EXECUTE ON FUNCTION public.hide_message_for_me(UUID) TO authenticated, service_role;
 
+-- 4b. RPC Xóa TOÀN BỘ đoạn chat CHỈ Ở PHÍA MÌNH (người còn lại vẫn giữ nguyên 100% tin nhắn & ảnh)
+DROP FUNCTION IF EXISTS public.clear_conversation_for_me(UUID);
+CREATE OR REPLACE FUNCTION public.clear_conversation_for_me(p_friend_id UUID)
+RETURNS JSONB AS $$
+DECLARE
+    v_me UUID := auth.uid();
+    v_affected INTEGER := 0;
+BEGIN
+    IF v_me IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'message', 'Bạn chưa đăng nhập.');
+    END IF;
+
+    IF p_friend_id IS NULL OR p_friend_id = v_me THEN
+        RETURN jsonb_build_object('success', false, 'message', 'Tài khoản đối thoại không hợp lệ.');
+    END IF;
+
+    UPDATE public.messages
+    SET
+        hidden_for_user_ids = CASE
+            WHEN v_me = ANY(COALESCE(hidden_for_user_ids, '{}'::uuid[])) THEN hidden_for_user_ids
+            ELSE array_append(COALESCE(hidden_for_user_ids, '{}'::uuid[]), v_me)
+        END,
+        is_read = CASE WHEN receiver_id = v_me THEN true ELSE is_read END,
+        read_at = CASE WHEN receiver_id = v_me THEN COALESCE(read_at, now()) ELSE read_at END
+    WHERE ((sender_id = v_me AND receiver_id = p_friend_id)
+        OR (sender_id = p_friend_id AND receiver_id = v_me))
+      AND NOT (v_me = ANY(COALESCE(hidden_for_user_ids, '{}'::uuid[])));
+
+    GET DIAGNOSTICS v_affected = ROW_COUNT;
+    RETURN jsonb_build_object('success', true, 'hidden_count', v_affected);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+GRANT EXECUTE ON FUNCTION public.clear_conversation_for_me(UUID) TO authenticated, service_role;
+
 -- 5. RPC Thả / Đổi / Gỡ cảm xúc tin nhắn (cả 2 phía đều thả được)
 DROP FUNCTION IF EXISTS public.toggle_message_reaction(UUID, TEXT);
 CREATE OR REPLACE FUNCTION public.toggle_message_reaction(p_message_id UUID, p_emoji TEXT)

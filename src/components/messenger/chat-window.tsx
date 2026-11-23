@@ -13,6 +13,8 @@ import {
   Check,
   MoreVertical,
   UserMinus,
+  Trash2,
+  AlertTriangle,
   Download,
   Loader2,
   Lock,
@@ -69,6 +71,8 @@ export function ChatWindow({
     isEditing,
     recallForEveryone,
     hideForMe,
+    clearConversationForMe,
+    isClearingConversation,
     toggleReaction,
     togglePin,
   } = useConversation(currentUserId, friend.friend_id, isAccepted);
@@ -81,6 +85,7 @@ export function ChatWindow({
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
   const [showMediaGallery, setShowMediaGallery] = useState(false);
   const [showPinnedModal, setShowPinnedModal] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [confirmUnfriend, setConfirmUnfriend] = useState(false);
   const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -465,14 +470,28 @@ export function ChatWindow({
                   )}
 
                   {!confirmUnfriend ? (
-                    <button
-                      type="button"
-                      onClick={() => setConfirmUnfriend(true)}
-                      className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-rose-500 hover:bg-rose-500/10 font-semibold transition-colors cursor-pointer"
-                    >
-                      <UserMinus className="w-3.5 h-3.5" />
-                      <span>Hủy kết bạn</span>
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowHeaderMenu(false);
+                          setShowClearConfirm(true);
+                        }}
+                        className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-foreground hover:bg-rose-500/10 hover:text-rose-500 font-semibold transition-colors cursor-pointer mb-0.5"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                        <span>Xóa toàn bộ đoạn chat</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setConfirmUnfriend(true)}
+                        className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-rose-500 hover:bg-rose-500/10 font-semibold transition-colors cursor-pointer"
+                      >
+                        <UserMinus className="w-3.5 h-3.5" />
+                        <span>Hủy kết bạn</span>
+                      </button>
+                    </>
                   ) : (
                     <div className="p-2 space-y-2">
                       <p className="text-[11px] text-muted-foreground leading-snug">
@@ -1081,6 +1100,94 @@ export function ChatWindow({
                         ))}
                       </div>
                     )}
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>,
+          document.body
+        )}
+
+      {/* Modal Cảnh báo Xác nhận Xóa toàn bộ đoạn chat (chỉ xóa ở phía mình) */}
+      {mounted &&
+        createPortal(
+          <AnimatePresence>
+            {showClearConfirm && (
+              <motion.div
+                key="clear-chat-confirm-backdrop"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.16 }}
+                onClick={() => {
+                  if (!isClearingConversation) setShowClearConfirm(false);
+                }}
+                className="fixed inset-0 z-[155] bg-black/75 backdrop-blur-md flex items-center justify-center p-4"
+              >
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.94, y: 14 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.94, y: 14 }}
+                  transition={{ type: "spring", damping: 28, stiffness: 340 }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="w-full max-w-sm bg-card rounded-3xl border border-border shadow-2xl p-5 sm:p-6 space-y-4"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="w-11 h-11 rounded-2xl bg-rose-500/15 border border-rose-500/25 text-rose-500 flex items-center justify-center shrink-0">
+                      <AlertTriangle className="w-5 h-5" />
+                    </div>
+                    <div className="space-y-1">
+                      <h3 className="font-extrabold text-sm sm:text-base text-foreground">
+                        Xóa toàn bộ đoạn chat này?
+                      </h3>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        Toàn bộ tin nhắn và hình ảnh trong cuộc trò chuyện với{" "}
+                        <strong className="text-foreground">{friend.display_name}</strong> sẽ bị
+                        xóa vĩnh viễn khỏi tài khoản của bạn và không thể khôi phục.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-2xl bg-secondary/50 border border-border/60 text-[11px] text-muted-foreground leading-relaxed">
+                    💡 <strong>Lưu ý:</strong> Thao tác này <strong>chỉ xóa ở phía bạn</strong>.{" "}
+                    <strong className="text-foreground">{friend.display_name}</strong> vẫn giữ
+                    nguyên toàn bộ lịch sử tin nhắn của họ.
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5 pt-1">
+                    <button
+                      type="button"
+                      disabled={isClearingConversation}
+                      onClick={() => setShowClearConfirm(false)}
+                      className="py-2.5 px-4 rounded-xl bg-secondary hover:bg-secondary/80 text-xs font-bold text-foreground transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      Hủy bỏ
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isClearingConversation}
+                      onClick={async () => {
+                        try {
+                          await clearConversationForMe();
+                          setShowClearConfirm(false);
+                          setReplyingTo(null);
+                          setEditingMessage(null);
+                        } catch {}
+                      }}
+                      className="py-2.5 px-4 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold shadow-soft flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer disabled:opacity-60"
+                    >
+                      {isClearingConversation ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Đang xóa...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Xóa đoạn chat</span>
+                        </>
+                      )}
+                    </button>
                   </div>
                 </motion.div>
               </motion.div>

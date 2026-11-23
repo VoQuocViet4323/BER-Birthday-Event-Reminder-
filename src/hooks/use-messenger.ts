@@ -1049,6 +1049,47 @@ export function useConversation(
     },
   });
 
+  // 6. Xóa toàn bộ đoạn chat CHỈ Ở PHÍA MÌNH (đối phương vẫn còn nguyên toàn bộ tin nhắn & ảnh)
+  const clearConversationForMeMutation = useMutation({
+    mutationFn: async () => {
+      if (!currentUserId || !friendId) throw new Error("Chưa chọn cuộc trò chuyện.");
+      const { data, error } = await (supabase as any).rpc("clear_conversation_for_me", {
+        p_friend_id: friendId,
+      });
+
+      if (error) {
+        if (String(error.code) === "42883" || String(error.code) === "PGRST202") {
+          throw new Error(
+            "Vui lòng chạy bổ sung hàm clear_conversation_for_me trong migration 024 trên Supabase."
+          );
+        }
+        throw error;
+      }
+      if (data && data.success === false) {
+        throw new Error(data.message || "Không thể xóa đoạn chat.");
+      }
+      return data;
+    },
+    onSuccess: () => {
+      if (!currentUserId || !friendId) return;
+      queryClient.setQueryData<ChatMessage[]>(queryKey, []);
+      queryClient.setQueryData<ChatMessage[]>(mediaQueryKey, []);
+      setHasMoreMessages(false);
+      markFriendReactionsAsSeen(friendId, new Date().toISOString());
+      queryClient.invalidateQueries({ queryKey: ["messenger-network", currentUserId] });
+      toast({
+        title: "Đã xóa toàn bộ đoạn chat ở phía bạn",
+        variant: "success",
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: err?.message || "Không thể xóa toàn bộ đoạn chat",
+        variant: "error",
+      });
+    },
+  });
+
   return {
     messages,
     pinnedMessages,
@@ -1072,6 +1113,8 @@ export function useConversation(
     isEditing: editMessageMutation.isPending,
     recallForEveryone: (msg: ChatMessage) => recallForEveryoneMutation.mutateAsync(msg),
     hideForMe: (messageId: string) => hideForMeMutation.mutateAsync(messageId),
+    clearConversationForMe: () => clearConversationForMeMutation.mutateAsync(),
+    isClearingConversation: clearConversationForMeMutation.isPending,
     toggleReaction: (params: { messageId: string; emoji: string }) =>
       toggleReactionMutation.mutateAsync(params),
     togglePin: (msg: ChatMessage) => togglePinMutation.mutateAsync(msg),

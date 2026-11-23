@@ -303,8 +303,11 @@ describe("Messenger & Fixed QR Friend System Test Suite", () => {
     expect(sql).toContain("edit_my_message");
     expect(sql).toContain("recall_message_for_everyone");
     expect(sql).toContain("hide_message_for_me");
+    expect(sql).toContain("clear_conversation_for_me");
     expect(sql).toContain("toggle_message_reaction");
     expect(sql).toContain("toggle_pin_message");
+    // Xóa đoạn chat chỉ được phép ẩn cho v_me, tuyệt đối không DELETE cứng tin nhắn của đối phương
+    expect(sql).not.toMatch(/DELETE\s+FROM\s+public\.messages/i);
     expect(sql).toContain("PIN_LIMIT_REACHED");
     expect(sql).toContain("v_pinned_count >= 5");
     expect(sql).toContain("v_row.sender_id <> v_me");
