@@ -6,6 +6,7 @@ import { NotificationLog, EventWithMeta } from "@/types/events";
 import { Clock, CheckCircle2, AlertCircle, Mail, Calendar, Sparkles, User, Tag } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { getLocalCustomGroups } from "@/hooks/use-events";
+import { getEventAvatarUrl } from "@/lib/event-avatar";
 import { cn } from "@/lib/utils";
 
 interface NotificationLogWithEvent extends NotificationLog {
@@ -335,12 +336,7 @@ export default function HistoryPage() {
                     <div className="flex items-start gap-3 sm:gap-3.5 p-3 sm:p-3.5 rounded-xl bg-secondary/30 dark:bg-secondary/20 border border-border/60">
                       {/* Avatar */}
                       <img
-                        src={
-                          eventInfo.avatar_url ||
-                          `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
-                            eventInfo.name || "BER"
-                          )}`
-                        }
+                        src={getEventAvatarUrl(eventInfo)}
                         alt={eventInfo.name}
                         className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-secondary border border-border/80 shrink-0 object-cover shadow-2xs"
                       />

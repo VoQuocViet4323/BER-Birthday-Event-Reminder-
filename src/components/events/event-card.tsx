@@ -4,6 +4,7 @@
 import { useState, useRef, useEffect } from "react";
 import { EventWithMeta } from "@/types/events";
 import { formatDaysRemainingText } from "@/lib/utils";
+import { getEventAvatarUrl } from "@/lib/event-avatar";
 import {
   Edit2,
   Trash2,
@@ -454,17 +455,11 @@ export function EventCard({
             {/* Avatar & Thông tin cơ bản */}
             <div className="flex items-start gap-3.5 flex-1 min-w-0">
               <div className="w-12 h-12 rounded-2xl overflow-hidden bg-primary/10 border border-border shrink-0 shadow-sm">
-                {event.avatar_url ? (
-                  <img
-                    src={event.avatar_url}
-                    alt={event.name}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full gradient-brand text-white flex items-center justify-center font-bold text-lg">
-                    {event.name.charAt(0).toUpperCase()}
-                  </div>
-                )}
+                <img
+                  src={getEventAvatarUrl(event)}
+                  alt={event.name}
+                  className="w-full h-full object-cover"
+                />
               </div>
 
               <div className="flex-1 min-w-0">

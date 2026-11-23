@@ -2,6 +2,7 @@
 
 import { EventWithMeta } from "@/types/events";
 import { formatDaysRemainingText } from "@/lib/utils";
+import { getEventAvatarUrl } from "@/lib/event-avatar";
 import { Clock, Calendar, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -64,13 +65,7 @@ export function UpcomingCarousel({ events, onSelectEvent }: UpcomingCarouselProp
                 {/* Header card: Avatar & Countdown badge */}
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div className="w-12 h-12 rounded-2xl overflow-hidden bg-primary/10 border border-primary/20 shrink-0 shadow-sm group-hover:scale-105 transition-transform">
-                    {ev.avatar_url ? (
-                      <img src={ev.avatar_url} alt={ev.name} className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full gradient-brand text-white flex items-center justify-center font-bold text-base">
-                        {ev.name.charAt(0).toUpperCase()}
-                      </div>
-                    )}
+                    <img src={getEventAvatarUrl(ev)} alt={ev.name} className="w-full h-full object-cover" />
                   </div>
 
                   <span

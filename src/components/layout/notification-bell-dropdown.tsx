@@ -6,6 +6,7 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { Bell, CheckCheck, Inbox, X, Calendar, Mail, Clock, ShieldCheck, AlertCircle } from "lucide-react";
 import { useNotifications, AppNotification } from "@/hooks/use-notifications";
+import { getEventAvatarUrl } from "@/lib/event-avatar";
 
 interface NotificationBellDropdownProps {
   onCountChange?: (count: number) => void;
@@ -257,21 +258,17 @@ export function NotificationBellDropdown({ onCountChange }: NotificationBellDrop
                           {/* Avatar */}
                           <div className="relative w-9 h-9 shrink-0 rounded-full bg-secondary overflow-visible">
                             <img
-                              src={
-                                n.avatarUrl ||
-                                `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
-                                  n.eventName || "BER"
-                                )}`
-                              }
+                              src={getEventAvatarUrl({
+                                name: n.eventName || "BER",
+                                avatar_url: n.avatarUrl,
+                              })}
                               alt={n.eventName || "Avatar"}
                               className="w-full h-full rounded-full object-cover border border-border/60 bg-secondary/80"
                               loading="lazy"
                               onError={(e) => {
                                 const target = e.currentTarget;
                                 target.onerror = null;
-                                target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
-                                  n.eventName || "User"
-                                )}`
+                                target.src = getEventAvatarUrl({ name: n.eventName || "BER" });
                               }}
                             />
                             <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-card border border-border text-[9px] flex items-center justify-center shadow-xs">
@@ -366,12 +363,10 @@ export function NotificationBellDropdown({ onCountChange }: NotificationBellDrop
                   <div className="flex items-center gap-3.5">
                     <div className="relative w-12 h-12 rounded-2xl bg-secondary shrink-0 overflow-visible">
                       <img
-                        src={
-                          selectedNotification.avatarUrl ||
-                          `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
-                            selectedNotification.eventName || "BER"
-                          )}`
-                        }
+                        src={getEventAvatarUrl({
+                          name: selectedNotification.eventName || "BER",
+                          avatar_url: selectedNotification.avatarUrl,
+                        })}
                         alt={selectedNotification.eventName || "Avatar"}
                         className="w-full h-full rounded-2xl object-cover border border-border/80 shadow-soft"
                       />

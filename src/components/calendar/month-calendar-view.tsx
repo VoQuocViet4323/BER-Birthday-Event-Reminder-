@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { EventWithMeta, EventFormValues } from "@/types/events";
+import { getEventAvatarUrl } from "@/lib/event-avatar";
 import {
   ChevronLeft,
   ChevronRight,
@@ -1139,13 +1140,7 @@ export function MonthCalendarView({
                   >
                     <div className="flex items-center gap-2.5 min-w-0 flex-1">
                       <div className="w-9 h-9 rounded-xl overflow-hidden bg-primary/10 shrink-0">
-                        {ev.avatar_url ? (
-                          <img src={ev.avatar_url} alt={ev.name} className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full gradient-brand text-white flex items-center justify-center font-bold text-xs">
-                            {ev.name?.charAt(0) || "S"}
-                          </div>
-                        )}
+                        <img src={getEventAvatarUrl(ev)} alt={ev.name} className="w-full h-full object-cover" />
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="font-bold text-xs text-foreground truncate">{ev.name}</p>
@@ -1238,13 +1233,7 @@ export function MonthCalendarView({
             <div className="flex items-start justify-between pb-4 border-b border-border">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-2xl overflow-hidden bg-primary/10 shrink-0 border border-primary/20">
-                  {viewingEvent.avatar_url ? (
-                    <img src={viewingEvent.avatar_url} alt={viewingEvent.name} className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full gradient-brand text-white flex items-center justify-center font-bold text-lg shadow-sm">
-                      {viewingEvent.name?.charAt(0) || "S"}
-                    </div>
-                  )}
+                  <img src={getEventAvatarUrl(viewingEvent)} alt={viewingEvent.name} className="w-full h-full object-cover" />
                 </div>
                 <div>
                   <h3 className="font-extrabold text-lg text-foreground tracking-tight">

@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { EventWithMeta } from "@/types/events";
 import { fireCelebrationConfetti } from "@/components/common/confetti-celebration";
+import { getEventAvatarUrl } from "@/lib/event-avatar";
 import { Sparkles, Heart, ChevronLeft, ChevronRight } from "lucide-react";
 import { motion } from "framer-motion";
 import { WishSuggestionModal } from "./wish-suggestion-modal";
@@ -177,10 +178,7 @@ export function TodayHighlightCard({ events, onSelectEvent }: TodayHighlightCard
                     <div className="relative shrink-0">
                       <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-white/20 p-1 backdrop-blur-md shadow-2xl group-hover:scale-105 transition-transform">
                         <img
-                          src={
-                            ev.avatar_url ||
-                            `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(ev.name)}`
-                          }
+                          src={getEventAvatarUrl(ev)}
                           alt={ev.name}
                           className="w-full h-full object-cover rounded-2xl"
                         />

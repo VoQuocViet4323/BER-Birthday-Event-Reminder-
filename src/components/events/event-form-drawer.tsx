@@ -14,6 +14,13 @@ import { IosDatePicker } from "@/components/ui/ios-date-picker";
 import { RemindDaysPicker } from "@/components/events/remind-days-picker";
 import { MultiOffsetTimePicker } from "@/components/events/multi-offset-time-picker";
 import { LiquidGlassButton } from "@/components/ui/liquid-glass-button";
+import {
+  EVENT_AVATAR_PRESETS,
+  buildEventAvatarSvgDataUrl,
+  generateContextualEventAvatar,
+  isLegacyRandomAvatar,
+  resolveEventAvatarTheme,
+} from "@/lib/event-avatar";
 
 interface EventFormDrawerProps {
   isOpen: boolean;
@@ -34,6 +41,7 @@ export function EventFormDrawer({
 }: EventFormDrawerProps) {
   const [mounted, setMounted] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -85,6 +93,9 @@ export function EventFormDrawer({
   });
 
   // Watch form fields for live conversions & chips
+  const eventName = watch("name");
+  const customType = watch("custom_type");
+  const currentAvatarUrl = watch("avatar_url");
   const isLunar = watch("is_lunar");
   const eventDay = watch("event_day");
   const eventMonth = watch("event_month");
@@ -94,6 +105,18 @@ export function EventFormDrawer({
   const remindDays = watch("remind_days") || [];
   const remindTime = watch("remind_time") || "08:00";
   const repeatYearly = Boolean(watch("repeat_yearly"));
+
+  // Tự động nhận diện chủ đề Avatar theo ngữ cảnh tên & loại sự kiện
+  const autoAvatarTheme = resolveEventAvatarTheme({
+    name: eventName,
+    event_type: eventType,
+    group_name: groupName,
+    custom_type: customType,
+  });
+  const isCustomAvatar = Boolean(currentAvatarUrl && !isLegacyRandomAvatar(currentAvatarUrl));
+  const previewAvatarUrl = isCustomAvatar
+    ? (currentAvatarUrl as string)
+    : buildEventAvatarSvgDataUrl(autoAvatarTheme);
 
   // Populate data when editing
   useEffect(() => {
@@ -108,7 +131,7 @@ export function EventFormDrawer({
         group_name: initialData.group_name,
         note: initialData.note || "",
         gift_idea: initialData.gift_idea || "",
-        avatar_url: initialData.avatar_url || "",
+        avatar_url: isLegacyRandomAvatar(initialData.avatar_url) ? "" : (initialData.avatar_url || ""),
         repeat_yearly: initialData.repeat_yearly !== undefined ? Boolean(initialData.repeat_yearly) : true,
         remind_days: initialData.remind_days || [],
         remind_time: (initialData as any)?.remind_time || "08:00",
@@ -158,11 +181,16 @@ export function EventFormDrawer({
   const isActuallySubmitting = isSubmitting || isLocalSubmitting;
 
   const handleFormSubmit = async (values: EventFormValues) => {
-    // Tự sinh avatar nếu chưa có
+    // Tự sinh avatar thông minh theo ngữ cảnh tên sự kiện nếu người dùng không tự chọn thủ công
     let avatarUrl = values.avatar_url;
-    if (!avatarUrl && values.name) {
-      const seed = encodeURIComponent(values.name.trim());
-      avatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`;
+    if (!avatarUrl || isLegacyRandomAvatar(avatarUrl)) {
+      avatarUrl = generateContextualEventAvatar({
+        name: values.name,
+        event_type: values.event_type,
+        group_name: values.group_name,
+        custom_type: values.custom_type,
+        note: values.note,
+      });
     }
 
     try {
@@ -247,19 +275,110 @@ export function EventFormDrawer({
 
         {/* Drawer Body Form */}
         <form onSubmit={handleSubmit(handleFormSubmit)} className="flex-1 overflow-y-auto p-6 space-y-5 overscroll-contain">
-          {/* 1. Tên người / sự kiện (BẮT BUỘC) */}
-          <div>
+          {/* 1. Tên người / sự kiện & Live Preview Avatar theo ngữ cảnh */}
+          <div className="space-y-3">
             <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
               Tên người hoặc sự kiện <span className="text-rose-500">*</span>
             </label>
-            <input
-              {...register("name")}
-              placeholder="VD: Mẹ yêu, Bạn thân Tuấn, Kỷ niệm ngày cưới..."
-              className={cn(
-                "w-full px-4 py-2.5 rounded-xl bg-secondary/50 border border-border/80 hover:border-border focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 text-sm font-medium transition-all placeholder:text-muted-foreground/60",
-                errors.name && "border-rose-500 focus:border-rose-500 focus:ring-rose-500/20"
+            <div className="flex items-center gap-3">
+              {/* Live Avatar Preview Box */}
+              <button
+                type="button"
+                onClick={() => setShowAvatarPicker((prev) => !prev)}
+                className="relative w-12 h-12 rounded-2xl overflow-hidden border border-border/80 shadow-sm shrink-0 hover:scale-105 active:scale-95 transition-transform cursor-pointer group"
+                title="Bấm để đổi biểu tượng Avatar"
+              >
+                <img
+                  src={previewAvatarUrl}
+                  alt="Avatar sự kiện"
+                  className="w-full h-full object-cover"
+                />
+              </button>
+
+              <div className="flex-1 min-w-0">
+                <input
+                  {...register("name")}
+                  placeholder="VD: Ngày Nhà Giáo VN, Sinh nhật người yêu, Ăn cưới..."
+                  className={cn(
+                    "w-full px-4 py-2.5 rounded-xl bg-secondary/50 border border-border/80 hover:border-border focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 text-sm font-medium transition-all placeholder:text-muted-foreground/60",
+                    errors.name && "border-rose-500 focus:border-rose-500 focus:ring-rose-500/20"
+                  )}
+                />
+              </div>
+            </div>
+
+            {/* Thanh trạng thái & tùy chọn nhanh Avatar ngữ cảnh */}
+            <div className="flex items-center justify-between text-[11px] px-1">
+              <span className="text-muted-foreground flex items-center gap-1.5">
+                <Sparkles className="w-3 h-3 text-primary" />
+                {isCustomAvatar ? (
+                  <span>Đang dùng Avatar tự chọn</span>
+                ) : (
+                  <span>
+                    Tự động nhận diện: <strong className="text-foreground">{autoAvatarTheme.emoji} {autoAvatarTheme.label}</strong>
+                  </span>
+                )}
+              </span>
+              <div className="flex items-center gap-2">
+                {isCustomAvatar && (
+                  <button
+                    type="button"
+                    onClick={() => setValue("avatar_url", "")}
+                    className="text-primary font-semibold hover:underline cursor-pointer"
+                  >
+                    Tự động theo tên
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowAvatarPicker((prev) => !prev)}
+                  className="text-muted-foreground hover:text-foreground font-semibold cursor-pointer"
+                >
+                  {showAvatarPicker ? "Thu gọn" : "Đổi icon"}
+                </button>
+              </div>
+            </div>
+
+            <AnimatePresence>
+              {showAvatarPicker && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="p-3 rounded-2xl bg-secondary/40 border border-border/70 grid grid-cols-4 sm:grid-cols-6 gap-2">
+                    {EVENT_AVATAR_PRESETS.map((preset) => {
+                      const presetUrl = buildEventAvatarSvgDataUrl(preset);
+                      const isSelected = currentAvatarUrl === presetUrl;
+                      return (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => {
+                            setValue("avatar_url", presetUrl);
+                            setShowAvatarPicker(false);
+                          }}
+                          className={cn(
+                            "flex flex-col items-center gap-1 p-1.5 rounded-xl border transition-all cursor-pointer active:scale-95",
+                            isSelected
+                              ? "border-primary bg-primary/10 shadow-xs"
+                              : "border-transparent hover:bg-secondary hover:border-border/60"
+                          )}
+                          title={preset.label}
+                        >
+                          <img src={presetUrl} alt={preset.label} className="w-8 h-8 rounded-lg shadow-2xs" />
+                          <span className="text-[10px] font-medium text-muted-foreground truncate w-full text-center">
+                            {preset.label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </motion.div>
               )}
-            />
+            </AnimatePresence>
+
             {errors.name && (
               <p className="text-xs text-rose-500 mt-1 font-medium">{errors.name.message}</p>
             )}
